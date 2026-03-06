@@ -1,0 +1,476 @@
+﻿<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>เข้าสู่ระบบแอดมิน SCUM</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-1: #11180f;
+      --bg-2: #1e2a1b;
+      --bg-3: #2f3c2a;
+      --card: rgba(22, 31, 20, 0.86);
+      --text: #edf3e5;
+      --muted: #b1c09f;
+      --line: rgba(163, 184, 127, 0.24);
+      --accent: #b0c88a;
+      --accent-2: #d3af6c;
+      --accent-3: #7a8e5d;
+      --danger: #e38374;
+      --shadow-lg: 0 20px 48px rgba(9, 13, 7, 0.5);
+      --glow-a: 124, 164, 89;
+      --glow-b: 205, 165, 98;
+      --glow-c: 107, 141, 77;
+      --btn-text: #11180e;
+      --btn-shadow: rgba(133, 112, 68, 0.35);
+      --hero-line: rgba(163, 184, 127, 0.24);
+      --hero-tint: rgba(176, 200, 138, 0.12);
+    }
+
+    :root[data-theme="neon"] {
+      --bg-1: #06152a;
+      --bg-2: #0f2642;
+      --bg-3: #18385d;
+      --card: rgba(15, 31, 55, 0.84);
+      --text: #ecf3ff;
+      --muted: #a6b8de;
+      --line: rgba(143, 179, 238, 0.24);
+      --accent: #31d6b6;
+      --accent-2: #57a7ff;
+      --accent-3: #7ce7ff;
+      --danger: #ff6b7b;
+      --shadow-lg: 0 20px 48px rgba(2, 8, 21, 0.46);
+      --glow-a: 43, 103, 255;
+      --glow-b: 26, 214, 179;
+      --glow-c: 10, 166, 255;
+      --btn-text: #051027;
+      --btn-shadow: rgba(20, 129, 212, 0.28);
+      --hero-line: rgba(148, 184, 244, 0.2);
+      --hero-tint: rgba(87, 167, 255, 0.15);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      color: var(--text);
+      background:
+        radial-gradient(1200px 580px at -10% -15%, rgba(var(--glow-a), 0.36) 0%, transparent 56%),
+        radial-gradient(1000px 520px at 105% 2%, rgba(var(--glow-b), 0.34) 0%, transparent 49%),
+        radial-gradient(900px 480px at 50% 115%, rgba(var(--glow-c), 0.28) 0%, transparent 52%),
+        linear-gradient(150deg, var(--bg-1), var(--bg-2) 44%, var(--bg-3));
+      font-family: "Space Grotesk", "Chakra Petch", sans-serif;
+      letter-spacing: 0.1px;
+      padding: 16px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    body::before,
+    body::after {
+      content: "";
+      position: fixed;
+      border-radius: 50%;
+      pointer-events: none;
+      filter: blur(4px);
+      z-index: 0;
+      animation: floatGlow 16s ease-in-out infinite;
+    }
+
+    body::before {
+      width: 360px;
+      height: 360px;
+      left: -100px;
+      top: 30%;
+      background: radial-gradient(circle at 35% 35%, rgba(var(--glow-a), 0.3), rgba(var(--glow-a), 0));
+    }
+
+    body::after {
+      width: 420px;
+      height: 420px;
+      right: -130px;
+      bottom: -120px;
+      background: radial-gradient(circle at 45% 45%, rgba(var(--glow-b), 0.24), rgba(var(--glow-b), 0));
+      animation-direction: reverse;
+      animation-duration: 18s;
+    }
+
+    @keyframes floatGlow {
+      0% { transform: translate3d(0, 0, 0); opacity: 0.76; }
+      50% { transform: translate3d(24px, -22px, 0); opacity: 0.42; }
+      100% { transform: translate3d(0, 0, 0); opacity: 0.76; }
+    }
+
+    .card {
+      width: min(920px, 100%);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background:
+        linear-gradient(165deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)),
+        var(--card);
+      backdrop-filter: blur(10px);
+      box-shadow: var(--shadow-lg);
+      overflow: hidden;
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .hero {
+      padding: 26px;
+      border-right: 1px solid var(--hero-line);
+      background:
+        linear-gradient(140deg, var(--hero-tint), rgba(var(--glow-b), 0.08)),
+        rgba(10, 24, 46, 0.46);
+      display: grid;
+      gap: 14px;
+      align-content: start;
+    }
+
+    .badge {
+      width: 58px;
+      height: 58px;
+      border-radius: 14px;
+      background: conic-gradient(from 220deg, var(--accent), var(--accent-2), var(--accent-3), var(--accent));
+      color: var(--btn-text);
+      display: grid;
+      place-items: center;
+      font-family: "Chakra Petch", sans-serif;
+      font-weight: 700;
+      font-size: 20px;
+      box-shadow: 0 8px 22px rgba(33, 169, 236, 0.36), inset 0 0 0 1px rgba(240, 255, 255, 0.42);
+    }
+
+    h1 {
+      margin: 0;
+      font-family: "Chakra Petch", sans-serif;
+      font-size: 29px;
+      line-height: 1.05;
+      letter-spacing: 0.44px;
+      text-shadow: 0 2px 14px rgba(14, 113, 207, 0.2);
+    }
+
+    .hero p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.55;
+      max-width: 36ch;
+    }
+
+    .bullets {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 10px;
+    }
+
+    .bullets li {
+      border: 1px solid rgba(142, 194, 255, 0.28);
+      background: rgba(255, 255, 255, 0.06);
+      border-radius: 12px;
+      padding: 10px 12px;
+      color: #cfe0ff;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .login {
+      padding: 26px;
+      display: grid;
+      gap: 14px;
+      align-content: center;
+    }
+
+    .login h2 {
+      margin: 0;
+      font-family: "Chakra Petch", sans-serif;
+      font-size: 22px;
+      letter-spacing: 0.34px;
+    }
+
+    .login .sub {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .theme-switch {
+      display: inline-grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      padding: 6px;
+      background: rgba(255, 255, 255, 0.05);
+      margin-top: 4px;
+    }
+
+    .theme-switch button {
+      margin: 0;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 8px 10px;
+      box-shadow: none;
+    }
+
+    .theme-switch button.active {
+      border-color: transparent;
+      background: linear-gradient(135deg, var(--accent-2), var(--accent));
+      color: var(--btn-text);
+      box-shadow: 0 7px 16px var(--btn-shadow);
+    }
+
+    form {
+      margin-top: 2px;
+      display: grid;
+      gap: 12px;
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+      font-size: 12px;
+      color: #cfe0ff;
+    }
+
+    input,
+    button {
+      border-radius: 11px;
+      border: 1px solid var(--line);
+      padding: 11px 12px;
+      font: inherit;
+      outline: none;
+      color: var(--text);
+      transition: border-color 160ms ease, box-shadow 180ms ease, transform 120ms ease, filter 120ms ease;
+    }
+
+    input {
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    input:focus {
+      border-color: #99ccff;
+      box-shadow: 0 0 0 2px rgba(109, 191, 255, 0.24), 0 8px 20px rgba(8, 43, 82, 0.35);
+      background: rgba(255, 255, 255, 0.07);
+    }
+
+    button {
+      margin-top: 4px;
+      cursor: pointer;
+      border: none;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--accent-2), var(--accent));
+      color: var(--btn-text);
+      box-shadow: 0 8px 18px var(--btn-shadow);
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      filter: saturate(1.1) brightness(1.03);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    button:disabled {
+      opacity: 0.74;
+      cursor: wait;
+      transform: none;
+    }
+
+    .error {
+      min-height: 20px;
+      margin-top: 2px;
+      color: var(--danger);
+      font-size: 12px;
+    }
+
+    @media (max-width: 900px) {
+      .card {
+        grid-template-columns: 1fr;
+      }
+
+      .hero {
+        border-right: 0;
+        border-bottom: 1px solid rgba(148, 184, 244, 0.2);
+      }
+    }
+
+    @media (max-width: 560px) {
+      .hero,
+      .login {
+        padding: 18px;
+      }
+
+      h1 {
+        font-size: 24px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <section class="card">
+    <div class="hero">
+      <div class="badge">SC</div>
+      <h1>SCUM Admin<br>Control Console</h1>
+      <p>เข้าสู่ระบบเพื่อจัดการเศรษฐกิจ ร้านค้า คิวส่งของ RCON ทิคเก็ต และคอนฟิกเซิร์ฟเวอร์จากจุดเดียว</p>
+      <ul class="bullets">
+        <li>ดูสถานะระบบแบบเรียลไทม์ พร้อมรีเฟรชอัตโนมัติ</li>
+        <li>สั่งงานด่วนผ่าน Action Center ได้ทันที</li>
+        <li>มีระบบป้องกัน login attempts และ session timeout</li>
+      </ul>
+    </div>
+
+    <div class="login">
+      <h2>เข้าสู่ระบบแอดมิน</h2>
+      <p class="sub">กรอกชื่อผู้ใช้และรหัสผ่านเพื่อเข้าสู่แดชบอร์ด</p>
+      <div class="theme-switch" role="group" aria-label="เลือกธีม">
+        <button id="themeBtnMilitary" type="button">Military Tactical</button>
+        <button id="themeBtnNeon" type="button">Neon Cyber</button>
+      </div>
+
+      <form id="loginForm" autocomplete="on">
+        <label>
+          <span>ชื่อผู้ใช้</span>
+          <input id="usernameInput" name="username" autocomplete="username" required>
+        </label>
+        <label>
+          <span>รหัสผ่าน</span>
+          <input
+            id="passwordInput"
+            name="password"
+            type="password"
+            autocomplete="current-password"
+            required
+          >
+        </label>
+        <button id="loginBtn" type="submit">เข้าสู่ระบบ</button>
+      </form>
+
+      <div id="errorText" class="error"></div>
+    </div>
+  </section>
+
+  <script>
+    const form = document.getElementById('loginForm');
+    const usernameInput = document.getElementById('usernameInput');
+    const passwordInput = document.getElementById('passwordInput');
+    const loginBtn = document.getElementById('loginBtn');
+    const errorText = document.getElementById('errorText');
+    const themeBtnMilitary = document.getElementById('themeBtnMilitary');
+    const themeBtnNeon = document.getElementById('themeBtnNeon');
+
+    usernameInput.value = 'admin';
+
+    const THEME_STORAGE_KEY = 'scum_admin_theme';
+    const SUPPORTED_THEMES = new Set(['military', 'neon']);
+
+    function normalizeThemeName(value) {
+      const raw = String(value || '').trim().toLowerCase();
+      if (SUPPORTED_THEMES.has(raw)) return raw;
+      return 'military';
+    }
+
+    function applyTheme(themeName, persist = true) {
+      const resolved = normalizeThemeName(themeName);
+      document.documentElement.setAttribute('data-theme', resolved);
+      themeBtnMilitary?.classList.toggle('active', resolved === 'military');
+      themeBtnNeon?.classList.toggle('active', resolved === 'neon');
+      if (persist) {
+        try {
+          window.localStorage.setItem(THEME_STORAGE_KEY, resolved);
+        } catch {}
+      }
+      return resolved;
+    }
+
+    function loadPreferredTheme() {
+      let fromStorage = '';
+      try {
+        fromStorage = String(window.localStorage.getItem(THEME_STORAGE_KEY) || '');
+      } catch {
+        fromStorage = '';
+      }
+      const params = new URLSearchParams(window.location.search);
+      if (params.has('theme')) {
+        return normalizeThemeName(params.get('theme'));
+      }
+      return normalizeThemeName(fromStorage);
+    }
+
+    async function api(path, method = 'GET', body = null) {
+      const headers = {};
+      let payload;
+      if (body != null) {
+        headers['content-type'] = 'application/json';
+        payload = JSON.stringify(body);
+      }
+      const res = await fetch(path, {
+        method,
+        headers,
+        body: payload,
+        credentials: 'same-origin',
+      });
+      const data = await res.json().catch(() => ({ ok: false, error: 'รูปแบบข้อมูล JSON ไม่ถูกต้อง' }));
+      if (!res.ok || data.ok === false) {
+        throw new Error(data.error || `คำขอล้มเหลว (${res.status})`);
+      }
+      return data;
+    }
+
+    async function ensureNotLoggedIn() {
+      try {
+        await api('/admin/api/me');
+        window.location.replace('/admin');
+      } catch {
+        // not logged in
+      }
+    }
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      errorText.textContent = '';
+      loginBtn.disabled = true;
+      const originalText = loginBtn.textContent;
+      loginBtn.textContent = 'กำลังเข้าสู่ระบบ...';
+      try {
+        await api('/admin/api/login', 'POST', {
+          username: usernameInput.value.trim(),
+          password: passwordInput.value,
+        });
+        window.location.replace('/admin');
+      } catch (error) {
+        errorText.textContent = error.message || 'เข้าสู่ระบบไม่สำเร็จ';
+        passwordInput.focus();
+      } finally {
+        loginBtn.disabled = false;
+        loginBtn.textContent = originalText;
+      }
+    });
+
+    themeBtnMilitary?.addEventListener('click', () => {
+      applyTheme('military', true);
+    });
+
+    themeBtnNeon?.addEventListener('click', () => {
+      applyTheme('neon', true);
+    });
+
+    applyTheme(loadPreferredTheme(), false);
+    ensureNotLoggedIn();
+  </script>
+</body>
+</html>

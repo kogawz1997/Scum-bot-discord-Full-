@@ -1,0 +1,85 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model UserWallet {
+  userId      String  @id
+  balance     Int     @default(0)
+  lastDaily   BigInt? // ms since epoch
+  lastWeekly  BigInt? // ms since epoch
+}
+
+model ShopItem {
+  id          String @id
+  name        String
+  price       Int
+  description String
+  kind        String @default("item")
+  gameItemId  String?
+  quantity    Int    @default(1)
+  iconUrl     String?
+  deliveryItemsJson String?
+}
+
+model Purchase {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique
+  userId    String
+  itemId    String
+  price     Int
+  status    String   @default("pending")
+  createdAt DateTime @default(now())
+}
+
+model RedeemCode {
+  code    String   @id
+  type    String
+  amount  Int?
+  itemId  String?
+  usedBy  String?
+  usedAt  DateTime?
+}
+
+model VipMembership {
+  userId   String   @id
+  planId   String
+  expiresAt DateTime
+}
+
+model Bounty {
+  id         Int     @id @default(autoincrement())
+  targetName String
+  amount     Int
+  createdBy  String
+  status     String  @default("active")
+  claimedBy  String?
+}
+
+model Stats {
+  userId          String @id
+  kills           Int    @default(0)
+  deaths          Int    @default(0)
+  playtimeMinutes Int    @default(0)
+  squad           String?
+}
+
+model Link {
+  steamId    String   @id
+  userId     String
+  inGameName String?
+  linkedAt   DateTime @default(now())
+}
+
+model ScumStatus {
+  id            Int      @id @default(1)
+  onlinePlayers Int      @default(0)
+  maxPlayers    Int      @default(90)
+  pingMs        Int?
+  uptimeMinutes Int      @default(0)
+  lastUpdated   DateTime?
+}

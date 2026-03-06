@@ -1,0 +1,684 @@
+﻿require('dotenv').config();
+
+const {
+  Client,
+  Collection,
+  Events,
+  GatewayIntentBits,
+  PermissionFlagsBits,
+  ChannelType,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
+  ActionRowBuilder,
+  MessageFlags,
+} = require('discord.js');
+const fs = require('node:fs');
+const path = require('node:path');
+const { moderation, roles, channels, economy } = require('./config');
+const {
+  pushMessage,
+  getRecentMessages,
+  addPunishment,
+} = require('./store/moderationStore');
+const { listMemberships, removeMembership } = require('./store/vipStore');
+const { startScumServer } = require('./scumWebhookServer');
+const { startRestartScheduler } = require('./services/restartScheduler');
+const { startRentBikeService } = require('./services/rentBikeService');
+const {
+  startRconDeliveryWorker,
+  enqueuePurchaseDelivery,
+} = require('./services/rconDelivery');
+const { startAdminWebServer } = require('./adminWebServer');
+const { queueLeaderboardRefreshForGuild } = require('./services/leaderboardPanels');
+const { assertBotEnv } = require('./utils/env');
+const { claim: claimWelcomePack, hasClaimed: hasClaimedWelcomePack } = require('./store/welcomePackStore');
+const {
+  addCoins,
+  getWallet,
+  getShopItemById,
+  createPurchase,
+  removeCoins,
+} = require('./store/memoryStore');
+const { normalizeSteamId, setLink, getLinkBySteamId } = require('./store/linkStore');
+const { createTicket, tickets } = require('./store/ticketStore');
+
+assertBotEnv();
+const token = process.env.DISCORD_TOKEN;
+
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+  ],
+});
+
+client.commands = new Collection();
+
+const commandsPath = path.join(__dirname, 'commands');
+if (fs.existsSync(commandsPath)) {
+  const commandFiles = fs
+    .readdirSync(commandsPath)
+    .filter((file) => file.endsWith('.js'));
+
+  for (const file of commandFiles) {
+    const filePath = path.join(commandsPath, file);
+    const command = require(filePath);
+    if ('data' in command && 'execute' in command) {
+      client.commands.set(command.data.name, command);
+    } else {
+      console.warn(`คำสั่งที่ไฟล์ ${filePath} ไม่มี "data" หรือ "execute"`);
+    }
+  }
+}
+
+client.once(Events.ClientReady, (c) => {
+  console.log(`บอทล็อกอินสำเร็จเป็น ${c.user.tag}`);
+
+  // เริ่มเซิร์ฟเวอร์ webhook สำหรับอีเวนต์จาก SCUM
+  startScumServer(client);
+
+  // เริ่มตัวแจ้งเตือนตารางรีสตาร์ท (จาก config)
+  startRestartScheduler(client);
+
+  // เริ่มเว็บแอดมินแบบรวมศูนย์
+  startAdminWebServer(client);
+  startRentBikeService(client).catch((error) => {
+    console.error('[rent-bike] failed to start service:', error.message);
+  });
+  startRconDeliveryWorker(client);
+
+  // งานย่อยสำหรับถอดยศ VIP ที่หมดอายุ
+  setInterval(async () => {
+    for (const m of listMemberships()) {
+      if (m.expiresAt && m.expiresAt <= new Date()) {
+        const guilds = client.guilds.cache;
+        for (const guild of guilds.values()) {
+          const member = await guild.members.fetch(m.userId).catch(() => null);
+          if (!member) continue;
+          const vipRole = guild.roles.cache.find((r) => r.name === roles.vip);
+          if (vipRole && member.roles.cache.has(vipRole.id)) {
+            await member.roles.remove(vipRole, 'VIP หมดอายุ').catch(() => null);
+          }
+        }
+        removeMembership(m.userId);
+      }
+    }
+  }, 60 * 1000);
+});
+
+function hasTicketCreatePermissions(guild, parent) {
+  const me = guild.members.me;
+  if (!me) return false;
+  const required = [
+    PermissionFlagsBits.ViewChannel,
+    PermissionFlagsBits.SendMessages,
+    PermissionFlagsBits.ManageChannels,
+    PermissionFlagsBits.ManageRoles,
+  ];
+  const perms = parent ? parent.permissionsFor(me) : me.permissions;
+  return perms?.has(required);
+}
+
+
+async function openTicketFromPanel(interaction) {
+  const guild = interaction.guild;
+  if (!guild) {
+    return interaction.reply({
+      content: 'คำสั่งนี้ใช้ได้เฉพาะในเซิร์ฟเวอร์เท่านั้น',
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  const existing = Array.from(tickets.values()).find(
+    (t) =>
+      t.guildId === guild.id &&
+      t.userId === interaction.user.id &&
+      t.status !== 'closed',
+  );
+
+  if (existing) {
+    return interaction.reply({
+      content: `คุณมีทิคเก็ตที่ยังเปิดอยู่แล้ว: <#${existing.channelId}>`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  const ticketsHubChannel = guild.channels.cache.find(
+    (c) => c.name === channels.ticketsHub,
+  );
+  const parent =
+    ticketsHubChannel && ticketsHubChannel.parent
+      ? ticketsHubChannel.parent
+      : null;
+
+  if (!hasTicketCreatePermissions(guild, parent)) {
+    return interaction.reply({
+      content:
+        'บอทไม่มีสิทธิ์พอสำหรับสร้างทิคเก็ต (ต้องมีสิทธิ์ ดูช่อง, ส่งข้อความ, จัดการช่อง, จัดการยศ)',
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  const channelName = `ticket-${interaction.user.username.toLowerCase()}-${
+    Math.floor(Math.random() * 9999) + 1
+  }`;
+
+  const overwrites = [
+    {
+      id: guild.id,
+      deny: [PermissionFlagsBits.ViewChannel],
+    },
+    {
+      id: interaction.user.id,
+      allow: [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.SendMessages,
+        PermissionFlagsBits.ReadMessageHistory,
+      ],
+    },
+  ];
+
+  const staffRoleNames = Object.values(roles).filter((r) =>
+    ['Owner', 'Admin', 'Moderator', 'Helper'].includes(r),
+  );
+  for (const roleName of staffRoleNames) {
+    const role = guild.roles.cache.find((r) => r.name === roleName);
+    if (role) {
+      overwrites.push({
+        id: role.id,
+        allow: [
+          PermissionFlagsBits.ViewChannel,
+          PermissionFlagsBits.SendMessages,
+          PermissionFlagsBits.ReadMessageHistory,
+          PermissionFlagsBits.ManageMessages,
+        ],
+      });
+    }
+  }
+
+  let newChannel;
+  try {
+    newChannel = await guild.channels.create({
+      name: channelName,
+      type: ChannelType.GuildText,
+      parent: parent ?? undefined,
+      permissionOverwrites: overwrites,
+      topic: `ทิคเก็ตของ ${interaction.user.tag} | หมวด: ช่วยเหลือ`,
+    });
+  } catch (error) {
+    if (error && error.code === 50013) {
+      return interaction.reply({
+        content:
+          'สร้างทิคเก็ตไม่สำเร็จ เพราะบอทยังไม่มีสิทธิ์ในเซิร์ฟเวอร์/หมวดนี้ กรุณาให้สิทธิ์จัดการช่องและจัดการยศ แล้วลองใหม่',
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+    throw error;
+  }
+
+  createTicket({
+    guildId: guild.id,
+    userId: interaction.user.id,
+    channelId: newChannel.id,
+    category: 'ช่วยเหลือ',
+    reason: 'เปิดจากแพเนลทิคเก็ต',
+  });
+
+  await newChannel.send(
+    `สวัสดี ${interaction.user}
+ทีมงานจะเข้ามาดูแลโดยเร็วที่สุด กรุณาอธิบายปัญหา/คำถามของคุณ`,
+  );
+
+  return interaction.reply({
+    content: `เปิดทิคเก็ตสำเร็จ: ${newChannel}`,
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
+client.on(Events.InteractionCreate, async (interaction) => {
+  try {
+  if (interaction.isModalSubmit?.() && interaction.customId === 'panel-verify-modal') {
+    const steamIdRaw = interaction.fields.getTextInputValue('steamid');
+    const steamId = normalizeSteamId(steamIdRaw);
+
+    if (!steamId) {
+      return interaction.reply({
+        content: 'SteamID ไม่ถูกต้อง (ต้องเป็นตัวเลข SteamID64)',
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+
+    const existing = getLinkBySteamId(steamId);
+    if (existing && existing.userId !== interaction.user.id) {
+      return interaction.reply({
+        content: 'SteamID นี้ถูกลิงก์กับบัญชีอื่นแล้ว กรุณาติดต่อแอดมิน',
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+
+    const res = setLink({
+      steamId,
+      userId: interaction.user.id,
+      inGameName: null,
+    });
+
+    if (!res.ok) {
+      return interaction.reply({
+        content: 'ไม่สามารถยืนยัน SteamID ได้ในตอนนี้ กรุณาลองใหม่',
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+
+    if (interaction.guild && interaction.member) {
+      const verifiedRole = interaction.guild.roles.cache.find(
+        (r) => r.name === roles.verified,
+      );
+      if (verifiedRole && !interaction.member.roles.cache.has(verifiedRole.id)) {
+        await interaction.member.roles
+          .add(verifiedRole, 'ยืนยัน Steam ID แล้ว')
+          .catch(() => null);
+      }
+    }
+
+    return interaction.reply({
+      content: `ยืนยันสำเร็จ! SteamID: \`${steamId}\``,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  // Panel buttons
+  if (interaction.isButton?.()) {
+    if (interaction.customId === 'giveaway-join') {
+      const { addEntrant, getGiveaway } = require('./store/giveawayStore');
+      const messageId = interaction.message.id;
+      const g = getGiveaway(messageId);
+      if (!g) {
+        return interaction.reply({
+          content: 'กิจกรรมแจกของนี้หมดอายุหรือไม่พบในระบบ',
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+      addEntrant(messageId, interaction.user.id);
+      return interaction.reply({
+        content: 'เข้าร่วมกิจกรรมแจกของสำเร็จ!',
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+
+    if (interaction.customId === 'panel-ticket-open') {
+      return openTicketFromPanel(interaction);
+    }
+
+    if (interaction.customId === 'panel-verify-open') {
+      const modal = new ModalBuilder()
+        .setCustomId('panel-verify-modal')
+        .setTitle('ยืนยัน Steam ID');
+
+      const steamInput = new TextInputBuilder()
+        .setCustomId('steamid')
+        .setLabel('SteamID64')
+        .setPlaceholder('เช่น 7656119xxxxxxxxxx')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setMinLength(15)
+        .setMaxLength(25);
+
+      const row = new ActionRowBuilder().addComponents(steamInput);
+      modal.addComponents(row);
+      return interaction.showModal(modal);
+    }
+
+    if (interaction.customId === 'panel-welcome-claim') {
+      if (hasClaimedWelcomePack(interaction.user.id)) {
+        return interaction.reply({
+          content: 'คุณรับแพ็กต้อนรับไปแล้ว (รับได้ 1 ครั้งต่อบัญชี)',
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+      claimWelcomePack(interaction.user.id);
+      await addCoins(interaction.user.id, 1500);
+      queueLeaderboardRefreshForGuild(
+        interaction.client,
+        interaction.guildId,
+        'welcome-claim',
+      );
+      return interaction.reply({
+        content: 'รับแพ็กต้อนรับสำเร็จ! ได้รับ 1,500 เหรียญ',
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+
+    if (interaction.customId === 'panel-welcome-refer') {
+      return interaction.reply({
+        content: 'ชวนเพื่อนเข้าดิสคอร์ด ให้เพื่อนกดรับแพ็กต้อนรับ แล้วแจ้งแอดมินเพื่อรับโบนัสแนะนำเพื่อน',
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+
+    if (interaction.customId === 'panel-quick-daily') {
+      return interaction.reply({
+        content: 'ใช้ `/daily` เพื่อรับของรายวันได้เลย',
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+
+    if (interaction.customId === 'panel-quick-server') {
+      return interaction.reply({
+        content: 'ใช้ `/server` เพื่อดูข้อมูลเซิร์ฟเวอร์ทั้งหมด',
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+
+    if (interaction.customId === 'panel-quick-stats') {
+      return interaction.reply({
+        content: 'ใช้ `/stats` หรือ `/top type:kills` เพื่อดูอันดับผู้เล่น',
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+
+    if (interaction.customId.startsWith('panel-shop-buy:')) {
+      const itemId = interaction.customId.split(':')[1];
+      const item = await getShopItemById(itemId);
+      if (!item) {
+        return interaction.reply({
+          content: `ไม่พบสินค้า: ${itemId}`,
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+
+      const wallet = await getWallet(interaction.user.id);
+      if (wallet.balance < item.price) {
+        return interaction.reply({
+          content: `ยอดเหรียญของคุณไม่พอ ต้องการ ${economy.currencySymbol} **${item.price.toLocaleString()}** แต่คุณมีเพียง ${economy.currencySymbol} **${wallet.balance.toLocaleString()}**`,
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+
+      await removeCoins(interaction.user.id, item.price);
+      queueLeaderboardRefreshForGuild(
+        interaction.client,
+        interaction.guildId,
+        'panel-shop-buy',
+      );
+      const purchase = await createPurchase(interaction.user.id, item);
+      const delivery = await enqueuePurchaseDelivery(purchase, {
+        guildId: interaction.guildId || null,
+      });
+      const kind = String(item.kind || 'item').trim().toLowerCase() === 'vip'
+        ? 'vip'
+        : 'item';
+      const bundleEntries = kind === 'item'
+        ? (Array.isArray(item.deliveryItems) && item.deliveryItems.length > 0
+            ? item.deliveryItems
+            : [{
+                gameItemId: item.gameItemId,
+                quantity: Math.max(1, Math.trunc(Number(item.quantity || 1))),
+              }])
+            .map((entry) => ({
+              gameItemId: String(entry?.gameItemId || '').trim(),
+              quantity: Math.max(1, Math.trunc(Number(entry?.quantity || 1))),
+            }))
+            .filter((entry) => entry.gameItemId)
+        : [];
+      const bundleTotalQty = bundleEntries.reduce(
+        (sum, entry) => sum + entry.quantity,
+        0,
+      );
+      const bundleShort = bundleEntries
+        .slice(0, 2)
+        .map((entry) => `${entry.gameItemId} x${entry.quantity}`)
+        .join(', ');
+      const bundleShortText = bundleEntries.length > 2
+        ? `${bundleShort} (+${bundleEntries.length - 2})`
+        : bundleShort || '-';
+      const bundleLongText = bundleEntries.length > 0
+        ? [
+            `ไอเทมในชุด: **${bundleEntries.length}** รายการ (รวม **${bundleTotalQty}** ชิ้น)`,
+            ...bundleEntries
+              .slice(0, 4)
+              .map((entry) => `- \`${entry.gameItemId}\` x**${entry.quantity}**`),
+            ...(bundleEntries.length > 4
+              ? [`- และอีก **${bundleEntries.length - 4}** รายการ`]
+              : []),
+          ].join('\n')
+        : 'ไอเทมในเกม: `-`';
+
+      let deliveryText = '\nสถานะการส่งของ: รอทีมงานจัดการ (ทำด้วยแอดมิน)';
+      if (delivery.queued) {
+        deliveryText = '\nสถานะการส่งของ: ระบบอัตโนมัติกำลังดำเนินการ (คิว RCON)';
+      } else if (delivery.reason === 'item-not-configured') {
+        deliveryText = '\nสถานะการส่งของ: สินค้านี้ยังไม่ตั้งคำสั่ง RCON (ทำด้วยแอดมิน)';
+      } else if (delivery.reason === 'delivery-disabled') {
+        deliveryText = '\nสถานะการส่งของ: ปิดระบบส่งของอัตโนมัติอยู่ (ทำด้วยแอดมิน)';
+      }
+
+      try {
+        const guild = interaction.guild;
+        if (guild) {
+          const logChannel = guild.channels.cache.find(
+            (c) => c.name === channels.shopLog,
+          );
+          if (logChannel && logChannel.isTextBased()) {
+            await logChannel.send(
+              `🛒 **การซื้อ** | ผู้ใช้: ${interaction.user} | สินค้า: **${item.name}** (รหัส: \`${item.id}\`) | ราคา: ${economy.currencySymbol} **${item.price.toLocaleString()}** | โค้ด: \`${purchase.code}\` | สถานะส่งอัตโนมัติ: ${
+                delivery.queued ? 'เข้าคิวแล้ว' : delivery.reason || 'ทำด้วยแอดมิน'
+              } | ประเภท: ${kind.toUpperCase()} | รายการ: ${kind === 'item' ? bundleShortText : 'VIP'}`,
+            );
+          }
+        }
+      } catch (err) {
+        console.error('ไม่สามารถส่งบันทึกไปยังช่อง shop-log ได้', err);
+      }
+
+      return interaction.reply({
+        content: `คุณซื้อ **${item.name}** สำเร็จ!\nประเภท: **${kind.toUpperCase()}**\n${kind === 'item' ? `${bundleLongText}\n` : ''}ราคาที่จ่าย: ${economy.currencySymbol} **${item.price.toLocaleString()}**\nโค้ดอ้างอิง: \`${purchase.code}\`${deliveryText}`,
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+
+    if (interaction.customId.startsWith('panel-shop-cart:')) {
+      const itemId = interaction.customId.split(':')[1];
+      return interaction.reply({
+        content: `เพิ่มเข้าตะกร้าชั่วคราว: **${itemId}** (เวอร์ชันนี้ยังไม่ทำระบบตะกร้าจริง ใช้ /buy ได้ทันที)`,
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+
+    if (interaction.customId === 'panel-shop-checkout') {
+      return interaction.reply({
+        content: 'เช็กเอาต์: ไปที่ `/inventory` เพื่อตรวจรายการ และใช้ `/buy` สำหรับรายการที่ต้องการซื้อ',
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+    if (
+      interaction.customId.startsWith('panel-') ||
+      interaction.customId.startsWith('giveaway-')
+    ) {
+      return interaction.reply({
+        content: 'ปุ่มนี้หมดอายุหรือยังไม่รองรับแล้ว ลองกดจากข้อความใหม่ล่าสุดอีกครั้ง',
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+  }
+
+  if (!interaction.isChatInputCommand()) return;
+
+  const command = interaction.client.commands.get(interaction.commandName);
+  if (!command) {
+    console.error(`ไม่พบคำสั่งที่ชื่อ ${interaction.commandName}`);
+    return;
+  }
+
+  try {
+    await command.execute(interaction);
+    queueLeaderboardRefreshForGuild(
+      interaction.client,
+      interaction.guildId,
+      `slash:${interaction.commandName}`,
+    );
+  } catch (error) {
+    console.error(`เกิดข้อผิดพลาดระหว่างรันคำสั่ง ${interaction.commandName}`, error);
+    const code = Number(error?.code || 0);
+    if (code === 10062 || code === 40060) {
+      // Unknown interaction / already acknowledged.
+      return;
+    }
+    if (interaction.replied || interaction.deferred) {
+      await interaction.followUp({
+        content: 'เกิดข้อผิดพลาดขณะรันคำสั่งนี้',
+        flags: MessageFlags.Ephemeral,
+      }).catch(() => null);
+    } else {
+      await interaction.reply({
+        content: 'เกิดข้อผิดพลาดขณะรันคำสั่งนี้',
+        flags: MessageFlags.Ephemeral,
+      }).catch(() => null);
+    }
+  }
+  } catch (error) {
+    console.error('[interaction] unhandled error', error);
+    const code = Number(error?.code || 0);
+    if (code === 10062 || code === 40060) return;
+    if (!interaction?.isRepliable || !interaction.isRepliable()) return;
+    if (interaction.replied || interaction.deferred) {
+      await interaction
+        .followUp({
+          content: 'ระบบมีปัญหาชั่วคราว กรุณาลองใหม่อีกครั้ง',
+          flags: MessageFlags.Ephemeral,
+        })
+        .catch(() => null);
+      return;
+    }
+    await interaction
+      .reply({
+        content: 'ระบบมีปัญหาชั่วคราว กรุณาลองใหม่อีกครั้ง',
+        flags: MessageFlags.Ephemeral,
+      })
+      .catch(() => null);
+  }
+});
+
+// Anti-spam and bad word checks
+client.on(Events.MessageCreate, async (message) => {
+  if (!message.guild) return;
+  if (message.author.bot) return;
+
+  const guild = message.guild;
+  const member = message.member;
+
+  // Check spam
+  pushMessage(message.author.id, Date.now());
+  const msgs = getRecentMessages(
+    message.author.id,
+    moderation.spam.intervalMs,
+  );
+  if (msgs.length >= moderation.spam.messages) {
+    const mutedRole = guild.roles.cache.find((r) => r.name === roles.muted);
+    if (mutedRole && member && !member.roles.cache.has(mutedRole.id)) {
+      await member.roles.add(
+        mutedRole,
+        `ปิดแชทอัตโนมัติจากสแปม ${msgs.length} ข้อความ`,
+      );
+      addPunishment(
+        member.id,
+        'mute',
+        'ปิดแชทอัตโนมัติ: สแปมข้อความ',
+        client.user.id,
+        moderation.spam.muteMinutes,
+      );
+
+      const logChannel = guild.channels.cache.find(
+        (c) => c.name === channels.adminLog,
+      );
+      if (logChannel && logChannel.isTextBased && logChannel.isTextBased()) {
+        await logChannel.send(
+          `🤖 **ปิดแชทอัตโนมัติ** | ผู้ใช้: ${member} | เหตุผล: สแปมเกิน ${moderation.spam.messages} ข้อความ ภายใน ${Math.round(
+            moderation.spam.intervalMs / 1000,
+          )} วินาที`,
+        );
+      }
+    }
+  }
+
+  // Check bad words
+  const contentLower = message.content.toLowerCase();
+  const hasSoft = moderation.badWordsSoft.some((w) =>
+    contentLower.includes(w.toLowerCase()),
+  );
+  const hasHard = moderation.badWordsHard.some((w) =>
+    contentLower.includes(w.toLowerCase()),
+  );
+
+  if (hasSoft || hasHard) {
+    await message.delete().catch(() => null);
+
+    if (hasHard && member) {
+      // hard timeout
+      const ms = moderation.hardTimeoutMinutes * 60 * 1000;
+      if (member.moderatable) {
+        await member.timeout(ms, 'ลงโทษอัตโนมัติ: คำหยาบรุนแรง').catch(() => null);
+      }
+      addPunishment(
+        member.id,
+        'timeout',
+        'ลงโทษอัตโนมัติ: คำหยาบรุนแรง',
+        client.user.id,
+        moderation.hardTimeoutMinutes,
+      );
+    } else if (member) {
+      // soft warning
+      addPunishment(
+        member.id,
+        'warn',
+        'เตือนอัตโนมัติ: คำหยาบ',
+        client.user.id,
+        null,
+      );
+    }
+
+    const logChannel = guild.channels.cache.find(
+      (c) => c.name === channels.adminLog,
+    );
+    if (logChannel && logChannel.isTextBased && logChannel.isTextBased()) {
+      await logChannel.send(
+        `🤖 **ดูแลแชทอัตโนมัติ** | ข้อความจาก ${message.author} ถูกลบ (คำหยาบ) ใน <#${message.channel.id}>`,
+      );
+    }
+  }
+});
+
+
+client.on(Events.GuildMemberAdd, async (member) => {
+  const guild = member.guild;
+  const channel = guild.channels.cache.find(
+    (c) =>
+      c.name === (channels.inServer || channels.playerJoin) &&
+      c.isTextBased &&
+      c.isTextBased(),
+  );
+  if (!channel) return;
+
+  const text = `👋 สวัสดี ${member} ยินดีต้อนรับสู่ **${guild.name}**! ขอให้สนุกนะ`;
+  const avatar = member.user.displayAvatarURL({ extension: 'png', size: 512 });
+  const username = encodeURIComponent(member.user.username);
+  const avatarEnc = encodeURIComponent(avatar);
+  const background = encodeURIComponent('https://i.imgur.com/O3DHIA5.jpeg');
+  const memberLine = encodeURIComponent(`คุณคือสมาชิกคนที่ #${guild.memberCount}`);
+  const welcomeLine = encodeURIComponent(`ยินดีต้อนรับสู่ ${guild.name}`);
+  const cardUrl = `https://api.popcat.xyz/welcomecard?background=${background}&avatar=${avatarEnc}&text1=${username}&text2=${memberLine}&text3=${welcomeLine}`;
+
+  await channel.send({
+    content: text,
+    embeds: [
+      {
+        color: 0x2f3136,
+        image: { url: cardUrl },
+      },
+    ],
+  });
+});
+
+client.login(token);

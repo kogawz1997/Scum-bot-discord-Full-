@@ -1,0 +1,34 @@
+{
+  "purchaseCounter": 1,
+  "wallets": [],
+  "shopItems": [
+    [
+      "vip-7d",
+      {
+        "id": "vip-7d",
+        "name": "VIP 7 วัน",
+        "price": 5000,
+        "description": "VIP 7 วัน + เข้าห้อง VIP + สีชื่อพิเศษ"
+      }
+    ],
+    [
+      "vip-30d",
+      {
+        "id": "vip-30d",
+        "name": "VIP 30 วัน",
+        "price": 15000,
+        "description": "VIP 30 วัน + เข้าห้อง VIP + สีชื่อพิเศษ"
+      }
+    ],
+    [
+      "loot-box",
+      {
+        "id": "loot-box",
+        "name": "Loot Box (ในเกม)",
+        "price": 2000,
+        "description": "กล่องสุ่มของในเกม (สตาฟเป็นคนแจกในเกมตาม code)"
+      }
+    ]
+  ],
+  "purchases": []
+}
