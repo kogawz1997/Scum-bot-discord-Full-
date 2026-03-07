@@ -25,6 +25,7 @@ function freshWebhookModule(eventStubs) {
 test('SCUM webhook server validates auth and dispatches events', async (t) => {
   const originalPort = process.env.SCUM_WEBHOOK_PORT;
   const originalSecret = process.env.SCUM_WEBHOOK_SECRET;
+  const originalMaxBody = process.env.SCUM_WEBHOOK_MAX_BODY_BYTES;
   const port = randomPort();
   process.env.SCUM_WEBHOOK_PORT = String(port);
   process.env.SCUM_WEBHOOK_SECRET = 'test-secret';
@@ -69,6 +70,11 @@ test('SCUM webhook server validates auth and dispatches events', async (t) => {
       delete process.env.SCUM_WEBHOOK_SECRET;
     } else {
       process.env.SCUM_WEBHOOK_SECRET = originalSecret;
+    }
+    if (originalMaxBody == null) {
+      delete process.env.SCUM_WEBHOOK_MAX_BODY_BYTES;
+    } else {
+      process.env.SCUM_WEBHOOK_MAX_BODY_BYTES = originalMaxBody;
     }
   });
 
@@ -170,4 +176,72 @@ test('SCUM webhook server validates auth and dispatches events', async (t) => {
     distance: 120,
     hitZone: 'head',
   });
+});
+
+test('SCUM webhook server rejects invalid JSON and oversized UTF-8 payloads', async (t) => {
+  const originalPort = process.env.SCUM_WEBHOOK_PORT;
+  const originalSecret = process.env.SCUM_WEBHOOK_SECRET;
+  const originalMaxBody = process.env.SCUM_WEBHOOK_MAX_BODY_BYTES;
+
+  const port = randomPort(40100, 800);
+  process.env.SCUM_WEBHOOK_PORT = String(port);
+  process.env.SCUM_WEBHOOK_SECRET = 'test-secret-2';
+  process.env.SCUM_WEBHOOK_MAX_BODY_BYTES = '120';
+
+  const stubs = {
+    sendStatusOnline: async () => {},
+    sendPlayerJoinLeave: async () => {},
+    sendKillFeed: async () => {},
+    sendRestartAlert: async () => {},
+  };
+
+  const { startScumServer } = freshWebhookModule(stubs);
+  const fakeGuild = { id: 'G2', name: 'Guild Two' };
+  const client = {
+    guilds: {
+      cache: new Map([[fakeGuild.id, fakeGuild]]),
+    },
+  };
+
+  const server = startScumServer(client);
+  if (!server.listening) {
+    await once(server, 'listening');
+  }
+
+  t.after(async () => {
+    await new Promise((resolve) => server.close(resolve));
+    delete require.cache[webhookModulePath];
+    delete require.cache[scumEventsModulePath];
+    if (originalPort == null) delete process.env.SCUM_WEBHOOK_PORT;
+    else process.env.SCUM_WEBHOOK_PORT = originalPort;
+    if (originalSecret == null) delete process.env.SCUM_WEBHOOK_SECRET;
+    else process.env.SCUM_WEBHOOK_SECRET = originalSecret;
+    if (originalMaxBody == null) delete process.env.SCUM_WEBHOOK_MAX_BODY_BYTES;
+    else process.env.SCUM_WEBHOOK_MAX_BODY_BYTES = originalMaxBody;
+  });
+
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  const invalidJson = await fetch(`${baseUrl}/scum-event`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: '{"type":"status"',
+  });
+  assert.equal(invalidJson.status, 400);
+
+  const oversized = await fetch(`${baseUrl}/scum-event`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      secret: 'test-secret-2',
+      guildId: fakeGuild.id,
+      type: 'status',
+      message: 'ก'.repeat(3000),
+    }),
+  });
+  assert.equal(oversized.status, 413);
 });

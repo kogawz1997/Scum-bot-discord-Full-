@@ -1,3 +1,4 @@
+const crypto = require('node:crypto');
 const { loadJson, saveJsonDebounced } = require('./_persist');
 
 const MAX_AUDIT_ITEMS = 3000;
@@ -6,7 +7,10 @@ const audits = [];
 function normalizeAudit(entry) {
   if (!entry || typeof entry !== 'object') return null;
   const createdAt = entry.createdAt ? new Date(entry.createdAt) : new Date();
-  const id = String(entry.id || `audit-${Date.now()}-${Math.floor(Math.random() * 100000)}`);
+  const generatedId = typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now()}-${crypto.randomBytes(8).toString('hex')}`;
+  const id = String(entry.id || `audit-${generatedId}`);
   return {
     id,
     createdAt,

@@ -102,6 +102,7 @@ function run() {
   const errors = [];
   const warnings = [];
   const isProduction = String(env.NODE_ENV || '').trim().toLowerCase() === 'production';
+  const persistRequireDb = isTruthy(env.PERSIST_REQUIRE_DB);
 
   checkDiscordToken(env.DISCORD_TOKEN, errors, warnings);
 
@@ -142,6 +143,17 @@ function run() {
     errors.push('DATABASE_URL is missing');
   }
 
+  if (persistRequireDb) {
+    const sqliteCheck = spawnSync('sqlite3', ['--version'], {
+      encoding: 'utf8',
+    });
+    if (sqliteCheck.status !== 0) {
+      errors.push(
+        'PERSIST_REQUIRE_DB=true but sqlite3 binary is not available in PATH',
+      );
+    }
+  }
+
   if (isGitTracked('.env')) {
     errors.push('.env is tracked by git (must be ignored)');
   }
@@ -155,6 +167,11 @@ function run() {
     }
     if (!allowedOrigins || allowedOrigins.includes('http://')) {
       errors.push('NODE_ENV=production requires strict HTTPS ADMIN_WEB_ALLOWED_ORIGINS');
+    }
+    if (!persistRequireDb) {
+      warnings.push(
+        'NODE_ENV=production should set PERSIST_REQUIRE_DB=true after data migration is complete',
+      );
     }
   }
 

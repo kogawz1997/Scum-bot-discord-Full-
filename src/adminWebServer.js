@@ -67,7 +67,7 @@ const {
   listItemIconCatalog,
   resolveItemIconUrl,
 } = require('./services/itemIconService');
-const { DATA_DIR } = require('./store/_persist');
+const { DATA_DIR, getPersistenceStatus } = require('./store/_persist');
 const { getWebhookMetricsSnapshot } = require('./scumWebhookServer');
 
 const dashboardHtmlPath = path.join(__dirname, 'admin', 'dashboard.html');
@@ -77,6 +77,7 @@ let cachedDashboardHtml = null;
 let cachedLoginHtml = null;
 let resolvedToken = null;
 const sessions = new Map();
+let adminUsersReadyPromise = null;
 
 const SESSION_COOKIE_NAME = 'scum_admin_session';
 const SESSION_TTL_MS = Math.max(
@@ -124,7 +125,6 @@ const LOGIN_RATE_LIMIT_MAX_ATTEMPTS = Math.max(
   Number(process.env.ADMIN_WEB_LOGIN_MAX_ATTEMPTS || 8),
 );
 let resolvedLoginPassword = null;
-let resolvedAdminUsers = null;
 const liveClients = new Set();
 let liveHeartbeatTimer = null;
 let liveBusBound = false;
@@ -552,9 +552,7 @@ function getAdminLoginPassword() {
   return resolvedLoginPassword;
 }
 
-function getAdminUsers() {
-  if (resolvedAdminUsers) return resolvedAdminUsers;
-
+function parseAdminUsersFromEnv() {
   let users = [];
   if (ADMIN_WEB_USERS_JSON) {
     try {
@@ -587,24 +585,151 @@ function getAdminUsers() {
     });
   }
 
-  resolvedAdminUsers = users;
   return users;
 }
 
-function getUserByCredentials(username, password) {
+function createAdminPasswordHash(password) {
+  const pass = String(password || '');
+  const salt = crypto.randomBytes(16);
+  const derived = crypto.scryptSync(pass, salt, 64);
+  return `scrypt$${salt.toString('hex')}$${derived.toString('hex')}`;
+}
+
+function verifyAdminPassword(password, passwordHash) {
+  const pass = String(password || '');
+  const stored = String(passwordHash || '').trim();
+  if (!stored) return false;
+
+  // Backward compatibility with legacy plain-text passwords.
+  if (!stored.startsWith('scrypt$')) {
+    return secureEqual(pass, stored);
+  }
+
+  const parts = stored.split('$');
+  if (parts.length !== 3) return false;
+  const saltHex = parts[1];
+  const hashHex = parts[2];
+  if (!saltHex || !hashHex) return false;
+
+  let salt;
+  let expected;
+  try {
+    salt = Buffer.from(saltHex, 'hex');
+    expected = Buffer.from(hashHex, 'hex');
+  } catch {
+    return false;
+  }
+  if (!salt.length || !expected.length) return false;
+
+  const actual = crypto.scryptSync(pass, salt, expected.length);
+  return secureEqual(actual.toString('hex'), expected.toString('hex'));
+}
+
+async function ensureAdminUsersTable() {
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS admin_web_users (
+      username TEXT PRIMARY KEY COLLATE NOCASE,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'mod',
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
+}
+
+async function seedAdminUsersFromEnv() {
+  const users = parseAdminUsersFromEnv();
+  for (const user of users) {
+    await prisma.$executeRawUnsafe(
+      `
+      INSERT INTO admin_web_users (
+        username,
+        password_hash,
+        role,
+        is_active,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, ?, 1, datetime('now'), datetime('now'))
+      ON CONFLICT(username) DO NOTHING;
+      `,
+      String(user.username || '').trim(),
+      createAdminPasswordHash(user.password),
+      normalizeRole(user.role),
+    );
+  }
+}
+
+async function listAdminUsersFromDb(limit = 100) {
+  const rows = await prisma.$queryRawUnsafe(
+    `
+    SELECT
+      username,
+      role,
+      is_active AS isActive
+    FROM admin_web_users
+    WHERE is_active = 1
+    ORDER BY username ASC
+    LIMIT ?;
+    `,
+    Math.max(1, Math.trunc(Number(limit || 100))),
+  );
+
+  if (!Array.isArray(rows)) return [];
+  return rows.map((row) => ({
+    username: String(row?.username || '').trim(),
+    role: normalizeRole(row?.role || 'mod'),
+    isActive: Number(row?.isActive || 0) === 1,
+  }));
+}
+
+async function ensureAdminUsersReady() {
+  if (adminUsersReadyPromise) return adminUsersReadyPromise;
+
+  adminUsersReadyPromise = (async () => {
+    await ensureAdminUsersTable();
+    await seedAdminUsersFromEnv();
+    const users = await listAdminUsersFromDb(1);
+    if (!users.length) {
+      throw new Error('No active admin users in database');
+    }
+  })().catch((error) => {
+    adminUsersReadyPromise = null;
+    throw error;
+  });
+
+  return adminUsersReadyPromise;
+}
+
+async function getUserByCredentials(username, password) {
   const name = String(username || '').trim();
   const pass = String(password || '');
   if (!name || !pass) return null;
-  for (const user of getAdminUsers()) {
-    if (!secureEqual(name, user.username)) continue;
-    if (!secureEqual(pass, user.password)) continue;
-    return {
-      username: user.username,
-      role: normalizeRole(user.role),
-      authMethod: 'password',
-    };
-  }
-  return null;
+
+  await ensureAdminUsersReady();
+  const rows = await prisma.$queryRawUnsafe(
+    `
+    SELECT
+      username,
+      password_hash AS passwordHash,
+      role,
+      is_active AS isActive
+    FROM admin_web_users
+    WHERE username = ?
+    LIMIT 1;
+    `,
+    name,
+  );
+  const row = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+  if (!row || Number(row.isActive || 0) !== 1) return null;
+  if (!verifyAdminPassword(pass, row.passwordHash)) return null;
+
+  return {
+    username: String(row.username || '').trim(),
+    role: normalizeRole(row.role || 'mod'),
+    authMethod: 'password-db',
+  };
 }
 
 function getSsoDiscordRole(roleIds = []) {
@@ -1001,6 +1126,12 @@ function requiredString(body, key) {
   return value || null;
 }
 
+function createHttpError(statusCode, message) {
+  const error = new Error(String(message || 'Request error'));
+  error.statusCode = Number(statusCode) || 500;
+  return error;
+}
+
 function parseDeliveryItemsBody(input) {
   let candidate = input;
   if (typeof candidate === 'string') {
@@ -1030,14 +1161,18 @@ function parseDeliveryItemsBody(input) {
 function readJsonBody(req) {
   return new Promise((resolve, reject) => {
     let body = '';
+    let bytes = 0;
     let done = false;
     req.on('data', (chunk) => {
       if (done) return;
       body += chunk;
-      if (body.length > ADMIN_WEB_MAX_BODY_BYTES) {
+      bytes += Buffer.isBuffer(chunk)
+        ? chunk.length
+        : Buffer.byteLength(String(chunk));
+      if (bytes > ADMIN_WEB_MAX_BODY_BYTES) {
         done = true;
-        reject(new Error('เนื้อหาคำขอใหญ่เกินกำหนด'));
-        req.destroy();
+        reject(createHttpError(413, 'เนื้อหาคำขอใหญ่เกินกำหนด'));
+        req.resume();
       }
     });
     req.on('end', () => {
@@ -1047,7 +1182,7 @@ function readJsonBody(req) {
       try {
         resolve(JSON.parse(body));
       } catch {
-        reject(new Error('รูปแบบ JSON ไม่ถูกต้อง'));
+        reject(createHttpError(400, 'รูปแบบ JSON ไม่ถูกต้อง'));
       }
     });
     req.on('error', (error) => {
@@ -1373,6 +1508,7 @@ async function buildSnapshot(client) {
     generatedAt: new Date().toISOString(),
     guilds,
     status: getStatus(),
+    persistence: getPersistenceStatus(),
     wallets: wallets.map(normalizeWallet),
     shopItems: shopItemsWithIcon,
     purchases,
@@ -2027,6 +2163,7 @@ function startAdminWebServer(client) {
           now: new Date().toISOString(),
           service: 'admin-web',
           uptimeSec: Math.round(process.uptime()),
+          persistence: getPersistenceStatus(),
           delivery: typeof getDeliveryMetricsSnapshot === 'function'
             ? getDeliveryMetricsSnapshot()
             : null,
@@ -2161,7 +2298,7 @@ function startAdminWebServer(client) {
             return sendJson(res, 400, { ok: false, error: 'Invalid request payload' });
           }
 
-          const user = getUserByCredentials(username, password);
+          const user = await getUserByCredentials(username, password);
           if (!user) {
             recordLoginAttempt(req, false);
             return sendJson(res, 401, { ok: false, error: 'Invalid username or password' });
@@ -2217,6 +2354,7 @@ function startAdminWebServer(client) {
           return sendJson(res, 200, {
             ok: true,
             data: {
+              loginSource: 'database',
               password: true,
               discordSso: SSO_DISCORD_ACTIVE,
               twoFactor: ADMIN_WEB_2FA_ACTIVE,
@@ -2344,8 +2482,19 @@ function startAdminWebServer(client) {
 
         return sendJson(res, 405, { ok: false, error: 'Method not allowed' });
       } catch (error) {
-        console.error('[admin-web] คำขอผิดพลาด', error);
-        return sendJson(res, 500, { ok: false, error: error.message || 'เซิร์ฟเวอร์ภายในผิดพลาด' });
+        const statusCode = Number(error?.statusCode || 500);
+        if (statusCode >= 500) {
+          console.error('[admin-web] คำขอผิดพลาด', error);
+        } else {
+          console.warn('[admin-web] invalid request', error?.message || error);
+        }
+        return sendJson(res, statusCode, {
+          ok: false,
+          error:
+            statusCode >= 500
+              ? 'เซิร์ฟเวอร์ภายในผิดพลาด'
+              : String(error?.message || 'คำขอไม่ถูกต้อง'),
+        });
       }
     }
 
@@ -2368,11 +2517,18 @@ function startAdminWebServer(client) {
 
   adminServer.listen(port, host, () => {
     console.log(`[admin-web] เปิดใช้งานที่ http://${host}:${port}/admin`);
-    console.log(
-      `[admin-web] login users: ${getAdminUsers()
-        .map((user) => `${user.username}(${user.role})`)
-        .join(', ')}`,
-    );
+    ensureAdminUsersReady()
+      .then(async () => {
+        const users = await listAdminUsersFromDb(50);
+        console.log(
+          `[admin-web] login users (db): ${users
+            .map((user) => `${user.username}(${user.role})`)
+            .join(', ')}`,
+        );
+      })
+      .catch((error) => {
+        console.error('[admin-web] failed to initialize admin users from db', error);
+      });
     if ((host !== '127.0.0.1' && host !== 'localhost') && !SESSION_SECURE_COOKIE) {
       console.warn(
         '[admin-web] SESSION cookie is not secure. Set ADMIN_WEB_SECURE_COOKIE=true for HTTPS production.',

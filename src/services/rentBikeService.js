@@ -1,3 +1,4 @@
+const crypto = require('node:crypto');
 const { exec } = require('node:child_process');
 
 const config = require('../config');
@@ -242,7 +243,10 @@ async function sendRentLog(guildId, text) {
 }
 
 function generateOrderId() {
-  return `RB-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+  if (typeof crypto.randomUUID === 'function') {
+    return `RB-${crypto.randomUUID()}`;
+  }
+  return `RB-${Date.now()}-${crypto.randomBytes(6).toString('hex')}`;
 }
 
 function enqueueOrder(orderId) {
@@ -402,7 +406,7 @@ async function requestRentBike(discordUserId, guildId = null) {
       guildId: guildId ? String(guildId) : null,
     });
   } catch {
-    orderId = `${orderId}-${Math.floor(Math.random() * 99)}`;
+    orderId = `${orderId}-${crypto.randomBytes(2).toString('hex')}`;
     try {
       await createRentalOrder({
         orderId,

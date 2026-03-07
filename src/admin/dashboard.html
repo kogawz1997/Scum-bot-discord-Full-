@@ -7,81 +7,81 @@
   <title>ศูนย์ควบคุมแอดมิน SCUM</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Teko:wght@500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg-1: #11180f;
-      --bg-2: #1e2a1b;
-      --bg-3: #2f3c2a;
-      --card: rgba(22, 31, 20, 0.86);
-      --text: #edf3e5;
-      --muted: #b1c09f;
-      --line: rgba(163, 184, 127, 0.24);
-      --accent: #b0c88a;
-      --accent-2: #d3af6c;
-      --accent-3: #7a8e5d;
-      --warn: #d7ab62;
-      --danger: #e38374;
-      --ok: #83c680;
+      --bg-1: #0d1310;
+      --bg-2: #161f14;
+      --bg-3: #253524;
+      --card: rgba(18, 26, 17, 0.88);
+      --text: #eff6e8;
+      --muted: #a7b89d;
+      --line: rgba(176, 200, 138, 0.2);
+      --accent: #b6ce84;
+      --accent-2: #d3af6a;
+      --accent-3: #8ea169;
+      --warn: #dba967;
+      --danger: #e98e84;
+      --ok: #7dcc83;
       --radius: 16px;
-      --shadow-lg: 0 18px 44px rgba(9, 13, 7, 0.5);
-      --shadow-md: 0 10px 24px rgba(9, 13, 7, 0.36);
-      --glow-a: 124, 164, 89;
-      --glow-b: 205, 165, 98;
-      --glow-c: 107, 141, 77;
-      --btn-text: #11180e;
-      --surface-deep: rgba(8, 18, 7, 0.82);
-      --surface-soft: rgba(255, 255, 255, 0.06);
-      --surface-header-1: #2a3723;
-      --surface-header-2: #232f1e;
-      --option-text: #1f2a1a;
+      --shadow-lg: 0 20px 44px rgba(7, 10, 6, 0.62);
+      --shadow-md: 0 12px 28px rgba(8, 12, 7, 0.44);
+      --glow-a: 153, 189, 112;
+      --glow-b: 206, 166, 96;
+      --glow-c: 112, 143, 77;
+      --btn-text: #10160e;
+      --surface-deep: rgba(9, 15, 9, 0.84);
+      --surface-soft: rgba(255, 255, 255, 0.05);
+      --surface-header-1: #2a3724;
+      --surface-header-2: #212b1c;
+      --option-text: #1b2317;
       --option-bg: #edf3df;
-      --code-bg: rgba(30, 44, 23, 0.54);
-      --code-border: rgba(166, 189, 126, 0.24);
-      --code-text: #d8ebbe;
-      --row-hover: rgba(143, 171, 104, 0.17);
-      --scroll-thumb-a: rgba(173, 197, 129, 0.7);
-      --scroll-thumb-b: rgba(208, 170, 104, 0.62);
-      --scroll-track: rgba(18, 27, 14, 0.8);
-      --btn-shadow: rgba(133, 112, 68, 0.35);
-      --btn-shadow-strong: rgba(133, 112, 68, 0.45);
+      --code-bg: rgba(24, 36, 19, 0.6);
+      --code-border: rgba(176, 200, 138, 0.22);
+      --code-text: #deebca;
+      --row-hover: rgba(166, 194, 124, 0.16);
+      --scroll-thumb-a: rgba(183, 206, 132, 0.65);
+      --scroll-thumb-b: rgba(211, 175, 106, 0.54);
+      --scroll-track: rgba(14, 21, 11, 0.86);
+      --btn-shadow: rgba(141, 114, 63, 0.38);
+      --btn-shadow-strong: rgba(141, 114, 63, 0.5);
     }
 
     :root[data-theme="neon"] {
-      --bg-1: #06152a;
-      --bg-2: #0f2642;
-      --bg-3: #18385d;
-      --card: rgba(14, 30, 54, 0.86);
+      --bg-1: #041227;
+      --bg-2: #0a1f3a;
+      --bg-3: #13375a;
+      --card: rgba(9, 22, 40, 0.88);
       --text: #ecf3ff;
-      --muted: #a6b8de;
-      --line: rgba(143, 179, 238, 0.24);
-      --accent: #31d6b6;
-      --accent-2: #57a7ff;
-      --accent-3: #7ce7ff;
+      --muted: #a2b8df;
+      --line: rgba(113, 172, 255, 0.24);
+      --accent: #2fe0bb;
+      --accent-2: #4ea7ff;
+      --accent-3: #7ce8ff;
       --warn: #ffb84d;
-      --danger: #ff6b7b;
-      --ok: #43dd86;
-      --shadow-lg: 0 18px 44px rgba(2, 9, 22, 0.45);
-      --shadow-md: 0 10px 24px rgba(2, 9, 22, 0.32);
-      --glow-a: 43, 103, 255;
-      --glow-b: 26, 214, 179;
-      --glow-c: 10, 166, 255;
-      --btn-text: #051027;
-      --surface-deep: rgba(7, 17, 34, 0.75);
-      --surface-soft: rgba(255, 255, 255, 0.06);
-      --surface-header-1: #1d2d54;
-      --surface-header-2: #1a2647;
+      --danger: #ff7185;
+      --ok: #3ed88f;
+      --shadow-lg: 0 20px 44px rgba(2, 6, 15, 0.6);
+      --shadow-md: 0 12px 28px rgba(2, 6, 15, 0.46);
+      --glow-a: 46, 228, 189;
+      --glow-b: 84, 158, 255;
+      --glow-c: 22, 186, 255;
+      --btn-text: #051226;
+      --surface-deep: rgba(6, 14, 27, 0.84);
+      --surface-soft: rgba(255, 255, 255, 0.05);
+      --surface-header-1: #1a2d52;
+      --surface-header-2: #142342;
       --option-text: #122042;
       --option-bg: #edf3ff;
-      --code-bg: rgba(17, 38, 70, 0.5);
-      --code-border: rgba(121, 167, 235, 0.2);
-      --code-text: #99f0d8;
-      --row-hover: rgba(83, 151, 238, 0.15);
-      --scroll-thumb-a: rgba(78, 151, 246, 0.6);
-      --scroll-thumb-b: rgba(49, 214, 182, 0.56);
-      --scroll-track: rgba(7, 17, 34, 0.75);
-      --btn-shadow: rgba(20, 129, 212, 0.28);
-      --btn-shadow-strong: rgba(18, 133, 211, 0.4);
+      --code-bg: rgba(14, 30, 56, 0.56);
+      --code-border: rgba(120, 175, 255, 0.22);
+      --code-text: #9af0dc;
+      --row-hover: rgba(79, 149, 242, 0.16);
+      --scroll-thumb-a: rgba(78, 151, 246, 0.62);
+      --scroll-thumb-b: rgba(47, 224, 187, 0.56);
+      --scroll-track: rgba(7, 15, 30, 0.82);
+      --btn-shadow: rgba(24, 119, 208, 0.32);
+      --btn-shadow-strong: rgba(24, 119, 208, 0.44);
     }
 
     * { box-sizing: border-box; }
@@ -111,8 +111,8 @@
         radial-gradient(900px 480px at 50% 115%, rgba(var(--glow-c), 0.28) 0%, transparent 52%),
         linear-gradient(150deg, var(--bg-1), var(--bg-2) 44%, var(--bg-3));
       min-height: 100vh;
-      font-family: "Space Grotesk", "Chakra Petch", sans-serif;
-      letter-spacing: 0.1px;
+      font-family: "Barlow Condensed", "Teko", sans-serif;
+      letter-spacing: 0.2px;
       font-size: 16px;
       position: relative;
       overflow-x: hidden;
@@ -125,7 +125,7 @@
       inset: auto;
       pointer-events: none;
       z-index: 0;
-      filter: blur(4px);
+      filter: blur(3px);
     }
 
     body::before {
@@ -135,7 +135,7 @@
       top: 34%;
       border-radius: 50%;
       background: radial-gradient(circle at 35% 35%, rgba(var(--glow-a), 0.3), rgba(var(--glow-a), 0));
-      animation: floatGlow 16s ease-in-out infinite;
+      animation: floatGlow 14s ease-in-out infinite;
     }
 
     body::after {
@@ -145,7 +145,7 @@
       bottom: -120px;
       border-radius: 50%;
       background: radial-gradient(circle at 45% 45%, rgba(var(--glow-b), 0.24), rgba(var(--glow-b), 0));
-      animation: floatGlow 18s ease-in-out infinite reverse;
+      animation: floatGlow 16s ease-in-out infinite reverse;
     }
 
     @keyframes floatGlow {
@@ -195,7 +195,7 @@
       place-items: center;
       color: #041026;
       font-weight: 700;
-      font-family: "Chakra Petch", sans-serif;
+      font-family: "Teko", sans-serif;
       font-size: 18px;
       box-shadow: 0 8px 22px rgba(33, 169, 236, 0.36), inset 0 0 0 1px rgba(240, 255, 255, 0.45);
       animation: badgePulse 5s ease-in-out infinite;
@@ -209,7 +209,7 @@
 
     h1 {
       margin: 0;
-      font-family: "Chakra Petch", sans-serif;
+      font-family: "Teko", sans-serif;
       font-size: 30px;
       line-height: 1;
       letter-spacing: 0.46px;
@@ -314,7 +314,7 @@
       font-size: 20px;
       font-weight: 700;
       line-height: 1.05;
-      font-family: "Chakra Petch", sans-serif;
+      font-family: "Teko", sans-serif;
       letter-spacing: 0.3px;
     }
 
@@ -370,7 +370,7 @@
 
     .title {
       margin: 0 0 9px;
-      font-family: "Chakra Petch", sans-serif;
+      font-family: "Teko", sans-serif;
       font-size: 20px;
       letter-spacing: 0.35px;
     }
@@ -407,7 +407,7 @@
       margin-top: 6px;
       font-size: 28px;
       font-weight: 700;
-      font-family: "Chakra Petch", sans-serif;
+      font-family: "Teko", sans-serif;
     }
 
     .workspace {
@@ -447,7 +447,7 @@
     .tab-menu-header h3 {
       margin: 0;
       font-size: 15px;
-      font-family: "Chakra Petch", sans-serif;
+      font-family: "Teko", sans-serif;
       letter-spacing: 0.25px;
     }
 
@@ -539,7 +539,7 @@
 
     .tab-panel-head h3 {
       margin: 0;
-      font-family: "Chakra Petch", sans-serif;
+      font-family: "Teko", sans-serif;
       font-size: 15px;
       letter-spacing: 0.35px;
     }
@@ -559,7 +559,7 @@
     .form-card h4 {
       margin: 0;
       font-size: 16px;
-      font-family: "Chakra Petch", sans-serif;
+      font-family: "Teko", sans-serif;
       letter-spacing: 0.22px;
     }
 
@@ -807,7 +807,7 @@
       background: linear-gradient(180deg, var(--surface-header-1), var(--surface-header-2));
       color: var(--text);
       z-index: 2;
-      font-family: "Chakra Petch", sans-serif;
+      font-family: "Teko", sans-serif;
       font-weight: 700;
       font-size: 12px;
       letter-spacing: 0.5px;
@@ -2272,7 +2272,7 @@
       const data = Array.isArray(points) ? points.slice(-120) : [];
       if (data.length === 0) {
         ctx.fillStyle = 'rgba(180, 190, 210, 0.8)';
-        ctx.font = '13px Space Grotesk, sans-serif';
+        ctx.font = '13px Barlow Condensed, sans-serif';
         ctx.fillText('ไม่มีข้อมูล time-series', 12, 24);
         return;
       }
@@ -2307,7 +2307,7 @@
 
       const latest = values[values.length - 1];
       ctx.fillStyle = 'rgba(220, 235, 255, 0.95)';
-      ctx.font = '12px Space Grotesk, sans-serif';
+      ctx.font = '12px Barlow Condensed, sans-serif';
       const suffix = options.suffix || '';
       const text = `${options.label || 'ล่าสุด'}: ${latest.toFixed(2)}${suffix}`;
       ctx.fillText(text, left, height - 4);
@@ -3236,3 +3236,4 @@
   </script>
 </body>
 </html>
+

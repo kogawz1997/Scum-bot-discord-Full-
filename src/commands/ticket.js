@@ -1,3 +1,4 @@
+const crypto = require('node:crypto');
 const {
   SlashCommandBuilder,
   PermissionFlagsBits,
@@ -142,7 +143,7 @@ async function handleOpen(interaction) {
   }
 
   const channelName = `ticket-${interaction.user.username.toLowerCase()}-${
-    Math.floor(Math.random() * 9999) + 1
+    crypto.randomInt(1, 10000)
   }`;
 
   const overwrites = [

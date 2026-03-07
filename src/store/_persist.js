@@ -2,6 +2,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
+function isTruthy(value) {
+  const text = String(value || '').trim().toLowerCase();
+  return text === '1' || text === 'true' || text === 'yes' || text === 'on';
+}
+
 const DATA_DIR = process.env.BOT_DATA_DIR
   ? path.resolve(process.env.BOT_DATA_DIR)
   : path.resolve(__dirname, '..', '..', 'data');
@@ -42,6 +47,7 @@ function resolveDbPath() {
 }
 
 const DB_PATH = resolveDbPath();
+const REQUIRE_DB = isTruthy(process.env.PERSIST_REQUIRE_DB);
 
 function runSql(sql) {
   return execFileSync('sqlite3', [DB_PATH], {
@@ -51,6 +57,7 @@ function runSql(sql) {
 }
 
 let useDb = true;
+let fallbackReason = null;
 
 function initKvStore() {
   try {
@@ -64,13 +71,28 @@ function initKvStore() {
     `);
   } catch (err) {
     if (err && err.code === 'ENOENT') {
+      if (REQUIRE_DB) {
+        throw new Error(
+          '[persist] PERSIST_REQUIRE_DB=true but sqlite3 binary is not installed or not in PATH',
+        );
+      }
       useDb = false;
+      fallbackReason = 'sqlite3-not-found';
       console.warn(
         '[persist] sqlite3 binary not found; fallback to JSON file persistence.',
       );
       return;
     }
-    throw err;
+    if (REQUIRE_DB) {
+      throw new Error(
+        `[persist] PERSIST_REQUIRE_DB=true and sqlite init failed: ${err.message}`,
+      );
+    }
+    useDb = false;
+    fallbackReason = 'sqlite-init-error';
+    console.error(
+      `[persist] sqlite init failed (${err.message}); fallback to JSON file persistence.`,
+    );
   }
 }
 
@@ -158,10 +180,26 @@ function saveJsonDebounced(filename, producer, waitMs = 300) {
   };
 }
 
+function isDbPersistenceEnabled() {
+  return useDb;
+}
+
+function getPersistenceStatus() {
+  return {
+    mode: useDb ? 'sqlite-kv' : 'json-fallback',
+    requireDb: REQUIRE_DB,
+    dbPath: DB_PATH,
+    dataDir: DATA_DIR,
+    fallbackReason,
+  };
+}
+
 module.exports = {
   DATA_DIR,
   DB_PATH,
   loadJson,
   saveJsonDebounced,
   getFilePath,
+  isDbPersistenceEnabled,
+  getPersistenceStatus,
 };

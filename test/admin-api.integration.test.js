@@ -226,3 +226,69 @@ test('admin API auth + validation integration flow', async (t) => {
   );
   assert.equal(Number(walletAfterRestore?.balance || 0), 123456);
 });
+
+test('admin API rejects malformed JSON and oversized UTF-8 body with proper status', async (t) => {
+  const port = randomPort(39200, 700);
+  const originalMaxBody = process.env.ADMIN_WEB_MAX_BODY_BYTES;
+
+  process.env.ADMIN_WEB_HOST = '127.0.0.1';
+  process.env.ADMIN_WEB_PORT = String(port);
+  process.env.ADMIN_WEB_USER = 'admin_test';
+  process.env.ADMIN_WEB_PASSWORD = 'pass_test';
+  process.env.ADMIN_WEB_TOKEN = 'token_test';
+  process.env.ADMIN_WEB_USERS_JSON = '';
+  process.env.ADMIN_WEB_2FA_ENABLED = 'false';
+  process.env.ADMIN_WEB_MAX_BODY_BYTES = '110';
+
+  const fakeClient = {
+    guilds: {
+      cache: new Map(),
+    },
+    channels: {
+      fetch: async () => null,
+    },
+  };
+
+  const { startAdminWebServer } = freshAdminWebServerModule();
+  const server = startAdminWebServer(fakeClient);
+  if (!server.listening) {
+    await once(server, 'listening');
+  }
+
+  t.after(async () => {
+    await new Promise((resolve) => server.close(resolve));
+    delete require.cache[adminWebServerPath];
+    if (originalMaxBody == null) {
+      delete process.env.ADMIN_WEB_MAX_BODY_BYTES;
+    } else {
+      process.env.ADMIN_WEB_MAX_BODY_BYTES = originalMaxBody;
+    }
+  });
+
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  const malformed = await fetch(`${baseUrl}/admin/api/login`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: '{"username":"admin_test"',
+  });
+  const malformedData = await malformed.json().catch(() => ({}));
+  assert.equal(malformed.status, 400);
+  assert.equal(malformedData.ok, false);
+
+  const oversized = await fetch(`${baseUrl}/admin/api/login`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      username: 'admin_test',
+      password: 'ก'.repeat(5000),
+    }),
+  });
+  const oversizedData = await oversized.json().catch(() => ({}));
+  assert.equal(oversized.status, 413);
+  assert.equal(oversizedData.ok, false);
+});

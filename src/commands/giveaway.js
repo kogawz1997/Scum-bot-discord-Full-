@@ -1,3 +1,4 @@
+const crypto = require('node:crypto');
 const {
   SlashCommandBuilder,
   PermissionFlagsBits,
@@ -13,6 +14,16 @@ const {
   addEntrant,
   removeGiveaway,
 } = require('../store/giveawayStore');
+
+function shuffleInPlace(list) {
+  for (let i = list.length - 1; i > 0; i -= 1) {
+    const j = crypto.randomInt(0, i + 1);
+    const tmp = list[i];
+    list[i] = list[j];
+    list[j] = tmp;
+  }
+  return list;
+}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -112,7 +123,7 @@ async function handleStart(interaction) {
       return;
     }
 
-    const shuffled = entrants.sort(() => Math.random() - 0.5);
+    const shuffled = shuffleInPlace(entrants.slice());
     const winnersArr = shuffled.slice(0, g.winnersCount);
     const winnerMentions = winnersArr.map((id) => `<@${id}>`).join(', ');
 

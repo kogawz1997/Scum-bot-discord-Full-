@@ -22,6 +22,12 @@ const WEBHOOK_METRICS_WINDOW_MS = Math.max(
 const ALLOWED_TYPES = new Set(['status', 'join', 'leave', 'kill', 'restart']);
 const webhookOutcomes = [];
 
+function createHttpError(statusCode, message) {
+  const error = new Error(String(message || 'Request error'));
+  error.statusCode = Number(statusCode) || 500;
+  return error;
+}
+
 function compactWebhookOutcomes(now = Date.now()) {
   const cutoff = now - WEBHOOK_METRICS_WINDOW_MS;
   while (webhookOutcomes.length > 0 && webhookOutcomes[0].at < cutoff) {
@@ -62,15 +68,19 @@ function secureEqual(a, b) {
 function readJsonBody(req, maxBytes) {
   return new Promise((resolve, reject) => {
     let body = '';
+    let bytes = 0;
     let done = false;
 
     req.on('data', (chunk) => {
       if (done) return;
       body += chunk;
-      if (body.length > maxBytes) {
+      bytes += Buffer.isBuffer(chunk)
+        ? chunk.length
+        : Buffer.byteLength(String(chunk));
+      if (bytes > maxBytes) {
         done = true;
-        reject(new Error('Payload too large'));
-        req.destroy();
+        reject(createHttpError(413, 'Payload too large'));
+        req.resume();
       }
     });
 
@@ -81,7 +91,7 @@ function readJsonBody(req, maxBytes) {
       try {
         resolve(JSON.parse(body));
       } catch {
-        reject(new Error('Invalid JSON payload'));
+        reject(createHttpError(400, 'Invalid JSON payload'));
       }
     });
 
@@ -175,15 +185,15 @@ function startScumServer(client) {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       return res.end(JSON.stringify({ ok: true }));
     } catch (error) {
-      const statusCode = error?.message === 'Payload too large'
-        ? 413
-        : error?.message === 'Invalid JSON payload'
-          ? 400
-          : 500;
+      const statusCode = Number(error?.statusCode || 500);
       recordWebhookOutcome(false);
       console.error('Error in SCUM webhook handler', error);
       res.writeHead(statusCode);
-      return res.end(statusCode === 500 ? 'Internal error' : error.message);
+      return res.end(
+        statusCode === 500
+          ? 'Internal error'
+          : String(error?.message || 'Request error'),
+      );
     }
   });
 
@@ -214,3 +224,4 @@ module.exports = {
   startScumServer,
   getWebhookMetricsSnapshot,
 };
+

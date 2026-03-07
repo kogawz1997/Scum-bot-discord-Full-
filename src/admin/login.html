@@ -3,53 +3,47 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>เข้าสู่ระบบแอดมิน SCUM</title>
+  <title>SCUM Admin Access</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700&family=Teko:wght@500;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg-1: #11180f;
-      --bg-2: #1e2a1b;
-      --bg-3: #2f3c2a;
-      --card: rgba(22, 31, 20, 0.86);
-      --text: #edf3e5;
-      --muted: #b1c09f;
-      --line: rgba(163, 184, 127, 0.24);
-      --accent: #b0c88a;
-      --accent-2: #d3af6c;
-      --accent-3: #7a8e5d;
-      --danger: #e38374;
-      --shadow-lg: 0 20px 48px rgba(9, 13, 7, 0.5);
-      --glow-a: 124, 164, 89;
-      --glow-b: 205, 165, 98;
-      --glow-c: 107, 141, 77;
-      --btn-text: #11180e;
-      --btn-shadow: rgba(133, 112, 68, 0.35);
-      --hero-line: rgba(163, 184, 127, 0.24);
-      --hero-tint: rgba(176, 200, 138, 0.12);
+      --bg-1: #0f1510;
+      --bg-2: #161f14;
+      --bg-3: #243322;
+      --text: #eff6e8;
+      --muted: #a7b89d;
+      --line: rgba(176, 200, 138, 0.22);
+      --surface: rgba(19, 27, 17, 0.84);
+      --surface-strong: rgba(10, 15, 10, 0.9);
+      --accent: #b7ce86;
+      --accent-2: #d4af6a;
+      --danger: #ff8f86;
+      --btn-text: #13180f;
+      --glow-a: 152, 189, 112;
+      --glow-b: 206, 166, 96;
+      --shadow-lg: 0 24px 50px rgba(7, 10, 6, 0.65);
+      --shadow-md: 0 14px 28px rgba(8, 12, 7, 0.44);
     }
 
     :root[data-theme="neon"] {
-      --bg-1: #06152a;
-      --bg-2: #0f2642;
-      --bg-3: #18385d;
-      --card: rgba(15, 31, 55, 0.84);
-      --text: #ecf3ff;
-      --muted: #a6b8de;
-      --line: rgba(143, 179, 238, 0.24);
-      --accent: #31d6b6;
-      --accent-2: #57a7ff;
-      --accent-3: #7ce7ff;
-      --danger: #ff6b7b;
-      --shadow-lg: 0 20px 48px rgba(2, 8, 21, 0.46);
-      --glow-a: 43, 103, 255;
-      --glow-b: 26, 214, 179;
-      --glow-c: 10, 166, 255;
-      --btn-text: #051027;
-      --btn-shadow: rgba(20, 129, 212, 0.28);
-      --hero-line: rgba(148, 184, 244, 0.2);
-      --hero-tint: rgba(87, 167, 255, 0.15);
+      --bg-1: #041225;
+      --bg-2: #0a1e38;
+      --bg-3: #153457;
+      --text: #edf4ff;
+      --muted: #a4b8df;
+      --line: rgba(113, 172, 255, 0.24);
+      --surface: rgba(10, 23, 41, 0.86);
+      --surface-strong: rgba(6, 12, 24, 0.92);
+      --accent: #2fe0ba;
+      --accent-2: #4ea6ff;
+      --danger: #ff7185;
+      --btn-text: #061327;
+      --glow-a: 46, 228, 189;
+      --glow-b: 84, 158, 255;
+      --shadow-lg: 0 24px 50px rgba(2, 7, 17, 0.68);
+      --shadow-md: 0 14px 28px rgba(2, 7, 17, 0.46);
     }
 
     * { box-sizing: border-box; }
@@ -59,148 +53,148 @@
       min-height: 100vh;
       display: grid;
       place-items: center;
+      font-family: "Barlow Condensed", "Teko", sans-serif;
+      letter-spacing: 0.2px;
       color: var(--text);
       background:
-        radial-gradient(1200px 580px at -10% -15%, rgba(var(--glow-a), 0.36) 0%, transparent 56%),
-        radial-gradient(1000px 520px at 105% 2%, rgba(var(--glow-b), 0.34) 0%, transparent 49%),
-        radial-gradient(900px 480px at 50% 115%, rgba(var(--glow-c), 0.28) 0%, transparent 52%),
-        linear-gradient(150deg, var(--bg-1), var(--bg-2) 44%, var(--bg-3));
-      font-family: "Space Grotesk", "Chakra Petch", sans-serif;
-      letter-spacing: 0.1px;
-      padding: 16px;
-      overflow: hidden;
+        radial-gradient(900px 520px at 6% 5%, rgba(var(--glow-a), 0.22) 0%, transparent 60%),
+        radial-gradient(1000px 560px at 102% 100%, rgba(var(--glow-b), 0.24) 0%, transparent 58%),
+        linear-gradient(160deg, var(--bg-1), var(--bg-2) 46%, var(--bg-3));
+      padding: 18px;
       position: relative;
-    }
-
-    body::before,
-    body::after {
-      content: "";
-      position: fixed;
-      border-radius: 50%;
-      pointer-events: none;
-      filter: blur(4px);
-      z-index: 0;
-      animation: floatGlow 16s ease-in-out infinite;
+      overflow: hidden;
     }
 
     body::before {
-      width: 360px;
-      height: 360px;
-      left: -100px;
-      top: 30%;
-      background: radial-gradient(circle at 35% 35%, rgba(var(--glow-a), 0.3), rgba(var(--glow-a), 0));
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+      background-size: 28px 28px;
+      opacity: 0.12;
     }
 
     body::after {
-      width: 420px;
-      height: 420px;
-      right: -130px;
-      bottom: -120px;
-      background: radial-gradient(circle at 45% 45%, rgba(var(--glow-b), 0.24), rgba(var(--glow-b), 0));
-      animation-direction: reverse;
-      animation-duration: 18s;
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background: repeating-linear-gradient(
+        0deg,
+        rgba(0, 0, 0, 0) 0,
+        rgba(0, 0, 0, 0) 2px,
+        rgba(0, 0, 0, 0.06) 3px
+      );
+      opacity: 0.35;
+      mix-blend-mode: soft-light;
     }
 
-    @keyframes floatGlow {
-      0% { transform: translate3d(0, 0, 0); opacity: 0.76; }
-      50% { transform: translate3d(24px, -22px, 0); opacity: 0.42; }
-      100% { transform: translate3d(0, 0, 0); opacity: 0.76; }
-    }
-
-    .card {
-      width: min(920px, 100%);
+    .screen {
+      width: min(1020px, 100%);
       border: 1px solid var(--line);
-      border-radius: 20px;
-      background:
-        linear-gradient(165deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)),
-        var(--card);
-      backdrop-filter: blur(10px);
+      border-radius: 18px;
+      background: linear-gradient(170deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)), var(--surface);
       box-shadow: var(--shadow-lg);
+      backdrop-filter: blur(10px);
       overflow: hidden;
+      display: grid;
+      grid-template-columns: 1.08fr 1fr;
       position: relative;
       z-index: 1;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
     }
 
     .hero {
-      padding: 26px;
-      border-right: 1px solid var(--hero-line);
+      padding: 28px;
+      border-right: 1px solid var(--line);
       background:
-        linear-gradient(140deg, var(--hero-tint), rgba(var(--glow-b), 0.08)),
-        rgba(10, 24, 46, 0.46);
+        linear-gradient(140deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)),
+        radial-gradient(120% 100% at 0% 0%, rgba(var(--glow-a), 0.14), transparent 60%),
+        var(--surface-strong);
       display: grid;
       gap: 14px;
       align-content: start;
     }
 
-    .badge {
-      width: 58px;
-      height: 58px;
-      border-radius: 14px;
-      background: conic-gradient(from 220deg, var(--accent), var(--accent-2), var(--accent-3), var(--accent));
-      color: var(--btn-text);
-      display: grid;
-      place-items: center;
-      font-family: "Chakra Petch", sans-serif;
-      font-weight: 700;
-      font-size: 20px;
-      box-shadow: 0 8px 22px rgba(33, 169, 236, 0.36), inset 0 0 0 1px rgba(240, 255, 255, 0.42);
+    .tag {
+      width: fit-content;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 14px;
+      color: var(--muted);
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      background: rgba(255, 255, 255, 0.05);
     }
 
     h1 {
       margin: 0;
-      font-family: "Chakra Petch", sans-serif;
-      font-size: 29px;
-      line-height: 1.05;
-      letter-spacing: 0.44px;
-      text-shadow: 0 2px 14px rgba(14, 113, 207, 0.2);
+      font-family: "Teko", sans-serif;
+      font-size: clamp(44px, 7vw, 62px);
+      line-height: 0.88;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
     }
 
     .hero p {
       margin: 0;
       color: var(--muted);
-      font-size: 14px;
-      line-height: 1.55;
-      max-width: 36ch;
+      font-size: 18px;
+      line-height: 1.45;
+      max-width: 28ch;
     }
 
-    .bullets {
-      margin: 0;
-      padding: 0;
-      list-style: none;
+    .specs {
       display: grid;
-      gap: 10px;
+      gap: 8px;
+      margin-top: 4px;
     }
 
-    .bullets li {
-      border: 1px solid rgba(142, 194, 255, 0.28);
-      background: rgba(255, 255, 255, 0.06);
+    .spec {
+      border: 1px solid var(--line);
       border-radius: 12px;
       padding: 10px 12px;
-      color: #cfe0ff;
-      font-size: 13px;
-      line-height: 1.4;
+      background: rgba(255, 255, 255, 0.05);
+      display: grid;
+      gap: 2px;
     }
 
-    .login {
-      padding: 26px;
+    .spec .k {
+      font-size: 13px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.9px;
+    }
+
+    .spec .v {
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .auth {
+      padding: 28px;
       display: grid;
       gap: 14px;
       align-content: center;
     }
 
-    .login h2 {
+    .auth h2 {
       margin: 0;
-      font-family: "Chakra Petch", sans-serif;
-      font-size: 22px;
-      letter-spacing: 0.34px;
+      font-family: "Teko", sans-serif;
+      font-size: 42px;
+      line-height: 0.9;
+      letter-spacing: 0.7px;
+      text-transform: uppercase;
     }
 
-    .login .sub {
+    .auth .sub {
       margin: 0;
       color: var(--muted);
-      font-size: 13px;
+      font-size: 18px;
+      line-height: 1.35;
     }
 
     .theme-switch {
@@ -208,135 +202,139 @@
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 6px;
       border: 1px solid var(--line);
-      border-radius: 11px;
+      border-radius: 12px;
       padding: 6px;
-      background: rgba(255, 255, 255, 0.05);
-      margin-top: 4px;
+      background: rgba(255, 255, 255, 0.04);
     }
 
     .theme-switch button {
-      margin: 0;
       border: 1px solid var(--line);
-      background: rgba(255, 255, 255, 0.06);
+      background: rgba(255, 255, 255, 0.03);
       color: var(--text);
-      font-size: 12px;
-      font-weight: 600;
-      padding: 8px 10px;
-      box-shadow: none;
+      border-radius: 9px;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 700;
+      padding: 9px 10px;
+      cursor: pointer;
+      transition: 160ms ease;
     }
 
     .theme-switch button.active {
       border-color: transparent;
       background: linear-gradient(135deg, var(--accent-2), var(--accent));
       color: var(--btn-text);
-      box-shadow: 0 7px 16px var(--btn-shadow);
+      box-shadow: var(--shadow-md);
     }
 
     form {
-      margin-top: 2px;
       display: grid;
-      gap: 12px;
+      gap: 11px;
+      margin-top: 3px;
     }
 
     label {
       display: grid;
-      gap: 6px;
-      font-size: 12px;
-      color: #cfe0ff;
+      gap: 5px;
+      font-size: 15px;
+      color: var(--muted);
+      letter-spacing: 0.5px;
     }
 
     input,
     button {
+      width: 100%;
       border-radius: 11px;
+      padding: 12px;
       border: 1px solid var(--line);
-      padding: 11px 12px;
-      font: inherit;
       outline: none;
+      font-family: inherit;
+      font-size: 18px;
       color: var(--text);
-      transition: border-color 160ms ease, box-shadow 180ms ease, transform 120ms ease, filter 120ms ease;
-    }
-
-    input {
       background: rgba(255, 255, 255, 0.05);
+      transition: border-color 160ms ease, box-shadow 180ms ease, transform 120ms ease;
     }
 
     input:focus {
-      border-color: #99ccff;
-      box-shadow: 0 0 0 2px rgba(109, 191, 255, 0.24), 0 8px 20px rgba(8, 43, 82, 0.35);
-      background: rgba(255, 255, 255, 0.07);
+      border-color: rgba(160, 205, 255, 0.8);
+      box-shadow: 0 0 0 2px rgba(90, 167, 255, 0.24);
+      background: rgba(255, 255, 255, 0.08);
     }
 
     button {
-      margin-top: 4px;
-      cursor: pointer;
       border: none;
+      cursor: pointer;
       font-weight: 700;
+      letter-spacing: 0.5px;
       background: linear-gradient(135deg, var(--accent-2), var(--accent));
       color: var(--btn-text);
-      box-shadow: 0 8px 18px var(--btn-shadow);
+      text-transform: uppercase;
     }
 
-    button:hover {
-      transform: translateY(-1px);
-      filter: saturate(1.1) brightness(1.03);
-    }
+    button:hover { transform: translateY(-1px); }
+    button:active { transform: translateY(0); }
+    button:disabled { opacity: 0.72; cursor: wait; }
 
-    button:active {
-      transform: translateY(0);
-    }
-
-    button:disabled {
-      opacity: 0.74;
-      cursor: wait;
-      transform: none;
+    #discordSsoBtn {
+      background: linear-gradient(135deg, #6576ff, #8ca5ff);
+      color: #07142d;
+      display: none;
     }
 
     .error {
-      min-height: 20px;
-      margin-top: 2px;
+      min-height: 22px;
       color: var(--danger);
-      font-size: 12px;
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: 0.2px;
     }
 
-    @media (max-width: 900px) {
-      .card {
-        grid-template-columns: 1fr;
-      }
-
-      .hero {
-        border-right: 0;
-        border-bottom: 1px solid rgba(148, 184, 244, 0.2);
-      }
+    .hint {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.35;
     }
 
-    @media (max-width: 560px) {
+    @media (max-width: 920px) {
+      .screen { grid-template-columns: 1fr; }
+      .hero { border-right: 0; border-bottom: 1px solid var(--line); }
+    }
+
+    @media (max-width: 620px) {
       .hero,
-      .login {
-        padding: 18px;
-      }
-
-      h1 {
-        font-size: 24px;
-      }
+      .auth { padding: 18px; }
+      .auth h2 { font-size: 34px; }
+      .auth .sub,
+      .hero p { font-size: 16px; }
     }
   </style>
 </head>
 <body>
-  <section class="card">
-    <div class="hero">
-      <div class="badge">SC</div>
-      <h1>SCUM Admin<br>Control Console</h1>
-      <p>เข้าสู่ระบบเพื่อจัดการเศรษฐกิจ ร้านค้า คิวส่งของ RCON ทิคเก็ต และคอนฟิกเซิร์ฟเวอร์จากจุดเดียว</p>
-      <ul class="bullets">
-        <li>ดูสถานะระบบแบบเรียลไทม์ พร้อมรีเฟรชอัตโนมัติ</li>
-        <li>สั่งงานด่วนผ่าน Action Center ได้ทันที</li>
-        <li>มีระบบป้องกัน login attempts และ session timeout</li>
-      </ul>
-    </div>
+  <section class="screen">
+    <aside class="hero">
+      <div class="tag">SCUM • ADMIN BUNKER</div>
+      <h1>TACTICAL<br>CONTROL</h1>
+      <p>แดชบอร์ดรวมศูนย์สำหรับควบคุมเศรษฐกิจ ร้านค้า คิว RCON และการปฏิบัติการของเซิร์ฟเวอร์ SCUM</p>
+      <div class="specs">
+        <div class="spec">
+          <span class="k">Login Source</span>
+          <span class="v">Database (`admin_web_users`)</span>
+        </div>
+        <div class="spec">
+          <span class="k">Security Layer</span>
+          <span class="v">Session + 2FA + Rate Limit</span>
+        </div>
+        <div class="spec">
+          <span class="k">Ops Mode</span>
+          <span class="v">Live Update + Alert</span>
+        </div>
+      </div>
+    </aside>
 
-    <div class="login">
-      <h2>เข้าสู่ระบบแอดมิน</h2>
-      <p class="sub">กรอกชื่อผู้ใช้และรหัสผ่านเพื่อเข้าสู่แดชบอร์ด</p>
+    <div class="auth">
+      <h2>Sign In</h2>
+      <p class="sub">เข้าสู่ระบบเพื่อเข้าศูนย์ควบคุมหลัก</p>
       <div class="theme-switch" role="group" aria-label="เลือกธีม">
         <button id="themeBtnMilitary" type="button">Military Tactical</button>
         <button id="themeBtnNeon" type="button">Neon Cyber</button>
@@ -345,35 +343,22 @@
       <form id="loginForm" autocomplete="on">
         <label>
           <span>ชื่อผู้ใช้</span>
-          <input id="usernameInput" name="username" autocomplete="username" required>
+          <input id="usernameInput" name="username" autocomplete="username" placeholder="เช่น admin-owner" required>
         </label>
         <label>
           <span>รหัสผ่าน</span>
-          <input
-            id="passwordInput"
-            name="password"
-            type="password"
-            autocomplete="current-password"
-            required
-          >
+          <input id="passwordInput" name="password" type="password" autocomplete="current-password" required>
         </label>
         <label>
           <span>รหัส 2FA (ถ้ามี)</span>
-          <input
-            id="otpInput"
-            name="otp"
-            inputmode="numeric"
-            pattern="\\d{6}"
-            maxlength="6"
-            placeholder="เช่น 123456"
-          >
+          <input id="otpInput" name="otp" inputmode="numeric" pattern="\\d{6}" maxlength="6" placeholder="123456">
         </label>
-        <button id="loginBtn" type="submit">เข้าสู่ระบบ</button>
+        <button id="loginBtn" type="submit">เข้าสู่ศูนย์ควบคุม</button>
       </form>
 
-      <button id="discordSsoBtn" type="button" style="display:none;">เข้าสู่ระบบด้วย Discord SSO</button>
-
+      <button id="discordSsoBtn" type="button">เข้าสู่ระบบด้วย Discord SSO</button>
       <div id="errorText" class="error"></div>
+      <p id="sourceHint" class="hint">บัญชีสำหรับล็อกอินถูกอ่านจากฐานข้อมูลเป็นหลัก หากยังไม่มีบัญชี ระบบจะ bootstrap จากค่า env อัตโนมัติครั้งแรก</p>
     </div>
   </section>
 
@@ -385,10 +370,9 @@
     const loginBtn = document.getElementById('loginBtn');
     const discordSsoBtn = document.getElementById('discordSsoBtn');
     const errorText = document.getElementById('errorText');
+    const sourceHint = document.getElementById('sourceHint');
     const themeBtnMilitary = document.getElementById('themeBtnMilitary');
     const themeBtnNeon = document.getElementById('themeBtnNeon');
-
-    usernameInput.value = 'admin';
 
     const THEME_STORAGE_KEY = 'scum_admin_theme';
     const SUPPORTED_THEMES = new Set(['military', 'neon']);
@@ -439,7 +423,7 @@
         body: payload,
         credentials: 'same-origin',
       });
-      const data = await res.json().catch(() => ({ ok: false, error: 'รูปแบบข้อมูล JSON ไม่ถูกต้อง' }));
+      const data = await res.json().catch(() => ({ ok: false, error: 'รูปแบบข้อมูลไม่ถูกต้อง' }));
       if (!res.ok || data.ok === false) {
         throw new Error(data.error || `คำขอล้มเหลว (${res.status})`);
       }
@@ -461,6 +445,9 @@
         if (providers?.data?.discordSso) {
           discordSsoBtn.style.display = 'block';
         }
+        if (providers?.data?.loginSource === 'database' && sourceHint) {
+          sourceHint.textContent = 'ระบบล็อกอินใช้งานฐานข้อมูลโดยตรง (table: admin_web_users) และรองรับ Session + 2FA + Rate Limit';
+        }
       } catch {
         // ignore
       }
@@ -479,7 +466,7 @@
       errorText.textContent = '';
       loginBtn.disabled = true;
       const originalText = loginBtn.textContent;
-      loginBtn.textContent = 'กำลังเข้าสู่ระบบ...';
+      loginBtn.textContent = 'กำลังตรวจสอบ...';
       try {
         await api('/admin/api/login', 'POST', {
           username: usernameInput.value.trim(),

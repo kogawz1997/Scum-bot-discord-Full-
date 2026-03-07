@@ -1,5 +1,6 @@
 ﻿require('dotenv').config();
 
+const crypto = require('node:crypto');
 const {
   Client,
   Collection,
@@ -239,7 +240,7 @@ async function openTicketFromPanel(interaction) {
   }
 
   const channelName = `ticket-${interaction.user.username.toLowerCase()}-${
-    Math.floor(Math.random() * 9999) + 1
+    crypto.randomInt(1, 10000)
   }`;
 
   const overwrites = [
@@ -314,7 +315,7 @@ async function openTicketFromPanel(interaction) {
   });
 }
 
-client.on(Events.InteractionCreate, async (interaction) => {
+async function handleInteractionCreate(interaction) {
   try {
   if (interaction.isModalSubmit?.() && interaction.customId === 'panel-verify-modal') {
     const steamIdRaw = interaction.fields.getTextInputValue('steamid');
@@ -723,7 +724,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
       })
       .catch(() => null);
   }
-});
+}
+
+client.on(Events.InteractionCreate, handleInteractionCreate);
 
 // Anti-spam and bad word checks
 client.on(Events.MessageCreate, async (message) => {
@@ -845,4 +848,14 @@ client.on(Events.GuildMemberAdd, async (member) => {
   });
 });
 
-client.login(token);
+if (require.main === module) {
+  client.login(token);
+}
+
+module.exports = {
+  client,
+  handleInteractionCreate,
+  openTicketFromPanel,
+  formatOpsAlertMessage,
+  bindOpsAlertRoute,
+};

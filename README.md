@@ -6,7 +6,7 @@
 ![Node.js](https://img.shields.io/badge/Node.js-20%2B-2f7d32?style=for-the-badge&logo=node.js&logoColor=white)
 ![discord.js](https://img.shields.io/badge/discord.js-v14.25.1-5865F2?style=for-the-badge&logo=discord&logoColor=white)
 ![Prisma](https://img.shields.io/badge/Prisma-5.22.0-2D3748?style=for-the-badge&logo=prisma&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-22%2F22%20passing-15803d?style=for-the-badge)
+![Tests](https://img.shields.io/badge/tests-27%2F27%20passing-15803d?style=for-the-badge)
 ![Security](https://img.shields.io/badge/security%20check-passed-0f766e?style=for-the-badge)
 
 </div>
@@ -120,8 +120,14 @@ npm run register-commands
 | `SCUM_WEBHOOK_SECRET` | Yes | random secret ยาว |
 | `SCUM_LOG_PATH` | Yes (watcher) | `D:\\SCUMServer\\SCUM.log` |
 | `DATABASE_URL` | Yes | `file:./prisma/dev.db` |
+| `PERSIST_REQUIRE_DB` | Recommended (prod) | `true` หลังย้าย data layer |
 | `ADMIN_WEB_PASSWORD` | Recommended | รหัสผ่านเข้า admin web |
 | `ADMIN_WEB_TOKEN` | Recommended | token fallback/admin API |
+
+หมายเหตุระบบล็อกอินใหม่:
+- Admin login ใช้ฐานข้อมูลตาราง `admin_web_users` เป็นหลัก
+- ตอนเริ่มระบบครั้งแรก จะ bootstrap ผู้ใช้จาก `ADMIN_WEB_USERS_JSON` หรือ `ADMIN_WEB_USER` + `ADMIN_WEB_PASSWORD` ลง DB อัตโนมัติ
+- หลังจากมีผู้ใช้ใน DB แล้ว แนะนำให้จัดการบัญชีผ่าน DB/เครื่องมือแอดมิน และเก็บ env สำหรับ bootstrap เท่านั้น
 
 ตัวอย่างค่าด้านความปลอดภัยสำหรับ production:
 
@@ -239,6 +245,7 @@ RBAC:
 - login rate limit + login spike detection
 - webhook secret validation + payload limit + timeout
 - dead-letter/audit สำหรับ watcher และ delivery queue
+- DB fail-fast guard ผ่าน `PERSIST_REQUIRE_DB=true` (ป้องกัน fallback JSON โดยไม่ตั้งใจใน production)
 
 สิ่งที่ยังต้องทำก่อนขึ้นจริง 100%:
 
@@ -262,7 +269,7 @@ npm run security:check
 สถานะล่าสุด:
 
 - `lint` ผ่าน
-- `test` ผ่าน 22/22
+- `test` ผ่าน 27/27
 - `security:check` ผ่าน
 
 ชุดเทสต์สำคัญที่มีแล้ว:
@@ -334,12 +341,13 @@ npm run security:check
 - metrics timeline + filter + health endpoint
 - dead-letter retry + idempotency + queue watchdog
 - e2e rentbike full flow
+- e2e Discord interaction full flow (slash/button/modal)
+- persistence mode observability + `PERSIST_REQUIRE_DB` fail-fast + fallback/required tests
 
 ### คงค้าง
 
 1. หมุน `DISCORD_TOKEN` จริงใน production
-2. e2e Discord interaction ครบชุด (slash/button/modal)
-3. ย้าย data layer ที่ยังเป็น JSON ไป Prisma ต่อเนื่อง (P2)
+2. ย้าย data layer ที่ยังเป็น JSON ไป Prisma ต่อเนื่อง (P2) แล้วตั้ง `PERSIST_REQUIRE_DB=true` ใน production
 
 รายละเอียดเชิงลึกและ changelog เต็มดูที่ [PROJECT_HQ.md](./PROJECT_HQ.md)
 

@@ -3,13 +3,14 @@
 ![Node.js](https://img.shields.io/badge/Node.js-20%2B-2f7d32?style=for-the-badge&logo=node.js&logoColor=white)
 ![discord.js](https://img.shields.io/badge/discord.js-v14.25.1-5865F2?style=for-the-badge&logo=discord&logoColor=white)
 ![Prisma](https://img.shields.io/badge/Prisma-5.22.0-2D3748?style=for-the-badge&logo=prisma&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-21%2F21%20passing-15803d?style=for-the-badge)
+![Tests](https://img.shields.io/badge/tests-27%2F27%20passing-15803d?style=for-the-badge)
 ![Security](https://img.shields.io/badge/security%20check-passed-0f766e?style=for-the-badge)
 
 เอกสารนี้คือศูนย์กลางข้อมูลของโปรเจกต์ (Single Source of Truth) ใช้แทน `PROJECT_REVIEW.md` และ `docs/SYSTEM_UPDATES.md`
 
 - อัปเดตล่าสุด: **2026-03-07**
 - สถานะระบบ: **พร้อมใช้งานจริง (พร้อม checklist production)**
+- สรุปผลตรวจล่าสุด: `npm run check` ผ่าน (27/27), `npm run security:check` ผ่าน
 - ไฟล์อ้างอิงหลัก: `README.md`, `src/*`, `test/*`
 
 ---
@@ -112,11 +113,13 @@ flowchart LR
 - มีหน้า login แยกจาก dashboard
 - หน้า dashboard แยกหมวดชัดเจน ใช้งานง่ายขึ้น
 - รองรับธีม SCUM style (เช่น Tactical / Neon)
+- ปรับดีไซน์ใหม่โทน SCUM Tactical แบบเต็มหน้า (จัดระเบียบเมนู/ฟอร์มให้อ่านง่ายขึ้น)
 - แสดงสถานะกดปุ่มชัดขึ้น และมี feedback runtime
 - มี Danger Zone แยก action เสี่ยง
 - รองรับ RBAC แบบ `owner/admin/mod` แยกสิทธิ์ตาม endpoint
 - รองรับ 2FA (TOTP) และ Discord SSO (เปิดใช้ผ่าน env)
 - รองรับ backup/restore snapshot ผ่าน Admin API (owner only)
+- ระบบล็อกอินใช้ฐานข้อมูล `admin_web_users` เป็นแหล่งข้อมูลหลัก (bootstrap จาก env ครั้งแรก)
 
 ### 3.6 Observability + Metrics
 
@@ -199,7 +202,7 @@ npm run security:check
 
 - `npm run check` ผ่าน
   - lint ผ่าน
-  - test ผ่าน 21/21
+  - test ผ่าน 27/27
 - `npm run security:check` ผ่าน (`SECURITY_CHECK: PASSED`)
 
 ### Integration tests ที่มีแล้ว
@@ -209,9 +212,12 @@ npm run security:check
 - admin API auth + validation
 - admin RBAC (owner/mod permission matrix)
 - admin live update stream + ticket claim/close full flow (e2e)
+- discord interaction full flow (button -> modal -> slash dispatch)
+- rentbike full flow (rent -> delivered -> daily-limit -> reset -> cleanup)
 - watcher parse หลายรูปแบบ (join/leave/kill/restart)
 - webhook auth/dispatch flow
 - item icon resolver + fallback
+- persistence fallback/required-db guards
 
 ---
 
@@ -238,6 +244,7 @@ npm run register-commands
 - [ ] รัน `npm run check`
 - [ ] รัน `npm run security:check`
 - [ ] รัน `npm audit --omit=dev`
+- [ ] ตั้ง `PERSIST_REQUIRE_DB=true` ใน production หลังย้าย data layer ครบ
 - [ ] สำรองข้อมูลก่อนปล่อยจริง
 
 ### 6.4 Endpoint สำคัญ
@@ -250,62 +257,41 @@ npm run register-commands
 
 ## 7) งานค้าง/แผนต่อไป
 
-สถานะชุดงานใหญ่รอบก่อน (5 รายการ):
+### 7.1 งานที่ปิดแล้ว
 
-1. RBAC ละเอียดขึ้น (owner/admin/mod) - เสร็จแล้ว
-2. backup/restore ผ่าน admin web - เสร็จแล้ว
-3. e2e tests สำหรับ live update และ ticket full flow - เสร็จแล้ว
-4. metrics dashboard แบบ time-series - เสร็จแล้ว
-5. 2FA/SSO สำหรับ admin login - เสร็จแล้ว
+- [x] RBAC ละเอียดขึ้น (`owner/admin/mod`)
+- [x] backup/restore ผ่าน admin web
+- [x] e2e tests: live update + ticket full flow
+- [x] metrics dashboard แบบ time-series
+- [x] 2FA/SSO สำหรับ admin login
+- [x] P0 เสถียรภาพระบบส่งของ: idempotency + dead-letter retry/remove + watchdog
+- [x] P1 observability: filter/window + ops alert route + `/healthz`
+- [x] P1 e2e เพิ่มเติม: discord interaction full flow + rentbike full flow + restore drill
 
-Roadmap รอบถัดไป (แผนหลัก):
+### 7.2 งานที่ยังค้าง (ต้องทำต่อ)
 
-1. **P0 - ความปลอดภัยก่อนขึ้นจริง (เร่งด่วน)**
-- หมุน secret ทั้งชุด (`DISCORD_TOKEN`, webhook/admin token, session secret, RCON)
-- เพิ่ม startup guard: ถ้าใช้ค่า default/เสี่ยง ให้บอทไม่ยอม start ใน production
-- เพิ่ม runbook incident response (token leak, webhook abuse, admin brute-force)
-สถานะล่าสุด:
-- เสร็จแล้ว: startup guard + incident response runbook + script สร้าง secrets
-- เสร็จแล้วเพิ่ม: หมุนค่า `SCUM_WEBHOOK_SECRET`, `ADMIN_WEB_PASSWORD`, `ADMIN_WEB_TOKEN`, `RCON_PASSWORD` ในไฟล์ env
-- เหลือทำ: หมุน `DISCORD_TOKEN` จาก Discord Developer Portal แล้วอัปเดตลง production env
+#### P0 - ความปลอดภัยก่อนขึ้นจริง
 
-2. **P0 - ความเสถียรระบบส่งของ**
-- เพิ่ม idempotency guard ระดับ worker กัน enqueue ซ้ำ/ส่งซ้ำ
-- เพิ่มคำสั่ง retry dead-letter จาก admin web แบบเลือกเฉพาะรายการ
-- เพิ่ม watchdog แจ้งเตือน queue ค้างเกิน SLA
-สถานะล่าสุด:
-- เสร็จแล้ว: idempotency guard + dead-letter retry/remove + queue watchdog
+- [x] startup guard (บล็อก config เสี่ยงใน production)
+- [x] incident response runbook
+- [x] secret generator script
+- [x] หมุน `SCUM_WEBHOOK_SECRET`, `ADMIN_WEB_PASSWORD`, `ADMIN_WEB_TOKEN`, `RCON_PASSWORD`
+- [ ] หมุน `DISCORD_TOKEN` จาก Discord Developer Portal และอัปเดตใน production env
 
-3. **P1 - ขยายการทดสอบ E2E**
-- เพิ่ม e2e สำหรับ flow Discord interaction ครบ (slash/button/modal)
-- เพิ่ม e2e rent bike (เช่า -> ส่งรถ -> รีเซ็ตเที่ยงคืน -> cleanup)
-- เพิ่ม restore drill test (backup -> restore -> verify data integrity)
-สถานะล่าสุด:
-- เสร็จแล้ว: restore drill ใน integration test (backup -> mutate -> restore -> verify)
-- เสร็จแล้ว: e2e rent bike full flow (เช่า -> ส่งรถ -> daily limit -> reset -> cleanup)
-- เหลือทำ: e2e Discord interaction ครบชุด (slash/button/modal)
+#### P2 - Data Layer ระยะยาว
 
-4. **P1 - Observability ฝั่ง production**
-- เพิ่ม retention/time-window/filter ใน metrics dashboard
-- เพิ่ม alert route ไป Discord ช่องแอดมินแบบกำหนด threshold ได้
-- เพิ่ม health endpoint สำหรับ uptime monitor ภายนอก
-สถานะล่าสุด:
-- เสร็จแล้ว: window/filter ใน `/admin/api/observability` + UI apply window
-- เสร็จแล้ว: alert route ไป Discord admin channel (`ops-alert`)
-- เสร็จแล้ว: health endpoint `GET /healthz`
+- [x] migration checklist + rollback plan (`docs/DATA_LAYER_MIGRATION.md`)
+- [x] เพิ่ม `PERSIST_REQUIRE_DB` fail-fast
+- [x] เพิ่ม persistence status ใน `/healthz` และ admin snapshot
+- [x] เพิ่ม integration tests สำหรับ fallback/required-db mode
+- [ ] ย้าย store ที่ยังเป็น JSON ไป Prisma ต่อทีละระบบจนปิด fallback production ได้
+- [ ] เปิด `PERSIST_REQUIRE_DB=true` ใน production หลัง migration ครบ
 
-5. **P2 - Data Layer ระยะยาว**
-- ย้าย store ที่ยังเป็น JSON ไป Prisma แบบค่อยเป็นค่อยไป
-- ทำ migration checklist ต่อระบบ (wallet/shop/ticket/stats) พร้อม rollback plan
-- ปิดโหมด fallback JSON เฉพาะ production หลังย้ายครบ
+### 7.3 ลำดับทำจริงรอบถัดไป
 
-ลำดับเริ่มทำจริงรอบต่อไป:
-
-1. ปิด P0 ความปลอดภัย
-2. ปิด P0 ระบบส่งของ
-3. ปิด P1 การทดสอบ E2E
-4. ปิด P1 Observability
-5. เดิน P2 Data Layer
+1. หมุน `DISCORD_TOKEN` จริง แล้ว redeploy ทุก instance
+2. เดินงาน P2: ย้าย JSON store -> Prisma ตาม checklist
+3. ปิด fallback ใน production (`PERSIST_REQUIRE_DB=true`) และทำ smoke test หลัง deploy
 
 ---
 
@@ -313,6 +299,12 @@ Roadmap รอบถัดไป (แผนหลัก):
 
 ### 2026-03-07
 
+- ปรับเอกสารสถานะใน `PROJECT_HQ.md` ให้เป็นรูปแบบ check-list ชัดเจน:
+  - แยกงาน `เสร็จแล้ว` กับ `ค้าง` ตาม P0/P2
+  - เพิ่มลำดับทำงานรอบถัดไปแบบ actionable
+- ยืนยันผลตรวจล่าสุดซ้ำอีกครั้ง:
+  - `npm run check` ผ่าน (27/27)
+  - `npm run security:check` ผ่าน
 - แก้ mojibake ใน `src/commands/cart.js` ทั้งไฟล์ให้เป็น UTF-8 ไทยล้วน
 - เพิ่มคำสั่ง `/panel shop-refresh-buttons`:
   - ใช้ลบปุ่ม `Checkout` แบบเก่าในโพสต์ร้านค้าเดิม (ย้อนหลังตาม limit)
@@ -330,7 +322,7 @@ Roadmap รอบถัดไป (แผนหลัก):
 - รีเฟรช slash commands แล้ว (`npm run register-commands`)
 - ยืนยันผลตรวจล่าสุด:
   - `npm run lint` ผ่าน
-  - `npm test` ผ่าน (22/22)
+  - `npm test` ผ่าน (27/27)
   - `npm run security:check` ผ่าน
 - ปิดงาน P1 observability ฝั่ง production:
   - เพิ่ม query filter สำหรับ `/admin/api/observability` (`windowMs`, `series`)
@@ -347,6 +339,24 @@ Roadmap รอบถัดไป (แผนหลัก):
 - เพิ่ม `rentbike e2e` ด้วย fake RCON:
   - flow ครบ: rent -> delivered -> daily-limit -> midnight reset -> vehicle cleanup
   - ทดสอบผ่านใน `npm test`
+- เพิ่ม `discord interaction e2e` ครบชุด:
+  - button `panel-verify-open` -> modal
+  - modal `panel-verify-modal` (invalid steam id path)
+  - slash command dispatch + execute path
+  - แยก `handleInteractionCreate` ออกให้ทดสอบได้โดยไม่ต้อง login bot จริง
+- เพิ่ม `PERSIST_REQUIRE_DB` fail-fast ใน `src/store/_persist.js`
+  - ถ้าเปิด require mode แล้วหา `sqlite3` ไม่เจอ ระบบจะหยุดทันที
+  - ถ้าไม่เปิด require mode จะ fallback เป็น JSON พร้อม reason ชัดเจน
+- เพิ่ม persistence observability:
+  - `GET /healthz` ส่ง `persistence` status
+  - admin snapshot ส่ง `persistence` status
+- เพิ่ม persist integration tests:
+  - fallback mode เมื่อไม่มี sqlite3
+  - required-db mode ต้อง fail fast
+- รีดีไซน์หน้า Admin Web / Login ใหม่ทั้งชุดให้โทน SCUM Tactical (ยังคงทุกฟังก์ชันเดิม)
+- ปรับระบบล็อกอินแอดมินให้ตรวจสอบผู้ใช้จากฐานข้อมูล `admin_web_users` โดยตรง
+  - bootstrap ผู้ใช้เริ่มต้นจาก env เฉพาะตอนเริ่มต้นระบบ
+  - เก็บรหัสผ่านเป็น hash แบบ `scrypt`
 
 ### 2026-03-06
 

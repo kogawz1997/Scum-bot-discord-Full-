@@ -1,4 +1,5 @@
-﻿const { economy, shop } = require('../config');
+﻿const crypto = require('node:crypto');
+const { economy, shop } = require('../config');
 const { prisma } = require('../prisma');
 
 function normalizeShopKind(value, fallback = 'item') {
@@ -360,17 +361,31 @@ async function setShopItemPrice(idOrName, newPrice) {
 }
 
 async function createPurchase(userId, item) {
-  const code = `P${Date.now()}-${Math.floor(Math.random() * 100000)}`;
-  const purchase = await prisma.purchase.create({
-    data: {
-      code,
-      userId: String(userId),
-      itemId: String(item.id),
-      price: Number(item.price || 0),
-      status: 'pending',
-    },
-  });
-  return purchase;
+  const payload = {
+    userId: String(userId),
+    itemId: String(item.id),
+    price: Number(item.price || 0),
+    status: 'pending',
+  };
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const code =
+      typeof crypto.randomUUID === 'function'
+        ? `P${crypto.randomUUID()}`
+        : `P${Date.now()}-${crypto.randomBytes(6).toString('hex')}`;
+    try {
+      return await prisma.purchase.create({
+        data: {
+          code,
+          ...payload,
+        },
+      });
+    } catch (error) {
+      if (error?.code !== 'P2002') throw error;
+    }
+  }
+
+  throw new Error('Failed to generate unique purchase code');
 }
 
 async function findPurchaseByCode(code) {
