@@ -281,8 +281,9 @@ Roadmap รอบถัดไป (แผนหลัก):
 - เพิ่ม e2e rent bike (เช่า -> ส่งรถ -> รีเซ็ตเที่ยงคืน -> cleanup)
 - เพิ่ม restore drill test (backup -> restore -> verify data integrity)
 สถานะล่าสุด:
-- เสร็จแล้วบางส่วน: restore drill ใน integration test (backup -> mutate -> restore -> verify)
-- เหลือทำ: e2e Discord interaction ครบชุด + e2e rent bike full flow
+- เสร็จแล้ว: restore drill ใน integration test (backup -> mutate -> restore -> verify)
+- เสร็จแล้ว: e2e rent bike full flow (เช่า -> ส่งรถ -> daily limit -> reset -> cleanup)
+- เหลือทำ: e2e Discord interaction ครบชุด (slash/button/modal)
 
 4. **P1 - Observability ฝั่ง production**
 - เพิ่ม retention/time-window/filter ใน metrics dashboard
@@ -329,7 +330,7 @@ Roadmap รอบถัดไป (แผนหลัก):
 - รีเฟรช slash commands แล้ว (`npm run register-commands`)
 - ยืนยันผลตรวจล่าสุด:
   - `npm run lint` ผ่าน
-  - `npm test` ผ่าน (21/21)
+  - `npm test` ผ่าน (22/22)
   - `npm run security:check` ผ่าน
 - ปิดงาน P1 observability ฝั่ง production:
   - เพิ่ม query filter สำหรับ `/admin/api/observability` (`windowMs`, `series`)
@@ -343,6 +344,9 @@ Roadmap รอบถัดไป (แผนหลัก):
   - dry-run restore
   - live restore และตรวจความถูกต้องของข้อมูลหลัง restore
 - แก้ข้อความระบบ rent bike ที่เพี้ยน (mojibake) ให้เป็นข้อความปกติใช้งานจริง
+- เพิ่ม `rentbike e2e` ด้วย fake RCON:
+  - flow ครบ: rent -> delivered -> daily-limit -> midnight reset -> vehicle cleanup
+  - ทดสอบผ่านใน `npm test`
 
 ### 2026-03-06
 
