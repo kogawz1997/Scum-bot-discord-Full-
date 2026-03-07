@@ -49,7 +49,14 @@ const {
   getResolvedCart,
   checkoutCart,
 } = require('./services/cartService');
-const { normalizeSteamId, setLink, getLinkBySteamId } = require('./store/linkStore');
+const {
+  normalizeSteamId,
+  setLink,
+  getLinkBySteamId,
+  initLinkStore,
+} = require('./store/linkStore');
+const { initBountyStore } = require('./store/bountyStore');
+const { initStatsStore } = require('./store/statsStore');
 const { createTicket, tickets } = require('./store/ticketStore');
 
 assertBotEnv();
@@ -84,8 +91,18 @@ if (fs.existsSync(commandsPath)) {
   }
 }
 
-client.once(Events.ClientReady, (c) => {
+client.once(Events.ClientReady, async (c) => {
   console.log(`บอทล็อกอินสำเร็จเป็น ${c.user.tag}`);
+
+  const warmups = await Promise.allSettled([
+    initLinkStore(),
+    initBountyStore(),
+    initStatsStore(),
+  ]);
+  for (const warmup of warmups) {
+    if (warmup.status !== 'rejected') continue;
+    console.error('[boot] store warmup failed:', warmup.reason?.message || warmup.reason);
+  }
 
   // เริ่มเซิร์ฟเวอร์ webhook สำหรับอีเวนต์จาก SCUM
   startScumServer(client);

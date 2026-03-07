@@ -1,46 +1,182 @@
-const { loadJson, saveJsonDebounced } = require('./_persist');
+﻿const { loadJson, saveJsonDebounced } = require('./_persist');
+const { prisma } = require('../prisma');
 
 const bounties = new Map(); // id -> bounty
 
 let bountyCounter = 1;
+let mutationVersion = 0;
+let dbWriteQueue = Promise.resolve();
+let initPromise = null;
 
 const scheduleSave = saveJsonDebounced('bounties.json', () => ({
   bountyCounter,
   bounties: Array.from(bounties.entries()),
 }));
 
-const persisted = loadJson('bounties.json', null);
-if (persisted) {
-  if (typeof persisted.bountyCounter === 'number') bountyCounter = persisted.bountyCounter;
-  for (const [id, b] of persisted.bounties || []) {
-    if (!b) continue;
-    const numId = Number(b.id ?? id);
-    bounties.set(numId, {
-      id: numId,
-      targetName: String(b.targetName || ''),
-      amount: Number(b.amount || 0),
-      createdBy: String(b.createdBy || ''),
-      status: b.status || 'active',
-      claimedBy: b.claimedBy ?? null,
+function normalizeBountyRow(row) {
+  const id = Number(row?.id || 0);
+  if (!Number.isFinite(id) || id <= 0) return null;
+
+  return {
+    id,
+    targetName: String(row?.targetName || ''),
+    amount: Number(row?.amount || 0),
+    createdBy: String(row?.createdBy || ''),
+    status: String(row?.status || 'active'),
+    claimedBy: row?.claimedBy ? String(row.claimedBy) : null,
+  };
+}
+
+function queueDbWrite(work, label) {
+  dbWriteQueue = dbWriteQueue
+    .then(async () => {
+      await work();
+    })
+    .catch((error) => {
+      console.error(`[bountyStore] prisma ${label} failed:`, error.message);
     });
+  return dbWriteQueue;
+}
+
+async function hydrateFromPrisma() {
+  const startVersion = mutationVersion;
+  try {
+    const rows = await prisma.bounty.findMany({
+      orderBy: { id: 'asc' },
+    });
+
+    if (rows.length === 0) {
+      if (bounties.size > 0) {
+        await queueDbWrite(
+          async () => {
+            for (const bounty of bounties.values()) {
+              await prisma.bounty.upsert({
+                where: { id: bounty.id },
+                update: {
+                  targetName: bounty.targetName,
+                  amount: bounty.amount,
+                  createdBy: bounty.createdBy,
+                  status: bounty.status,
+                  claimedBy: bounty.claimedBy,
+                },
+                create: {
+                  id: bounty.id,
+                  targetName: bounty.targetName,
+                  amount: bounty.amount,
+                  createdBy: bounty.createdBy,
+                  status: bounty.status,
+                  claimedBy: bounty.claimedBy,
+                },
+              });
+            }
+          },
+          'backfill',
+        );
+      }
+      return;
+    }
+
+    const hydrated = new Map();
+    for (const raw of rows) {
+      const bounty = normalizeBountyRow(raw);
+      if (!bounty) continue;
+      hydrated.set(bounty.id, bounty);
+    }
+
+    if (startVersion === mutationVersion) {
+      bounties.clear();
+      for (const [id, bounty] of hydrated.entries()) {
+        bounties.set(id, bounty);
+      }
+      const maxId = Math.max(0, ...Array.from(bounties.keys()));
+      bountyCounter = maxId + 1;
+      scheduleSave();
+      return;
+    }
+
+    // There were local updates during hydration; merge only missing IDs.
+    for (const [id, bounty] of hydrated.entries()) {
+      if (bounties.has(id)) continue;
+      bounties.set(id, bounty);
+    }
+    const maxId = Math.max(0, ...Array.from(bounties.keys()));
+    bountyCounter = Math.max(bountyCounter, maxId + 1);
+    scheduleSave();
+  } catch (error) {
+    console.error('[bountyStore] failed to hydrate from prisma:', error.message);
   }
-  const maxId = Math.max(0, ...Array.from(bounties.keys()).map((n) => Number(n)));
+}
+
+function loadLegacySnapshot() {
+  const persisted = loadJson('bounties.json', null);
+  if (!persisted) return;
+
+  if (typeof persisted.bountyCounter === 'number') {
+    bountyCounter = Math.max(1, Math.trunc(persisted.bountyCounter));
+  }
+
+  for (const [idRaw, bountyRaw] of persisted.bounties || []) {
+    const bounty = normalizeBountyRow({
+      id: bountyRaw?.id ?? idRaw,
+      targetName: bountyRaw?.targetName,
+      amount: bountyRaw?.amount,
+      createdBy: bountyRaw?.createdBy,
+      status: bountyRaw?.status,
+      claimedBy: bountyRaw?.claimedBy,
+    });
+    if (!bounty) continue;
+    bounties.set(bounty.id, bounty);
+  }
+
+  const maxId = Math.max(0, ...Array.from(bounties.keys()));
   bountyCounter = Math.max(bountyCounter, maxId + 1);
 }
 
+function initBountyStore() {
+  if (!initPromise) {
+    loadLegacySnapshot();
+    initPromise = hydrateFromPrisma();
+  }
+  return initPromise;
+}
+
+function flushBountyStoreWrites() {
+  return dbWriteQueue;
+}
+
 function createBounty({ targetName, amount, createdBy }) {
+  mutationVersion += 1;
+
   const id = bountyCounter++;
-  const b = {
+  const bounty = {
     id,
-    targetName,
-    amount,
-    createdBy,
+    targetName: String(targetName || ''),
+    amount: Number(amount || 0),
+    createdBy: String(createdBy || ''),
     status: 'active', // active | claimed | cancelled
     claimedBy: null,
   };
-  bounties.set(id, b);
+
+  bounties.set(id, bounty);
   scheduleSave();
-  return b;
+
+  queueDbWrite(
+    async () => {
+      await prisma.bounty.create({
+        data: {
+          id,
+          targetName: bounty.targetName,
+          amount: bounty.amount,
+          createdBy: bounty.createdBy,
+          status: bounty.status,
+          claimedBy: null,
+        },
+      });
+    },
+    'create',
+  );
+
+  return bounty;
 }
 
 function listBounties() {
@@ -48,51 +184,99 @@ function listBounties() {
 }
 
 function cancelBounty(id, requesterId, isStaff) {
-  const b = bounties.get(id);
-  if (!b) return { ok: false, reason: 'not-found' };
-  if (!isStaff && b.createdBy !== requesterId) {
+  const bounty = bounties.get(Number(id));
+  if (!bounty) return { ok: false, reason: 'not-found' };
+
+  if (!isStaff && bounty.createdBy !== requesterId) {
     return { ok: false, reason: 'forbidden' };
   }
-  b.status = 'cancelled';
+
+  mutationVersion += 1;
+  bounty.status = 'cancelled';
   scheduleSave();
-  return { ok: true, bounty: b };
+
+  queueDbWrite(
+    async () => {
+      await prisma.bounty.updateMany({
+        where: { id: bounty.id },
+        data: {
+          status: bounty.status,
+        },
+      });
+    },
+    'cancel',
+  );
+
+  return { ok: true, bounty };
 }
 
 function claimBounty(id, killerName) {
-  const b = bounties.get(id);
-  if (!b) return { ok: false, reason: 'not-found' };
-  if (b.status !== 'active') return { ok: false, reason: 'not-active' };
-  b.status = 'claimed';
-  b.claimedBy = killerName;
+  const bounty = bounties.get(Number(id));
+  if (!bounty) return { ok: false, reason: 'not-found' };
+  if (bounty.status !== 'active') return { ok: false, reason: 'not-active' };
+
+  mutationVersion += 1;
+  bounty.status = 'claimed';
+  bounty.claimedBy = killerName ? String(killerName) : null;
   scheduleSave();
-  return { ok: true, bounty: b };
+
+  queueDbWrite(
+    async () => {
+      await prisma.bounty.updateMany({
+        where: { id: bounty.id },
+        data: {
+          status: bounty.status,
+          claimedBy: bounty.claimedBy,
+        },
+      });
+    },
+    'claim',
+  );
+
+  return { ok: true, bounty };
 }
 
 function replaceBounties(nextBounties = [], nextCounter = null) {
+  mutationVersion += 1;
   bounties.clear();
-  for (const row of Array.isArray(nextBounties) ? nextBounties : []) {
-    if (!row || typeof row !== 'object') continue;
-    const id = Number(row.id || 0);
-    if (!Number.isFinite(id) || id <= 0) continue;
-    bounties.set(id, {
-      id,
-      targetName: String(row.targetName || ''),
-      amount: Number(row.amount || 0),
-      createdBy: String(row.createdBy || ''),
-      status: String(row.status || 'active'),
-      claimedBy: row.claimedBy ? String(row.claimedBy) : null,
-    });
+
+  for (const rowRaw of Array.isArray(nextBounties) ? nextBounties : []) {
+    const bounty = normalizeBountyRow(rowRaw);
+    if (!bounty) continue;
+    bounties.set(bounty.id, bounty);
   }
 
   if (Number.isFinite(Number(nextCounter)) && Number(nextCounter) > 0) {
     bountyCounter = Math.max(1, Math.trunc(Number(nextCounter)));
   } else {
-    const maxId = Math.max(0, ...Array.from(bounties.keys()).map((n) => Number(n)));
+    const maxId = Math.max(0, ...Array.from(bounties.keys()));
     bountyCounter = maxId + 1;
   }
+
   scheduleSave();
+  queueDbWrite(
+    async () => {
+      await prisma.bounty.deleteMany();
+      for (const bounty of bounties.values()) {
+        await prisma.bounty.create({
+          data: {
+            id: bounty.id,
+            targetName: bounty.targetName,
+            amount: bounty.amount,
+            createdBy: bounty.createdBy,
+            status: bounty.status,
+            claimedBy: bounty.claimedBy,
+          },
+        });
+      }
+    },
+    'replace-all',
+  );
+
   return bounties.size;
 }
+
+initBountyStore();
 
 module.exports = {
   createBounty,
@@ -100,4 +284,6 @@ module.exports = {
   cancelBounty,
   claimBounty,
   replaceBounties,
+  initBountyStore,
+  flushBountyStoreWrites,
 };

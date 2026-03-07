@@ -3,14 +3,14 @@
 ![Node.js](https://img.shields.io/badge/Node.js-20%2B-2f7d32?style=for-the-badge&logo=node.js&logoColor=white)
 ![discord.js](https://img.shields.io/badge/discord.js-v14.25.1-5865F2?style=for-the-badge&logo=discord&logoColor=white)
 ![Prisma](https://img.shields.io/badge/Prisma-5.22.0-2D3748?style=for-the-badge&logo=prisma&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-27%2F27%20passing-15803d?style=for-the-badge)
+![Tests](https://img.shields.io/badge/tests-29%2F29%20passing-15803d?style=for-the-badge)
 ![Security](https://img.shields.io/badge/security%20check-passed-0f766e?style=for-the-badge)
 
 เอกสารนี้คือศูนย์กลางข้อมูลของโปรเจกต์ (Single Source of Truth) ใช้แทน `PROJECT_REVIEW.md` และ `docs/SYSTEM_UPDATES.md`
 
 - อัปเดตล่าสุด: **2026-03-07**
 - สถานะระบบ: **พร้อมใช้งานจริง (พร้อม checklist production)**
-- สรุปผลตรวจล่าสุด: `npm run check` ผ่าน (27/27), `npm run security:check` ผ่าน
+- สรุปผลตรวจล่าสุด: `npm run check` ผ่าน (29/29), `npm run security:check` ผ่าน
 - ไฟล์อ้างอิงหลัก: `README.md`, `src/*`, `test/*`
 
 ---
@@ -202,7 +202,7 @@ npm run security:check
 
 - `npm run check` ผ่าน
   - lint ผ่าน
-  - test ผ่าน 27/27
+  - test ผ่าน 29/29
 - `npm run security:check` ผ่าน (`SECURITY_CHECK: PASSED`)
 
 ### Integration tests ที่มีแล้ว
@@ -284,6 +284,7 @@ npm run register-commands
 - [x] เพิ่ม `PERSIST_REQUIRE_DB` fail-fast
 - [x] เพิ่ม persistence status ใน `/healthz` และ admin snapshot
 - [x] เพิ่ม integration tests สำหรับ fallback/required-db mode
+- [x] ย้าย `linkStore`, `bountyStore`, `statsStore` ไป Prisma (cache + startup hydration + write-through)
 - [ ] ย้าย store ที่ยังเป็น JSON ไป Prisma ต่อทีละระบบจนปิด fallback production ได้
 - [ ] เปิด `PERSIST_REQUIRE_DB=true` ใน production หลัง migration ครบ
 
@@ -299,6 +300,12 @@ npm run register-commands
 
 ### 2026-03-07
 
+- เดินงาน P2 Data Layer เพิ่ม:
+  - ย้าย `src/store/linkStore.js`, `src/store/bountyStore.js`, `src/store/statsStore.js` ให้ใช้ Prisma แบบ write-through
+  - เพิ่ม startup hydration จาก Prisma พร้อม fallback โหลด snapshot เดิม
+  - เพิ่ม warmup ตอนบอท `ClientReady` (`initLinkStore/initBountyStore/initStatsStore`)
+- รีเฟรชเอกสารหลัก:
+  - เขียน `README.md` ใหม่เป็น UTF-8 เต็มไฟล์ และอัปเดตสถานะ migration ล่าสุด
 - ปิดช่องโหว่การอ่าน request body:
   - เปลี่ยนการตรวจขนาด payload จากตัวอักษรเป็น byte จริงทั้ง `admin-web` และ `scum-webhook`
   - แยกสถานะ error ให้ถูกต้อง (`400` malformed JSON, `413` payload too large)
