@@ -299,6 +299,24 @@ npm run register-commands
 
 ### 2026-03-07
 
+- ปิดช่องโหว่การอ่าน request body:
+  - เปลี่ยนการตรวจขนาด payload จากตัวอักษรเป็น byte จริงทั้ง `admin-web` และ `scum-webhook`
+  - แยกสถานะ error ให้ถูกต้อง (`400` malformed JSON, `413` payload too large)
+  - ปรับพฤติกรรมเมื่อ body เกินขนาดให้ drain request โดยไม่ตัด socket ทันที
+- Hardening เพิ่มเติมด้านความสุ่ม/ชนกันของรหัส:
+  - เปลี่ยนจาก `Math.random()` ไปใช้ `crypto` สำหรับ `purchase code`, `rentbike order id`, `delivery audit id`, และ suffix ticket
+  - ปรับสุ่มผู้ชนะ giveaway เป็น Fisher-Yates + `crypto.randomInt`
+- เพิ่ม integration tests ด้าน security/runtime:
+  - `admin API` ทดสอบ malformed JSON + oversized UTF-8 payload
+  - `scum webhook` ทดสอบ malformed JSON + oversized UTF-8 payload
+- ยืนยันผลทดสอบรอบนี้:
+  - `npm run check` ผ่าน (29/29)
+  - `npm run security:check` ผ่าน
+  - `npm run doctor` ผ่าน
+  - `npm audit --omit=dev` ไม่พบ vulnerability
+- Smoke runtime บนเครื่อง:
+  - `node src/bot.js` บูตขึ้นและล็อกอิน Discord สำเร็จ (พบพอร์ต `3100`/`3200` ถูกใช้งานอยู่จาก instance เดิม)
+  - `node scum-log-watcher.js` เริ่มเฝ้า `SCUM.log` ได้ปกติ
 - ปรับเอกสารสถานะใน `PROJECT_HQ.md` ให้เป็นรูปแบบ check-list ชัดเจน:
   - แยกงาน `เสร็จแล้ว` กับ `ค้าง` ตาม P0/P2
   - เพิ่มลำดับทำงานรอบถัดไปแบบ actionable

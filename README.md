@@ -1,76 +1,70 @@
-<div align="center">
-
 # SCUM TH Bot
-### Discord + SCUM Server Operations Platform
+Discord + SCUM Server Operations Platform
 
 ![Node.js](https://img.shields.io/badge/Node.js-20%2B-2f7d32?style=for-the-badge&logo=node.js&logoColor=white)
 ![discord.js](https://img.shields.io/badge/discord.js-v14.25.1-5865F2?style=for-the-badge&logo=discord&logoColor=white)
 ![Prisma](https://img.shields.io/badge/Prisma-5.22.0-2D3748?style=for-the-badge&logo=prisma&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-27%2F27%20passing-15803d?style=for-the-badge)
+![Tests](https://img.shields.io/badge/tests-29%2F29%20passing-15803d?style=for-the-badge)
 ![Security](https://img.shields.io/badge/security%20check-passed-0f766e?style=for-the-badge)
 
-</div>
-
-โปรเจกต์นี้คือระบบจัดการเซิร์ฟ SCUM แบบครบวงจรผ่าน Discord Bot + Admin Web  
-รองรับเศรษฐกิจในดิสคอร์ด, ร้านค้า, ตะกร้า, ส่งของอัตโนมัติผ่าน RCON, ทิคเก็ต, สถิติ, ค่าหัว, กิจกรรม, และระบบเช่ามอไซรายวัน
-
----
-
-## สารบัญ
-
-1. [ภาพรวม](#ภาพรวม)
-2. [ความสามารถหลัก](#ความสามารถหลัก)
-3. [สถาปัตยกรรมระบบ](#สถาปัตยกรรมระบบ)
-4. [ติดตั้งและเริ่มใช้งาน](#ติดตั้งและเริ่มใช้งาน)
-5. [ตั้งค่า Environment (.env)](#ตั้งค่า-environment-env)
-6. [รันระบบ](#รันระบบ)
-7. [คำสั่งที่ใช้บ่อย](#คำสั่งที่ใช้บ่อย)
-8. [Admin Web และ Ops](#admin-web-และ-ops)
-9. [Security Baseline](#security-baseline)
-10. [การทดสอบและคุณภาพโค้ด](#การทดสอบและคุณภาพโค้ด)
-11. [Troubleshooting](#troubleshooting)
-12. [Roadmap สถานะล่าสุด](#roadmap-สถานะล่าสุด)
-13. [โครงสร้างโปรเจกต์](#โครงสร้างโปรเจกต์)
-14. [เอกสารเสริม](#เอกสารเสริม)
+README นี้เป็นเอกสารหลักสำหรับติดตั้ง/ใช้งาน/ขึ้น production ของโปรเจกต์นี้  
+เอกสารเสริม:
+- สถานะงานเชิงลึกและ changelog: [PROJECT_HQ.md](./PROJECT_HQ.md)
+- Incident runbook: [docs/INCIDENT_RESPONSE.md](./docs/INCIDENT_RESPONSE.md)
+- Data migration plan: [docs/DATA_LAYER_MIGRATION.md](./docs/DATA_LAYER_MIGRATION.md)
 
 ---
 
-## ภาพรวม
+## 1) ภาพรวม
 
-`SCUM TH Bot` ถูกออกแบบให้เป็น "single operations hub" สำหรับแอดมินเซิร์ฟ SCUM:
-
-- จัดการเศรษฐกิจและร้านค้าใน Discord
-- เชื่อม SCUM log -> webhook -> kill feed/stat/event อัตโนมัติ
-- ส่งของอัตโนมัติผ่าน RCON queue พร้อม retry/audit/dead-letter
-- มีหน้าเว็บหลังบ้าน (RBAC + 2FA/SSO + backup/restore + metrics timeline)
+ระบบนี้รวมการจัดการ SCUM server ผ่าน Discord ไว้ในจุดเดียว:
+- เศรษฐกิจ, ร้านค้า, ตะกร้า, ซื้อสินค้า
+- ส่งของอัตโนมัติผ่าน RCON queue + retry + dead-letter + audit
+- Ticket/Event/Bounty/Giveaway/VIP/Redeem
+- Kill feed, stats, top boards, weapon/distance/hit-zone
+- SCUM log watcher -> webhook -> bot
+- Admin Web (RBAC, 2FA/SSO optional, backup/restore, observability)
 
 ---
 
-## ความสามารถหลัก
+## 2) สถานะล่าสุด
+
+- Automated checks: ผ่าน
+  - `npm run check` ผ่าน (`29/29`)
+  - `npm run security:check` ผ่าน
+  - `npm run doctor` ผ่าน
+  - `npm audit --omit=dev` ไม่พบ vulnerability
+- ระบบหลักพร้อมใช้งานจริง โดยมี checklist production ชัดเจน
+- งานค้างหลักที่ต้องทำเองก่อนเปิดจริง:
+  - หมุน `DISCORD_TOKEN` ใหม่จาก Discord Developer Portal
+  - ตรวจ/ยืนยันค่า production env ทั้งชุด
+
+---
+
+## 3) ความสามารถหลัก
 
 | หมวด | สถานะ | รายละเอียด |
 |---|---|---|
-| Economy / Wallet | Production-ready | daily/weekly, set/add/remove, gift/transfer |
-| Shop / Purchase / Cart | Production-ready | buy, inventory, purchase log, refund, cart checkout |
-| RCON Auto Delivery | Production-ready | queue, retry/backoff, idempotency, dead-letter, watchdog |
-| Ticket / Event / Bounty | Production-ready | ticket claim/close+delete channel, event lifecycle, bounty flow |
-| Stats / Top / Kill Feed | Production-ready | kill/death/playtime, weapon + distance + hit zone |
-| Rent Bike Daily | Production-ready | 1/day quota, queue delivery, midnight cleanup |
-| Admin Web | Production-ready | login/session, RBAC owner/admin/mod, live updates |
-| Observability | Production-ready | time-series metrics, alerts, `/healthz` |
-| Security Hardening | Baseline done | startup guard, origin checks, rate limit, security headers |
+| Economy + Wallet | พร้อม | `daily/weekly`, set/add/remove, transfer/gift |
+| Shop + Cart + Purchase | พร้อม | ซื้อเดี่ยว/หลายชิ้น, inventory, purchase log |
+| RCON Auto Delivery | พร้อม | queue, retry/backoff, dead-letter retry/remove, idempotency, watchdog |
+| Rent Bike Daily | พร้อม | 1 ครั้ง/วัน/คน, queue-safe, reset/cleanup รอบวัน |
+| Ticket/Event/Bounty | พร้อม | ticket claim/close + ลบห้องอัตโนมัติ |
+| Stats + Kill Feed | พร้อม | รองรับ weapon, distance, hit zone |
+| Admin Web | พร้อม | login จาก DB, RBAC, backup/restore, live updates |
+| Observability | พร้อม | metrics + alerts + `/healthz` |
 
 ---
 
-## สถาปัตยกรรมระบบ
+## 4) Architecture
 
 ```mermaid
 flowchart LR
   A[SCUM.log] --> B[Watcher: scum-log-watcher.js]
   B --> C[Webhook: /scum-event]
-  C --> D[Discord Bot Services]
+  C --> D[Discord Bot]
   D --> E[Discord Channels]
-  D --> F[(Prisma/SQLite + Persist)]
+  D --> F[(SQLite + Persist)]
   G[Admin Dashboard] --> H[Admin API]
   H --> F
   H --> D
@@ -79,306 +73,170 @@ flowchart LR
 
 ---
 
-## ติดตั้งและเริ่มใช้งาน
+## 5) ติดตั้งและเริ่มระบบ
 
-### 1) สิ่งที่ต้องมี
+### 5.1 Prerequisites
 
 - Node.js 20+
-- Discord Bot Application + Bot Token
-- SCUM server log access (`SCUM.log`)
-- SQLite (ใช้ผ่าน Prisma + local DB file)
+- Discord application + bot token
+- เข้าถึงไฟล์ `SCUM.log`
+- SQLite CLI (`sqlite3`) อยู่ใน PATH
 
-### 2) ติดตั้ง dependencies
+หมายเหตุ: persistence layer ใน [src/store/_persist.js](./src/store/_persist.js) เรียก `sqlite3` binary โดยตรง
+
+### 5.2 Install
 
 ```bash
 npm install
-```
-
-### 3) เตรียมไฟล์ config
-
-```bash
 copy .env.example .env
 ```
 
-### 4) ลงทะเบียน slash commands
+### 5.3 Register slash commands
 
 ```bash
 npm run register-commands
 ```
 
----
+### 5.4 Start services
 
-## ตั้งค่า Environment (.env)
-
-ค่าที่สำคัญที่สุด (ขั้นต่ำ):
-
-| Key | Required | ตัวอย่าง |
-|---|---|---|
-| `DISCORD_TOKEN` | Yes | token ของบอท |
-| `DISCORD_CLIENT_ID` | Yes | app client id |
-| `DISCORD_GUILD_ID` | Yes | guild id ที่จะ register command |
-| `SCUM_WEBHOOK_SECRET` | Yes | random secret ยาว |
-| `SCUM_LOG_PATH` | Yes (watcher) | `D:\\SCUMServer\\SCUM.log` |
-| `DATABASE_URL` | Yes | `file:./prisma/dev.db` |
-| `PERSIST_REQUIRE_DB` | Recommended (prod) | `true` หลังย้าย data layer |
-| `ADMIN_WEB_PASSWORD` | Recommended | รหัสผ่านเข้า admin web |
-| `ADMIN_WEB_TOKEN` | Recommended | token fallback/admin API |
-
-หมายเหตุระบบล็อกอินใหม่:
-- Admin login ใช้ฐานข้อมูลตาราง `admin_web_users` เป็นหลัก
-- ตอนเริ่มระบบครั้งแรก จะ bootstrap ผู้ใช้จาก `ADMIN_WEB_USERS_JSON` หรือ `ADMIN_WEB_USER` + `ADMIN_WEB_PASSWORD` ลง DB อัตโนมัติ
-- หลังจากมีผู้ใช้ใน DB แล้ว แนะนำให้จัดการบัญชีผ่าน DB/เครื่องมือแอดมิน และเก็บ env สำหรับ bootstrap เท่านั้น
-
-ตัวอย่างค่าด้านความปลอดภัยสำหรับ production:
-
-```env
-NODE_ENV=production
-ADMIN_WEB_SECURE_COOKIE=true
-ADMIN_WEB_HSTS_ENABLED=true
-ADMIN_WEB_ALLOW_TOKEN_QUERY=false
-ADMIN_WEB_ENFORCE_ORIGIN_CHECK=true
-ADMIN_WEB_ALLOWED_ORIGINS=https://admin.example.com
-```
-
-สร้าง secret ชุดใหม่อย่างเร็ว:
-
-```bash
-npm run security:generate-secrets
-```
-
----
-
-## รันระบบ
-
-เปิดบอท:
+Terminal 1:
 
 ```bash
 npm start
 ```
 
-เปิด watcher (อีก process):
+Terminal 2:
 
 ```bash
 node scum-log-watcher.js
 ```
 
-Admin Web:
+Admin web:
 
 ```text
 http://127.0.0.1:3200/admin/login
 ```
 
-Health endpoint:
+---
 
-```text
-GET /healthz
-```
+## 6) Environment สำคัญ
+
+### 6.1 Required ขั้นต่ำ
+
+| Key | Required | หมายเหตุ |
+|---|---|---|
+| `DISCORD_TOKEN` | Yes | Token บอท |
+| `DISCORD_CLIENT_ID` | Yes | สำหรับ register commands |
+| `DISCORD_GUILD_ID` | Yes | Guild เป้าหมาย |
+| `SCUM_LOG_PATH` | Yes (watcher) | Path ไป `SCUM.log` |
+| `SCUM_WEBHOOK_SECRET` | Yes | Secret ระหว่าง watcher -> bot |
+| `DATABASE_URL` | Yes | เช่น `file:./prisma/dev.db` |
+
+### 6.2 Admin login (DB-based)
+
+ระบบ login ใช้ตาราง `admin_web_users` เป็นหลัก
+- bootstrap ครั้งแรกจาก `ADMIN_WEB_USERS_JSON`
+- ถ้าไม่ตั้ง JSON จะใช้ `ADMIN_WEB_USER` + `ADMIN_WEB_PASSWORD`
+- ถ้า `ADMIN_WEB_PASSWORD` ว่าง จะ fallback ไป `ADMIN_WEB_TOKEN` (ไม่แนะนำสำหรับ production)
 
 ---
 
-## คำสั่งที่ใช้บ่อย
+## 7) Production Checklist
 
-### Economy / Shop
+### 7.1 Security (ห้ามข้าม)
 
-- `/balance`
-- `/daily`
-- `/weekly`
-- `/shop`
-- `/buy`
-- `/inventory`
-- `/cart view|add|remove|clear|checkout`
-- `/prices`
+1. หมุน secrets ทั้งหมดก่อนเปิดจริง  
+   `DISCORD_TOKEN`, `SCUM_WEBHOOK_SECRET`, `ADMIN_WEB_PASSWORD`, `ADMIN_WEB_TOKEN`, `RCON_PASSWORD`
+2. ตั้ง `NODE_ENV=production`
+3. บังคับค่า:
+   - `ADMIN_WEB_SECURE_COOKIE=true`
+   - `ADMIN_WEB_HSTS_ENABLED=true`
+   - `ADMIN_WEB_ALLOW_TOKEN_QUERY=false`
+   - `ADMIN_WEB_ENFORCE_ORIGIN_CHECK=true`
+   - `ADMIN_WEB_ALLOWED_ORIGINS=https://admin.your-domain.com`
+4. อย่า expose admin port ตรง internet, ให้วางหลัง HTTPS reverse proxy
 
-### Community
+### 7.2 Persistence/Data
 
-- `/ticket`
-- `/event`
-- `/bounty`
-- `/giveaway`
-- `/report`
-- `/vip`
-- `/redeem`
+1. ติดตั้ง `sqlite3` binary ในเครื่อง production
+2. ยืนยัน path DB อยู่บน disk ถาวร
+3. หลัง migration data layer ครบ ให้ตั้ง `PERSIST_REQUIRE_DB=true`
 
-### Stats / Info
+### 7.3 Runtime/Process
 
-- `/stats`
-- `/top`
-- `/server`
-- `/online`
-
-### Admin/Ops
-
-- `/panel`
-- `/purchase-log`
-- `/mark-delivered`
-- `/refund`
-- `/panel shop-refresh-buttons limit:<n>`
+1. รันแบบ single instance ต่อ service (bot 1, watcher 1)
+2. ใช้ process manager (PM2/NSSM/Systemd)
+3. เช็กว่า port ไม่ชน (`3100`, `3200` หรือพอร์ตที่คุณตั้ง)
+4. เปิด health check ที่ `GET /healthz`
 
 ---
 
-## Admin Web และ Ops
-
-หน้า Admin Web รองรับ:
-
-- คุมเศรษฐกิจและสินค้า
-- จัดการคิวส่งของ (`enqueue/retry/cancel/dead-letter retry/delete`)
-- จัดการ ticket/event/bounty/moderation
-- backup/restore snapshot
-- metrics timeline (queue, fail rate, login failures, webhook error rate)
-- live updates ผ่าน SSE
-
-RBAC:
-
-- `owner` งานเสี่ยงสูง (restore/reset/set-full-config)
-- `admin` งานจัดการทั่วไป
-- `mod` งานปฏิบัติการรายวัน
-
----
-
-## Security Baseline
-
-สิ่งที่มีแล้ว:
-
-- startup guard สำหรับ `NODE_ENV=production`
-- session auth + token fallback (timing-safe compare)
-- CSP/security headers/origin check/body size limit
-- login rate limit + login spike detection
-- webhook secret validation + payload limit + timeout
-- dead-letter/audit สำหรับ watcher และ delivery queue
-- DB fail-fast guard ผ่าน `PERSIST_REQUIRE_DB=true` (ป้องกัน fallback JSON โดยไม่ตั้งใจใน production)
-
-สิ่งที่ยังต้องทำก่อนขึ้นจริง 100%:
-
-1. หมุน `DISCORD_TOKEN` จริงใน Discord Developer Portal
-2. ตรวจ `.env` ว่าไม่ถูก track ใน git
-3. ทำ incident drill ตาม [docs/INCIDENT_RESPONSE.md](./docs/INCIDENT_RESPONSE.md)
-
----
-
-## การทดสอบและคุณภาพโค้ด
-
-คำสั่งมาตรฐาน:
+## 8) Validation ก่อน Deploy
 
 ```bash
-npm run lint
-npm test
 npm run check
 npm run security:check
+npm run doctor
+npm audit --omit=dev
 ```
 
-สถานะล่าสุด:
-
-- `lint` ผ่าน
-- `test` ผ่าน 27/27
-- `security:check` ผ่าน
-
-ชุดเทสต์สำคัญที่มีแล้ว:
-
-- admin API auth/validation + backup/restore drill
-- admin RBAC matrix
-- admin live update + ticket full flow e2e
-- rentbike full flow e2e (rent -> delivered -> limit -> reset -> cleanup)
-- RCON delivery integration (bundle + idempotency + dead-letter)
-- watcher parse multi-format
-- webhook auth/dispatch
+Expected:
+- Tests ผ่านทั้งหมด
+- Security check ผ่าน
+- No known npm vulnerabilities
 
 ---
 
-## Troubleshooting
+## 9) Test Coverage ปัจจุบัน
 
-### 1) `DiscordAPIError[50013]: Missing Permissions`
+ชุดเทสต์ครอบคลุมหลักๆ:
+- Admin API auth/validation + RBAC
+- Admin live updates + ticket full flow
+- Discord interaction flow (slash/button/modal)
+- Purchase -> queue -> auto-delivery success
+- Dead-letter retry/remove + idempotency
+- Rent bike e2e (rent -> limit -> reset -> cleanup)
+- Watcher parse หลายรูปแบบ
+- Webhook auth + malformed JSON + oversized payload
+- Persistence fallback/required-db behavior
 
-บอทยังไม่มีสิทธิ์พอใน guild/category นั้น  
-ให้ตรวจ role permission อย่างน้อย:
+---
 
+## 10) Troubleshooting
+
+### `Missing Permissions` ตอนสร้าง ticket
+
+บอทต้องมีสิทธิ์ในหมวด/ช่อง:
 - ViewChannel
 - SendMessages
 - ManageChannels
 - ManageRoles
 
-### 2) `DiscordAPIError[10062]: Unknown interaction`
+### `Unknown interaction (10062)` / `already acknowledged (40060)`
 
-เกิดจากตอบ interaction ช้าเกินเวลา หรือ reply ซ้ำ  
-แนวทาง:
+- คำสั่งตอบช้าเกินเวลา หรือ reply/defer ซ้ำ
+- ใช้ `deferReply` กับงานที่ใช้เวลานาน
 
-- ใช้ `deferReply` ถ้างานใช้เวลานาน
-- ตรวจ flow ว่า `reply/followUp/editReply` ถูกจุด
+### `SCUM webhook port is already in use`
 
-### 3) ปุ่มเก่ากดแล้ว flow ไม่ตรง
+- มี process ตัวเดิมรันอยู่
+- ปิดตัวเดิมหรือเปลี่ยน `SCUM_WEBHOOK_PORT`
 
-ให้รีเฟรชโพสต์ร้านค้าเก่า:
+### `sqlite3 binary not found`
 
-```text
-/panel shop-refresh-buttons limit:50
-```
-
-### 4) Admin login 401
-
-ตรวจ `.env`:
-
-- `ADMIN_WEB_USER`
-- `ADMIN_WEB_PASSWORD`
-- `ADMIN_WEB_TOKEN`
-
-และดูว่า browser ส่ง cookie กลับมาปกติหรือไม่
-
-### 5) RCON ไม่ส่งของ
-
-ตรวจค่า:
-
-- `RCON_EXEC_TEMPLATE`
-- `RCON_HOST`, `RCON_PORT`, `RCON_PASSWORD`
-- config `delivery.auto.itemCommands`
+- ติดตั้ง SQLite CLI และให้ `sqlite3` อยู่ใน PATH
+- ถ้า production และตั้ง `PERSIST_REQUIRE_DB=true` ระบบจะ fail-fast ทันที
 
 ---
 
-## Roadmap สถานะล่าสุด
+## 11) Ops Notes
 
-### ปิดแล้ว
-
-- RBAC owner/admin/mod
-- backup/restore ผ่าน admin web
-- metrics timeline + filter + health endpoint
-- dead-letter retry + idempotency + queue watchdog
-- e2e rentbike full flow
-- e2e Discord interaction full flow (slash/button/modal)
-- persistence mode observability + `PERSIST_REQUIRE_DB` fail-fast + fallback/required tests
-
-### คงค้าง
-
-1. หมุน `DISCORD_TOKEN` จริงใน production
-2. ย้าย data layer ที่ยังเป็น JSON ไป Prisma ต่อเนื่อง (P2) แล้วตั้ง `PERSIST_REQUIRE_DB=true` ใน production
-
-รายละเอียดเชิงลึกและ changelog เต็มดูที่ [PROJECT_HQ.md](./PROJECT_HQ.md)
+- มี `ops-alert` event สำหรับเฝ้าระวัง queue pressure/fail-rate/login spikes
+- Backup/restore ใช้ผ่าน Admin API (owner role)
+- ควรมี restore drill ก่อนเปิดจริงทุกครั้ง
 
 ---
 
-## โครงสร้างโปรเจกต์
-
-```text
-src/
-  admin/                  # dashboard + login UI
-  commands/               # slash commands
-  services/               # delivery, rentbike, events, live bus
-  store/                  # persistence layer
-  bot.js                  # main bot runtime
-  adminWebServer.js       # admin API server
-  scumWebhookServer.js    # webhook receiver
-scum-log-watcher.js       # SCUM log tailer
-test/                     # integration/e2e tests
-scripts/                  # ops scripts (security checks, helpers)
-```
-
----
-
-## เอกสารเสริม
-
-- Project status / changelog / roadmap: [PROJECT_HQ.md](./PROJECT_HQ.md)
-- Incident response runbook: [docs/INCIDENT_RESPONSE.md](./docs/INCIDENT_RESPONSE.md)
-- Environment template: [.env.example](./.env.example)
-
----
-
-## License
+## 12) License
 
 ISC

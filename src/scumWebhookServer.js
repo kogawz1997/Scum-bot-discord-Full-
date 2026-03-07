@@ -187,7 +187,11 @@ function startScumServer(client) {
     } catch (error) {
       const statusCode = Number(error?.statusCode || 500);
       recordWebhookOutcome(false);
-      console.error('Error in SCUM webhook handler', error);
+      if (statusCode >= 500) {
+        console.error('Error in SCUM webhook handler', error);
+      } else {
+        console.warn('[scum-webhook] invalid request:', error?.message || error);
+      }
       res.writeHead(statusCode);
       return res.end(
         statusCode === 500
