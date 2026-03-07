@@ -1,9 +1,15 @@
-const fs = require('node:fs');
+﻿const fs = require('node:fs');
 const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
-const includeDirs = ['src', 'test', 'docs'];
-const includeFiles = ['README.md', 'PROJECT_REVIEW.md', '.env.example'];
+const includeDirs = ['src', 'test', 'docs', 'scripts'];
+const includeFiles = [
+  'README.md',
+  'PROJECT_HQ.md',
+  'PROJECT_REVIEW.md',
+  '.env',
+  '.env.example',
+];
 const allowedExt = new Set([
   '.js',
   '.md',
@@ -15,17 +21,12 @@ const allowedExt = new Set([
   '.env',
 ]);
 
+// Keep markers in escaped form so this checker file itself stays clean.
 const suspectPatterns = [
-  'à¸',
-  'à¹',
-  'â€™',
-  'â€œ',
-  'â€',
-  'â€“',
-  'â€”',
-  'ðŸ',
-  'ï¸',
-  'ï¿½',
+  '\u00C3\u00A0\u00C2', // common Thai mojibake prefix
+  '\u00C3\u00A2\u00E2\u0082\u00AC', // smart quote/dash mojibake prefix
+  '\u00C3\u00B0\u00C5\u00B8', // emoji mojibake prefix
+  '\u00C3\u00AF\u00C2', // UTF decode mismatch prefix
 ];
 
 function walk(dirPath, outFiles) {

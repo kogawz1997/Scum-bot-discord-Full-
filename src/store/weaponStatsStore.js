@@ -46,7 +46,24 @@ function listWeaponStats() {
   }));
 }
 
+function replaceWeaponStats(nextStats = []) {
+  weaponStats.clear();
+  for (const row of Array.isArray(nextStats) ? nextStats : []) {
+    if (!row || typeof row !== 'object') continue;
+    const weapon = String(row.weapon || '').trim();
+    if (!weapon) continue;
+    weaponStats.set(weapon, {
+      kills: Number(row.kills || 0),
+      longestDistance: Number(row.longestDistance || 0),
+      recordHolder: row.recordHolder ? String(row.recordHolder) : null,
+    });
+  }
+  scheduleSave();
+  return weaponStats.size;
+}
+
 module.exports = {
   recordWeaponKill,
   listWeaponStats,
+  replaceWeaponStats,
 };

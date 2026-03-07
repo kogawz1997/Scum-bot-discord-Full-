@@ -66,11 +66,28 @@ function addPlaytimeMinutes(userId, minutes) {
   return s;
 }
 
+function replaceStats(nextStats = []) {
+  stats.clear();
+  for (const row of Array.isArray(nextStats) ? nextStats : []) {
+    if (!row || typeof row !== 'object') continue;
+    const userId = String(row.userId || '').trim();
+    if (!userId) continue;
+    stats.set(userId, {
+      kills: Number(row.kills || 0),
+      deaths: Number(row.deaths || 0),
+      playtimeMinutes: Number(row.playtimeMinutes || 0),
+      squad: row.squad ? String(row.squad) : null,
+    });
+  }
+  scheduleSave();
+  return stats.size;
+}
+
 module.exports = {
   getStats,
   listAllStats,
   addKill,
   addDeath,
   addPlaytimeMinutes,
+  replaceStats,
 };
-

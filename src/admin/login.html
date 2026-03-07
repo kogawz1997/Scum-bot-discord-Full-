@@ -357,8 +357,21 @@
             required
           >
         </label>
+        <label>
+          <span>รหัส 2FA (ถ้ามี)</span>
+          <input
+            id="otpInput"
+            name="otp"
+            inputmode="numeric"
+            pattern="\\d{6}"
+            maxlength="6"
+            placeholder="เช่น 123456"
+          >
+        </label>
         <button id="loginBtn" type="submit">เข้าสู่ระบบ</button>
       </form>
+
+      <button id="discordSsoBtn" type="button" style="display:none;">เข้าสู่ระบบด้วย Discord SSO</button>
 
       <div id="errorText" class="error"></div>
     </div>
@@ -368,7 +381,9 @@
     const form = document.getElementById('loginForm');
     const usernameInput = document.getElementById('usernameInput');
     const passwordInput = document.getElementById('passwordInput');
+    const otpInput = document.getElementById('otpInput');
     const loginBtn = document.getElementById('loginBtn');
+    const discordSsoBtn = document.getElementById('discordSsoBtn');
     const errorText = document.getElementById('errorText');
     const themeBtnMilitary = document.getElementById('themeBtnMilitary');
     const themeBtnNeon = document.getElementById('themeBtnNeon');
@@ -440,6 +455,25 @@
       }
     }
 
+    async function loadAuthProviders() {
+      try {
+        const providers = await api('/admin/api/auth/providers', 'GET');
+        if (providers?.data?.discordSso) {
+          discordSsoBtn.style.display = 'block';
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    function showErrorFromQuery() {
+      const params = new URLSearchParams(window.location.search);
+      const message = String(params.get('error') || '').trim();
+      if (message) {
+        errorText.textContent = message;
+      }
+    }
+
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       errorText.textContent = '';
@@ -450,15 +484,24 @@
         await api('/admin/api/login', 'POST', {
           username: usernameInput.value.trim(),
           password: passwordInput.value,
+          otp: otpInput.value.trim() || undefined,
         });
         window.location.replace('/admin');
       } catch (error) {
         errorText.textContent = error.message || 'เข้าสู่ระบบไม่สำเร็จ';
-        passwordInput.focus();
+        if (/2FA|OTP/i.test(errorText.textContent)) {
+          otpInput.focus();
+        } else {
+          passwordInput.focus();
+        }
       } finally {
         loginBtn.disabled = false;
         loginBtn.textContent = originalText;
       }
+    });
+
+    discordSsoBtn?.addEventListener('click', () => {
+      window.location.href = '/admin/auth/discord/start';
     });
 
     themeBtnMilitary?.addEventListener('click', () => {
@@ -470,6 +513,8 @@
     });
 
     applyTheme(loadPreferredTheme(), false);
+    showErrorFromQuery();
+    loadAuthProviders();
     ensureNotLoggedIn();
   </script>
 </body>

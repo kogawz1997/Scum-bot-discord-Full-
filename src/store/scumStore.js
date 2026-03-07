@@ -42,8 +42,29 @@ function getStatus() {
   return { ...serverStatus };
 }
 
+function replaceStatus(nextStatus = {}) {
+  if (!nextStatus || typeof nextStatus !== 'object') return getStatus();
+  if (typeof nextStatus.onlinePlayers === 'number') {
+    serverStatus.onlinePlayers = nextStatus.onlinePlayers;
+  }
+  if (typeof nextStatus.maxPlayers === 'number') {
+    serverStatus.maxPlayers = nextStatus.maxPlayers;
+  }
+  if (typeof nextStatus.pingMs === 'number' || nextStatus.pingMs == null) {
+    serverStatus.pingMs = nextStatus.pingMs == null ? null : Number(nextStatus.pingMs);
+  }
+  if (typeof nextStatus.uptimeMinutes === 'number') {
+    serverStatus.uptimeMinutes = nextStatus.uptimeMinutes;
+  }
+  serverStatus.lastUpdated = nextStatus.lastUpdated
+    ? new Date(nextStatus.lastUpdated)
+    : new Date();
+  scheduleSave();
+  return getStatus();
+}
+
 module.exports = {
   updateStatus,
   getStatus,
+  replaceStatus,
 };
-

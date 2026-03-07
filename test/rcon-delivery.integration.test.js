@@ -39,6 +39,9 @@ function loadRconDeliveryWithMocks(mocks) {
 function makeTestContext(overrides = {}) {
   const purchases = new Map();
   const shopItems = new Map();
+  const links = new Map([
+    ['u-1', { steamId: '76561198000000001' }],
+  ]);
   const audits = [];
   const liveEvents = [];
   const statuses = [];
@@ -70,8 +73,7 @@ function makeTestContext(overrides = {}) {
       saveJsonDebounced: () => () => {},
     },
     linkStore: {
-      getLinkByUserId: (userId) =>
-        userId === 'u-1' ? { steamId: '76561198000000001' } : null,
+      getLinkByUserId: (userId) => links.get(String(userId)) || null,
     },
     deliveryAuditStore: {
       addDeliveryAudit: (entry) => {
@@ -104,6 +106,7 @@ function makeTestContext(overrides = {}) {
     mocks,
     purchases,
     shopItems,
+    links,
     audits,
     liveEvents,
     statuses,
@@ -215,4 +218,81 @@ test('bundle without {gameItemId}/{quantity} placeholder fails fast', async () =
     String(failedAudit.message || ''),
     /\{gameItemId\}|\{quantity\}/,
   );
+});
+
+test('dead-letter retry moves failed job back to queue and succeeds', async () => {
+  process.env.RCON_EXEC_TEMPLATE = 'echo {command}';
+  const ctx = makeTestContext({
+    config: {
+      delivery: {
+        auto: {
+          enabled: true,
+          queueIntervalMs: 100,
+          maxRetries: 0,
+          retryDelayMs: 10,
+          retryBackoff: 1,
+          commandTimeoutMs: 2000,
+          failedStatus: 'delivery_failed',
+          itemCommands: {
+            'single-wood': ['#SpawnItem {steamId} {gameItemId} {quantity}'],
+          },
+        },
+      },
+    },
+  });
+
+  ctx.purchases.set('P-300', {
+    code: 'P-300',
+    userId: 'u-2',
+    itemId: 'single-wood',
+    status: 'pending',
+  });
+  ctx.shopItems.set('single-wood', {
+    id: 'single-wood',
+    name: 'Wood',
+    kind: 'item',
+    deliveryItems: [{ gameItemId: 'Resource_Wood', quantity: 10, iconUrl: null }],
+  });
+
+  const api = loadRconDeliveryWithMocks(ctx.mocks);
+  const queued = await api.enqueuePurchaseDeliveryByCode('P-300', { guildId: 'g-1' });
+  assert.equal(queued.ok, true);
+
+  await api.processDeliveryQueueNow(5);
+  assert.equal(ctx.purchases.get('P-300').status, 'delivery_failed');
+  assert.equal(api.listDeliveryQueue().length, 0);
+  assert.equal(api.listDeliveryDeadLetters().length, 1);
+
+  ctx.links.set('u-2', { steamId: '76561198000009999' });
+  const retry = await api.retryDeliveryDeadLetter('P-300', { guildId: 'g-1' });
+  assert.equal(retry.ok, true);
+  assert.equal(api.listDeliveryQueue().length, 1);
+
+  await api.processDeliveryQueueNow(5);
+  assert.equal(ctx.purchases.get('P-300').status, 'delivered');
+  assert.equal(api.listDeliveryDeadLetters().length, 0);
+});
+
+test('enqueue skips terminal status purchase (idempotency guard)', async () => {
+  process.env.RCON_EXEC_TEMPLATE = 'echo {command}';
+  const ctx = makeTestContext();
+
+  ctx.purchases.set('P-400', {
+    code: 'P-400',
+    userId: 'u-1',
+    itemId: 'bundle-ak',
+    status: 'delivered',
+  });
+  ctx.shopItems.set('bundle-ak', {
+    id: 'bundle-ak',
+    name: 'AK Bundle',
+    kind: 'item',
+    deliveryItems: [{ gameItemId: 'Weapon_AK47', quantity: 1, iconUrl: null }],
+  });
+
+  const api = loadRconDeliveryWithMocks(ctx.mocks);
+  const queued = await api.enqueuePurchaseDeliveryByCode('P-400');
+  assert.equal(queued.ok, false);
+  assert.equal(queued.reason, 'terminal-status');
+  assert.equal(api.listDeliveryQueue().length, 0);
 });

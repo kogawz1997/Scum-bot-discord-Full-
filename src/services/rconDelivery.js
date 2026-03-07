@@ -13,6 +13,9 @@ const { publishAdminLiveUpdate } = require('./adminLiveBus');
 const { resolveItemIconUrl } = require('./itemIconService');
 
 const jobs = new Map(); // purchaseCode -> job
+const deadLetters = new Map(); // purchaseCode -> failed final delivery context
+const inFlightPurchaseCodes = new Set();
+const recentlyDeliveredCodes = new Map(); // purchaseCode -> timestamp
 let workerStarted = false;
 let workerBusy = false;
 let workerTimer = null;
@@ -20,6 +23,7 @@ let workerClient = null;
 const deliveryOutcomes = []; // rolling attempt outcomes
 let lastQueuePressureAlertAt = 0;
 let lastFailRateAlertAt = 0;
+let lastQueueStuckAlertAt = 0;
 
 const METRICS_WINDOW_MS = Math.max(
   60 * 1000,
@@ -40,6 +44,14 @@ const QUEUE_ALERT_THRESHOLD = Math.max(
 const ALERT_COOLDOWN_MS = Math.max(
   15 * 1000,
   asNumber(process.env.DELIVERY_ALERT_COOLDOWN_MS, 60 * 1000),
+);
+const QUEUE_STUCK_SLA_MS = Math.max(
+  10 * 1000,
+  asNumber(process.env.DELIVERY_QUEUE_STUCK_SLA_MS, 2 * 60 * 1000),
+);
+const IDEMPOTENCY_SUCCESS_WINDOW_MS = Math.max(
+  30 * 1000,
+  asNumber(process.env.DELIVERY_IDEMPOTENCY_SUCCESS_WINDOW_MS, 12 * 60 * 60 * 1000),
 );
 
 function nowIso() {
@@ -254,6 +266,57 @@ function normalizeJob(input) {
   };
 }
 
+function normalizeDeadLetter(input) {
+  if (!input || typeof input !== 'object') return null;
+  const purchaseCode = String(input.purchaseCode || '').trim();
+  if (!purchaseCode) return null;
+  const createdAt = input.createdAt
+    ? new Date(input.createdAt).toISOString()
+    : nowIso();
+  return {
+    purchaseCode,
+    userId: String(input.userId || '').trim() || null,
+    itemId: String(input.itemId || '').trim() || null,
+    itemName: String(input.itemName || '').trim() || null,
+    guildId: String(input.guildId || '').trim() || null,
+    attempts: Math.max(0, asNumber(input.attempts, 0)),
+    reason: trimText(input.reason || 'delivery failed', 500),
+    createdAt,
+    lastError: input.lastError ? trimText(input.lastError, 500) : null,
+    deliveryItems: normalizeDeliveryItemsForJob(input.deliveryItems, {
+      gameItemId: input.gameItemId,
+      quantity: input.quantity,
+      iconUrl: input.iconUrl,
+    }),
+    meta: input.meta && typeof input.meta === 'object' ? input.meta : null,
+  };
+}
+
+function compactRecentlyDelivered(now = Date.now()) {
+  const cutoff = now - IDEMPOTENCY_SUCCESS_WINDOW_MS;
+  for (const [code, ts] of recentlyDeliveredCodes.entries()) {
+    if (ts < cutoff) {
+      recentlyDeliveredCodes.delete(code);
+    }
+  }
+}
+
+function markRecentlyDelivered(purchaseCode, now = Date.now()) {
+  const code = String(purchaseCode || '').trim();
+  if (!code) return;
+  recentlyDeliveredCodes.set(code, now);
+  compactRecentlyDelivered(now);
+}
+
+function isRecentlyDelivered(purchaseCode, now = Date.now()) {
+  compactRecentlyDelivered(now);
+  const code = String(purchaseCode || '').trim();
+  if (!code) return false;
+  const ts = recentlyDeliveredCodes.get(code);
+  if (ts == null) return false;
+  return now - ts <= IDEMPOTENCY_SUCCESS_WINDOW_MS;
+}
+
 const persisted = loadJson('delivery-queue.json', null);
 if (persisted?.jobs && Array.isArray(persisted.jobs)) {
   for (const rawJob of persisted.jobs) {
@@ -263,8 +326,21 @@ if (persisted?.jobs && Array.isArray(persisted.jobs)) {
   }
 }
 
+const persistedDeadLetters = loadJson('delivery-dead-letter.json', null);
+if (persistedDeadLetters?.deadLetters && Array.isArray(persistedDeadLetters.deadLetters)) {
+  for (const row of persistedDeadLetters.deadLetters) {
+    const normalized = normalizeDeadLetter(row);
+    if (!normalized) continue;
+    deadLetters.set(normalized.purchaseCode, normalized);
+  }
+}
+
 const scheduleQueueSave = saveJsonDebounced('delivery-queue.json', () => ({
   jobs: Array.from(jobs.values()).map((job) => ({ ...job })),
+}));
+
+const scheduleDeadLetterSave = saveJsonDebounced('delivery-dead-letter.json', () => ({
+  deadLetters: Array.from(deadLetters.values()).map((row) => ({ ...row })),
 }));
 
 function listDeliveryQueue(limit = 500) {
@@ -274,6 +350,80 @@ function listDeliveryQueue(limit = 500) {
     .sort((a, b) => a.nextAttemptAt - b.nextAttemptAt)
     .slice(0, max)
     .map((job) => ({ ...job }));
+}
+
+function replaceDeliveryQueue(nextJobs = []) {
+  jobs.clear();
+  for (const row of Array.isArray(nextJobs) ? nextJobs : []) {
+    const normalized = normalizeJob(row);
+    if (!normalized) continue;
+    jobs.set(normalized.purchaseCode, normalized);
+  }
+  scheduleQueueSave();
+  maybeAlertQueuePressure();
+  maybeAlertQueueStuck();
+  publishQueueLiveUpdate('restore', null);
+  kickWorker(20);
+  return jobs.size;
+}
+
+function listDeliveryDeadLetters(limit = 500) {
+  const max = Math.max(1, Number(limit || 500));
+  return Array.from(deadLetters.values())
+    .slice()
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(0, max)
+    .map((row) => ({ ...row }));
+}
+
+function replaceDeliveryDeadLetters(nextRows = []) {
+  deadLetters.clear();
+  for (const row of Array.isArray(nextRows) ? nextRows : []) {
+    const normalized = normalizeDeadLetter(row);
+    if (!normalized) continue;
+    deadLetters.set(normalized.purchaseCode, normalized);
+  }
+  scheduleDeadLetterSave();
+  return deadLetters.size;
+}
+
+function removeDeliveryDeadLetter(purchaseCode) {
+  const code = String(purchaseCode || '').trim();
+  if (!code) return null;
+  const existing = deadLetters.get(code);
+  if (!existing) return null;
+  deadLetters.delete(code);
+  scheduleDeadLetterSave();
+  return { ...existing };
+}
+
+function addDeliveryDeadLetter(job, reason, meta = null) {
+  const row = normalizeDeadLetter({
+    purchaseCode: job?.purchaseCode,
+    userId: job?.userId,
+    itemId: job?.itemId,
+    itemName: job?.itemName,
+    guildId: job?.guildId,
+    attempts: job?.attempts,
+    reason,
+    lastError: job?.lastError || reason,
+    deliveryItems: job?.deliveryItems,
+    gameItemId: job?.gameItemId,
+    quantity: job?.quantity,
+    iconUrl: job?.iconUrl,
+    createdAt: nowIso(),
+    meta,
+  });
+  if (!row) return null;
+  deadLetters.set(row.purchaseCode, row);
+  scheduleDeadLetterSave();
+  publishAdminLiveUpdate('delivery-dead-letter', {
+    action: 'add',
+    purchaseCode: row.purchaseCode,
+    reason: row.reason,
+    count: deadLetters.size,
+  });
+  return { ...row };
 }
 
 function compactOutcomes(now = Date.now()) {
@@ -292,6 +442,13 @@ function getDeliveryMetricsSnapshot(now = Date.now()) {
   );
   const successes = attempts - failures;
   const failRate = attempts > 0 ? failures / attempts : 0;
+  let oldestDueMs = 0;
+  for (const job of jobs.values()) {
+    const overdueMs = now - Number(job.nextAttemptAt || now);
+    if (overdueMs > oldestDueMs) {
+      oldestDueMs = overdueMs;
+    }
+  }
   return {
     windowMs: METRICS_WINDOW_MS,
     attempts,
@@ -299,10 +456,13 @@ function getDeliveryMetricsSnapshot(now = Date.now()) {
     failures,
     failRate,
     queueLength: jobs.size,
+    deadLetterCount: deadLetters.size,
+    oldestDueMs,
     thresholds: {
       failRate: FAIL_RATE_ALERT_THRESHOLD,
       minSamples: FAIL_RATE_ALERT_MIN_SAMPLES,
       queueLength: QUEUE_ALERT_THRESHOLD,
+      queueStuckSlaMs: QUEUE_STUCK_SLA_MS,
     },
   };
 }
@@ -322,6 +482,36 @@ function maybeAlertQueuePressure() {
   };
   console.warn(
     `[delivery][alert] queue pressure: length=${queueLength} threshold=${QUEUE_ALERT_THRESHOLD}`,
+  );
+  publishAdminLiveUpdate('ops-alert', payload);
+}
+
+function maybeAlertQueueStuck(now = Date.now()) {
+  if (jobs.size === 0) return;
+
+  let oldestDueMs = 0;
+  let oldestJob = null;
+  for (const job of jobs.values()) {
+    const overdueMs = now - Number(job.nextAttemptAt || now);
+    if (overdueMs > oldestDueMs) {
+      oldestDueMs = overdueMs;
+      oldestJob = job;
+    }
+  }
+  if (oldestDueMs < QUEUE_STUCK_SLA_MS) return;
+  if (now - lastQueueStuckAlertAt < ALERT_COOLDOWN_MS) return;
+  lastQueueStuckAlertAt = now;
+
+  const payload = {
+    source: 'delivery',
+    kind: 'queue-stuck',
+    queueLength: jobs.size,
+    oldestDueMs,
+    thresholdMs: QUEUE_STUCK_SLA_MS,
+    purchaseCode: oldestJob?.purchaseCode || null,
+  };
+  console.warn(
+    `[delivery][alert] queue stuck: oldestDueMs=${oldestDueMs} thresholdMs=${QUEUE_STUCK_SLA_MS} queueLength=${jobs.size}`,
   );
   publishAdminLiveUpdate('ops-alert', payload);
 }
@@ -401,6 +591,7 @@ function setJob(job) {
   jobs.set(normalized.purchaseCode, normalized);
   scheduleQueueSave();
   maybeAlertQueuePressure();
+  maybeAlertQueueStuck();
 }
 
 function removeJob(purchaseCode) {
@@ -465,6 +656,10 @@ async function handleRetry(job, reason) {
       maxRetries: settings.maxRetries,
       failedStatus: settings.failedStatus,
     });
+    addDeliveryDeadLetter(job, reason, {
+      failedStatus: settings.failedStatus,
+      maxRetries: settings.maxRetries,
+    });
     await setPurchaseStatusByCode(job.purchaseCode, settings.failedStatus).catch(() => null);
     removeJob(job.purchaseCode);
     await trySendDiscordAudit(
@@ -489,115 +684,134 @@ async function handleRetry(job, reason) {
 }
 
 async function processJob(job) {
-  const purchase = await findPurchaseByCode(job.purchaseCode);
-  if (!purchase) {
-    queueAudit('error', 'missing-purchase', job, 'Purchase not found');
-    removeJob(job.purchaseCode);
-    return;
+  const purchaseCode = String(job?.purchaseCode || '').trim();
+  if (!purchaseCode) {
+    throw new Error('Missing purchaseCode in delivery job');
   }
-
-  if (purchase.status === 'delivered' || purchase.status === 'refunded') {
-    queueAudit(
-      'info',
-      'skip-terminal-status',
-      job,
-      `Skip because purchase status is ${purchase.status}`,
-    );
-    removeJob(job.purchaseCode);
-    return;
-  }
-
-  const shopItem = await getShopItemById(purchase.itemId).catch(() => null);
-  const resolvedDeliveryItems = normalizeDeliveryItemsForJob(
-    shopItem?.deliveryItems || job?.deliveryItems,
-    {
-      gameItemId: shopItem?.gameItemId || job?.gameItemId || purchase.itemId,
-      quantity: shopItem?.quantity || job?.quantity || 1,
-      iconUrl: shopItem?.iconUrl || job?.iconUrl || null,
-    },
-  );
-  const firstDeliveryItem = resolvedDeliveryItems[0] || {
-    gameItemId: String(purchase.itemId || '').trim(),
-    quantity: 1,
-    iconUrl: null,
-  };
-  const commands = resolveItemCommands(purchase.itemId);
-  if (commands.length === 0) {
-    queueAudit(
-      'warn',
-      'missing-item-commands',
-      job,
-      `No auto-delivery command for itemId=${purchase.itemId}`,
-    );
-    await setPurchaseStatusByCode(job.purchaseCode, 'pending').catch(() => null);
-    removeJob(job.purchaseCode);
-    return;
-  }
-
-  const link = getLinkByUserId(purchase.userId);
-  if (!link?.steamId) {
-    await handleRetry(job, `Missing steam link for userId=${purchase.userId}`);
-    return;
-  }
-
-  const context = {
-    purchaseCode: purchase.code,
-    itemId: purchase.itemId,
-    itemName: shopItem?.name || job?.itemName || purchase.itemId,
-    gameItemId: firstDeliveryItem.gameItemId,
-    quantity: firstDeliveryItem.quantity,
-    itemKind: String(shopItem?.kind || job?.itemKind || 'item'),
-    userId: purchase.userId,
-    steamId: link.steamId,
-  };
-
-  const settings = getSettings();
-  const outputs = [];
-  const needsItemPlaceholder = commandSupportsBundleItems(commands);
-
-  if (resolvedDeliveryItems.length > 1 && !needsItemPlaceholder) {
+  if (inFlightPurchaseCodes.has(purchaseCode)) {
     throw new Error(
-      'itemCommands ต้องมี {gameItemId} หรือ {quantity} เมื่อสินค้าเป็นหลายไอเทม',
+      `Idempotency guard blocked duplicate in-flight delivery for ${purchaseCode}`,
     );
   }
 
-  for (const deliveryItem of resolvedDeliveryItems) {
-    const itemContext = {
-      ...context,
-      gameItemId: deliveryItem.gameItemId,
-      quantity: deliveryItem.quantity,
+  inFlightPurchaseCodes.add(purchaseCode);
+  try {
+    const purchase = await findPurchaseByCode(purchaseCode);
+    if (!purchase) {
+      queueAudit('error', 'missing-purchase', job, 'Purchase not found');
+      removeJob(purchaseCode);
+      return;
+    }
+
+    if (purchase.status === 'delivered' || purchase.status === 'refunded') {
+      markRecentlyDelivered(purchaseCode);
+      queueAudit(
+        'info',
+        'skip-terminal-status',
+        job,
+        `Skip because purchase status is ${purchase.status}`,
+      );
+      removeJob(purchaseCode);
+      return;
+    }
+
+    const shopItem = await getShopItemById(purchase.itemId).catch(() => null);
+    const resolvedDeliveryItems = normalizeDeliveryItemsForJob(
+      shopItem?.deliveryItems || job?.deliveryItems,
+      {
+        gameItemId: shopItem?.gameItemId || job?.gameItemId || purchase.itemId,
+        quantity: shopItem?.quantity || job?.quantity || 1,
+        iconUrl: shopItem?.iconUrl || job?.iconUrl || null,
+      },
+    );
+    const firstDeliveryItem = resolvedDeliveryItems[0] || {
+      gameItemId: String(purchase.itemId || '').trim(),
+      quantity: 1,
+      iconUrl: null,
     };
-    for (const template of commands) {
-      const gameCommand = substituteTemplate(template, itemContext);
-      const output = await runRconCommand(gameCommand, settings);
-      outputs.push({
+    const commands = resolveItemCommands(purchase.itemId);
+    if (commands.length === 0) {
+      queueAudit(
+        'warn',
+        'missing-item-commands',
+        job,
+        `No auto-delivery command for itemId=${purchase.itemId}`,
+      );
+      await setPurchaseStatusByCode(purchaseCode, 'pending').catch(() => null);
+      removeJob(purchaseCode);
+      return;
+    }
+
+    const link = getLinkByUserId(purchase.userId);
+    if (!link?.steamId) {
+      await handleRetry(job, `Missing steam link for userId=${purchase.userId}`);
+      return;
+    }
+
+    const context = {
+      purchaseCode: purchase.code,
+      itemId: purchase.itemId,
+      itemName: shopItem?.name || job?.itemName || purchase.itemId,
+      gameItemId: firstDeliveryItem.gameItemId,
+      quantity: firstDeliveryItem.quantity,
+      itemKind: String(shopItem?.kind || job?.itemKind || 'item'),
+      userId: purchase.userId,
+      steamId: link.steamId,
+    };
+
+    const settings = getSettings();
+    const outputs = [];
+    const needsItemPlaceholder = commandSupportsBundleItems(commands);
+
+    if (resolvedDeliveryItems.length > 1 && !needsItemPlaceholder) {
+      throw new Error(
+        'itemCommands ต้องมี {gameItemId} หรือ {quantity} เมื่อสินค้าเป็นหลายไอเทม',
+      );
+    }
+
+    for (const deliveryItem of resolvedDeliveryItems) {
+      const itemContext = {
+        ...context,
         gameItemId: deliveryItem.gameItemId,
         quantity: deliveryItem.quantity,
-        command: output.command,
-        stdout: output.stdout,
-        stderr: output.stderr,
-      });
+      };
+      for (const template of commands) {
+        const gameCommand = substituteTemplate(template, itemContext);
+        const output = await runRconCommand(gameCommand, settings);
+        outputs.push({
+          gameItemId: deliveryItem.gameItemId,
+          quantity: deliveryItem.quantity,
+          command: output.command,
+          stdout: output.stdout,
+          stderr: output.stderr,
+        });
+      }
     }
-  }
 
-  await setPurchaseStatusByCode(job.purchaseCode, 'delivered').catch(() => null);
-  removeJob(job.purchaseCode);
-  recordDeliveryOutcome(true, { purchaseCode: job?.purchaseCode });
-  queueAudit('info', 'success', job, 'Auto delivery complete', {
-    steamId: link.steamId,
-    deliveryItems: resolvedDeliveryItems,
-    outputs,
-  });
-  const deliveredItemsText = trimText(
-    resolvedDeliveryItems
-      .map((entry) => `${entry.gameItemId} x${entry.quantity}`)
-      .join(', '),
-    240,
-  );
-  await trySendDiscordAudit(
-    job,
-    `[OK] **Auto delivered** | code: \`${job.purchaseCode}\` | item: \`${job.itemName || job.itemId}\` | delivery: \`${deliveredItemsText || `${firstDeliveryItem.gameItemId} x${firstDeliveryItem.quantity}`}\` | steam: \`${link.steamId}\``,
-  );
+    await setPurchaseStatusByCode(purchaseCode, 'delivered').catch(() => null);
+    removeJob(purchaseCode);
+    markRecentlyDelivered(purchaseCode);
+    deadLetters.delete(purchaseCode);
+    scheduleDeadLetterSave();
+    recordDeliveryOutcome(true, { purchaseCode: purchaseCode });
+    queueAudit('info', 'success', job, 'Auto delivery complete', {
+      steamId: link.steamId,
+      deliveryItems: resolvedDeliveryItems,
+      outputs,
+    });
+    const deliveredItemsText = trimText(
+      resolvedDeliveryItems
+        .map((entry) => `${entry.gameItemId} x${entry.quantity}`)
+        .join(', '),
+      240,
+    );
+    await trySendDiscordAudit(
+      job,
+      `[OK] **Auto delivered** | code: \`${purchaseCode}\` | item: \`${job.itemName || job.itemId}\` | delivery: \`${deliveredItemsText || `${firstDeliveryItem.gameItemId} x${firstDeliveryItem.quantity}`}\` | steam: \`${link.steamId}\``,
+    );
+  } finally {
+    inFlightPurchaseCodes.delete(purchaseCode);
+  }
 }
 
 async function processDueJobOnce() {
@@ -671,6 +885,7 @@ async function workerTick() {
     return;
   }
   await processDueJobOnce();
+  maybeAlertQueueStuck();
   kickWorker(settings.queueIntervalMs);
 }
 
@@ -678,6 +893,22 @@ async function enqueuePurchaseDelivery(purchase, context = {}) {
   const settings = getSettings();
   if (!purchase?.code || !purchase?.itemId || !purchase?.userId) {
     return { queued: false, reason: 'invalid-purchase' };
+  }
+  const purchaseCode = String(purchase.code);
+  if (purchase.status === 'delivered' || purchase.status === 'refunded') {
+    markRecentlyDelivered(purchaseCode);
+    addDeliveryAudit({
+      level: 'info',
+      action: 'skip-terminal-status',
+      purchaseCode,
+      itemId: String(purchase.itemId),
+      userId: String(purchase.userId),
+      meta: {
+        status: purchase.status,
+      },
+      message: `Skip enqueue because purchase status is ${purchase.status}`,
+    });
+    return { queued: false, reason: 'terminal-status' };
   }
   const shopItem = await getShopItemById(purchase.itemId).catch(() => null);
   const itemName = String(shopItem?.name || purchase.itemId);
@@ -741,9 +972,14 @@ async function enqueuePurchaseDelivery(purchase, context = {}) {
     return { queued: false, reason: 'bundle-template-missing-placeholder' };
   }
 
-  const purchaseCode = String(purchase.code);
   if (jobs.has(purchaseCode)) {
     return { queued: true, reason: 'already-queued' };
+  }
+  if (inFlightPurchaseCodes.has(purchaseCode)) {
+    return { queued: false, reason: 'already-processing' };
+  }
+  if (isRecentlyDelivered(purchaseCode)) {
+    return { queued: false, reason: 'idempotent-recent-success' };
   }
 
   const job = normalizeJob({
@@ -766,6 +1002,10 @@ async function enqueuePurchaseDelivery(purchase, context = {}) {
   if (!job) return { queued: false, reason: 'invalid-job' };
 
   setJob(job);
+  if (deadLetters.has(purchaseCode)) {
+    deadLetters.delete(purchaseCode);
+    scheduleDeadLetterSave();
+  }
   await setPurchaseStatusByCode(purchaseCode, 'delivering').catch(() => null);
   queueAudit('info', 'queued', job, 'Queued purchase for auto-delivery');
   kickWorker(20);
@@ -796,6 +1036,29 @@ function retryDeliveryNow(purchaseCode) {
   return { ...jobs.get(code) };
 }
 
+async function retryDeliveryDeadLetter(purchaseCode, context = {}) {
+  const code = String(purchaseCode || '').trim();
+  const deadLetter = deadLetters.get(code);
+  if (!deadLetter) {
+    return { ok: false, reason: 'dead-letter-not-found' };
+  }
+
+  const result = await enqueuePurchaseDeliveryByCode(code, context);
+  if (!result.ok) {
+    return result;
+  }
+
+  deadLetters.delete(code);
+  scheduleDeadLetterSave();
+  queueAudit('info', 'dead-letter-retry', deadLetter, 'Retry dead-letter queued');
+  publishAdminLiveUpdate('delivery-dead-letter', {
+    action: 'retry',
+    purchaseCode: code,
+    count: deadLetters.size,
+  });
+  return { ok: true, reason: 'queued', queueLength: jobs.size };
+}
+
 function cancelDeliveryJob(purchaseCode, reason = 'manual-cancel') {
   const code = String(purchaseCode || '').trim();
   const job = jobs.get(code);
@@ -818,7 +1081,12 @@ module.exports = {
   enqueuePurchaseDelivery,
   enqueuePurchaseDeliveryByCode,
   listDeliveryQueue,
+  replaceDeliveryQueue,
+  listDeliveryDeadLetters,
+  replaceDeliveryDeadLetters,
+  removeDeliveryDeadLetter,
   retryDeliveryNow,
+  retryDeliveryDeadLetter,
   cancelDeliveryJob,
   listDeliveryAudit,
   getDeliveryMetricsSnapshot,

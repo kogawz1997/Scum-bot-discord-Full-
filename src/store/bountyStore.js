@@ -68,10 +68,36 @@ function claimBounty(id, killerName) {
   return { ok: true, bounty: b };
 }
 
+function replaceBounties(nextBounties = [], nextCounter = null) {
+  bounties.clear();
+  for (const row of Array.isArray(nextBounties) ? nextBounties : []) {
+    if (!row || typeof row !== 'object') continue;
+    const id = Number(row.id || 0);
+    if (!Number.isFinite(id) || id <= 0) continue;
+    bounties.set(id, {
+      id,
+      targetName: String(row.targetName || ''),
+      amount: Number(row.amount || 0),
+      createdBy: String(row.createdBy || ''),
+      status: String(row.status || 'active'),
+      claimedBy: row.claimedBy ? String(row.claimedBy) : null,
+    });
+  }
+
+  if (Number.isFinite(Number(nextCounter)) && Number(nextCounter) > 0) {
+    bountyCounter = Math.max(1, Math.trunc(Number(nextCounter)));
+  } else {
+    const maxId = Math.max(0, ...Array.from(bounties.keys()).map((n) => Number(n)));
+    bountyCounter = maxId + 1;
+  }
+  scheduleSave();
+  return bounties.size;
+}
+
 module.exports = {
   createBounty,
   listBounties,
   cancelBounty,
   claimBounty,
+  replaceBounties,
 };
-

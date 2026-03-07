@@ -41,10 +41,26 @@ function removeMembership(userId) {
   scheduleSave();
 }
 
+function replaceMemberships(nextMemberships = []) {
+  memberships.clear();
+  for (const row of Array.isArray(nextMemberships) ? nextMemberships : []) {
+    if (!row || typeof row !== 'object') continue;
+    const userId = String(row.userId || '').trim();
+    const planId = String(row.planId || '').trim();
+    if (!userId || !planId) continue;
+    memberships.set(userId, {
+      planId,
+      expiresAt: row.expiresAt ? new Date(row.expiresAt) : null,
+    });
+  }
+  scheduleSave();
+  return memberships.size;
+}
+
 module.exports = {
   setMembership,
   getMembership,
   listMemberships,
   removeMembership,
+  replaceMemberships,
 };
-

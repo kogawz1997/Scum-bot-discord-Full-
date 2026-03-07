@@ -92,6 +92,23 @@ function listLinks() {
   return Array.from(links.entries()).map(([steamId, v]) => ({ steamId, ...v }));
 }
 
+function replaceLinks(nextLinks = []) {
+  links.clear();
+  for (const row of Array.isArray(nextLinks) ? nextLinks : []) {
+    if (!row || typeof row !== 'object') continue;
+    const steamId = normalizeSteamId(row.steamId);
+    const userId = String(row.userId || '').trim();
+    if (!steamId || !userId) continue;
+    links.set(steamId, {
+      userId,
+      inGameName: row.inGameName ? String(row.inGameName) : null,
+      linkedAt: row.linkedAt ? new Date(row.linkedAt) : new Date(),
+    });
+  }
+  scheduleSave();
+  return links.size;
+}
+
 module.exports = {
   normalizeSteamId,
   getLinkBySteamId,
@@ -100,5 +117,5 @@ module.exports = {
   unlinkByUserId,
   unlinkBySteamId,
   listLinks,
+  replaceLinks,
 };
-

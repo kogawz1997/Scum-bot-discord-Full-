@@ -2,6 +2,7 @@
 const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
+const { pipeline } = require('node:stream/promises');
 const { URL } = require('node:url');
 
 const config = require('./config');
@@ -16,28 +17,41 @@ const {
   setShopItemPrice,
   setPurchaseStatusByCode,
 } = require('./store/memoryStore');
-const { tickets, claimTicket, closeTicket } = require('./store/ticketStore');
-const { listAllStats, addKill, addDeath, addPlaytimeMinutes } = require('./store/statsStore');
-const { listWeaponStats } = require('./store/weaponStatsStore');
-const { listBounties, createBounty, cancelBounty } = require('./store/bountyStore');
-const { listEvents, createEvent, startEvent, endEvent, joinEvent, getParticipants } = require('./store/eventStore');
-const { giveaways } = require('./store/giveawayStore');
-const { listLinks, setLink, unlinkBySteamId, unlinkByUserId } = require('./store/linkStore');
-const { getStatus, updateStatus } = require('./store/scumStore');
-const { listMemberships, setMembership, removeMembership } = require('./store/vipStore');
-const { listAllPunishments, addPunishment } = require('./store/moderationStore');
-const { listCodes, setCode, deleteCode, resetCodeUsage } = require('./store/redeemStore');
-const { listClaimed, revokeClaim, clearClaims } = require('./store/welcomePackStore');
+const {
+  tickets,
+  claimTicket,
+  closeTicket,
+  replaceTickets,
+} = require('./store/ticketStore');
+const { listAllStats, addKill, addDeath, addPlaytimeMinutes, replaceStats } = require('./store/statsStore');
+const { listWeaponStats, replaceWeaponStats } = require('./store/weaponStatsStore');
+const { listBounties, createBounty, cancelBounty, replaceBounties } = require('./store/bountyStore');
+const { listEvents, createEvent, startEvent, endEvent, joinEvent, getParticipants, replaceEvents } = require('./store/eventStore');
+const { giveaways, replaceGiveaways } = require('./store/giveawayStore');
+const { listLinks, setLink, unlinkBySteamId, unlinkByUserId, replaceLinks } = require('./store/linkStore');
+const { getStatus, updateStatus, replaceStatus } = require('./store/scumStore');
+const { listMemberships, setMembership, removeMembership, replaceMemberships } = require('./store/vipStore');
+const { listAllPunishments, addPunishment, replacePunishments } = require('./store/moderationStore');
+const { listCodes, setCode, deleteCode, resetCodeUsage, replaceCodes } = require('./store/redeemStore');
+const { listClaimed, revokeClaim, clearClaims, replaceClaims } = require('./store/welcomePackStore');
 const { listDailyRents, listRentalVehicles } = require('./store/rentBikeStore');
-const { listTopPanels } = require('./store/topPanelStore');
+const { listTopPanels, replaceTopPanels } = require('./store/topPanelStore');
+const { listAllCarts, replaceCarts } = require('./store/cartStore');
 const {
   getRentBikeRuntime,
   runRentBikeMidnightReset,
 } = require('./services/rentBikeService');
+const { replaceDeliveryAudit } = require('./store/deliveryAuditStore');
+const { replaceRentBikeData } = require('./store/rentBikeStore');
 const {
   enqueuePurchaseDeliveryByCode,
   listDeliveryQueue,
+  listDeliveryDeadLetters,
+  replaceDeliveryQueue,
+  replaceDeliveryDeadLetters,
   retryDeliveryNow,
+  retryDeliveryDeadLetter,
+  removeDeliveryDeadLetter,
   cancelDeliveryJob,
   listDeliveryAudit,
   getDeliveryMetricsSnapshot,
@@ -53,6 +67,8 @@ const {
   listItemIconCatalog,
   resolveItemIconUrl,
 } = require('./services/itemIconService');
+const { DATA_DIR } = require('./store/_persist');
+const { getWebhookMetricsSnapshot } = require('./scumWebhookServer');
 
 const dashboardHtmlPath = path.join(__dirname, 'admin', 'dashboard.html');
 const loginHtmlPath = path.join(__dirname, 'admin', 'login.html');
@@ -108,11 +124,21 @@ const LOGIN_RATE_LIMIT_MAX_ATTEMPTS = Math.max(
   Number(process.env.ADMIN_WEB_LOGIN_MAX_ATTEMPTS || 8),
 );
 let resolvedLoginPassword = null;
+let resolvedAdminUsers = null;
 const liveClients = new Set();
 let liveHeartbeatTimer = null;
 let liveBusBound = false;
+let metricsSeriesTimer = null;
+const metricsSeries = {
+  deliveryQueueLength: [],
+  deliveryFailRate: [],
+  loginFailures: [],
+  webhookErrorRate: [],
+};
+const METRICS_SERIES_KEYS = Object.freeze(Object.keys(metricsSeries));
 const loginAttemptsByIp = new Map();
 const loginFailureEvents = [];
+const discordOauthStates = new Map();
 let lastLoginSpikeAlertAt = 0;
 const LOGIN_SPIKE_WINDOW_MS = Math.max(
   60 * 1000,
@@ -130,11 +156,134 @@ const LOGIN_SPIKE_ALERT_COOLDOWN_MS = Math.max(
   15 * 1000,
   Number(process.env.ADMIN_WEB_LOGIN_SPIKE_ALERT_COOLDOWN_MS || 60 * 1000),
 );
+const ROLE_ORDER = {
+  mod: 1,
+  admin: 2,
+  owner: 3,
+};
+const ADMIN_WEB_USER_ROLE = normalizeRole(
+  process.env.ADMIN_WEB_USER_ROLE || 'owner',
+);
+const ADMIN_WEB_TOKEN_ROLE = normalizeRole(
+  process.env.ADMIN_WEB_TOKEN_ROLE || 'owner',
+);
+const ADMIN_WEB_USERS_JSON = String(process.env.ADMIN_WEB_USERS_JSON || '').trim();
+const ADMIN_WEB_2FA_ENABLED = envBool('ADMIN_WEB_2FA_ENABLED', false);
+const ADMIN_WEB_2FA_SECRET = String(process.env.ADMIN_WEB_2FA_SECRET || '').trim();
+const ADMIN_WEB_2FA_ACTIVE = ADMIN_WEB_2FA_ENABLED && ADMIN_WEB_2FA_SECRET.length > 0;
+const ADMIN_WEB_2FA_WINDOW_STEPS = Math.max(
+  0,
+  Number(process.env.ADMIN_WEB_2FA_WINDOW_STEPS || 1),
+);
+const SSO_DISCORD_ENABLED = envBool('ADMIN_WEB_SSO_DISCORD_ENABLED', false);
+const SSO_DISCORD_CLIENT_ID = String(
+  process.env.ADMIN_WEB_SSO_DISCORD_CLIENT_ID || '',
+).trim();
+const SSO_DISCORD_CLIENT_SECRET = String(
+  process.env.ADMIN_WEB_SSO_DISCORD_CLIENT_SECRET || '',
+).trim();
+const SSO_DISCORD_ACTIVE =
+  SSO_DISCORD_ENABLED &&
+  SSO_DISCORD_CLIENT_ID.length > 0 &&
+  SSO_DISCORD_CLIENT_SECRET.length > 0;
+const SSO_DISCORD_REDIRECT_URI = String(
+  process.env.ADMIN_WEB_SSO_DISCORD_REDIRECT_URI || '',
+).trim();
+const SSO_DISCORD_GUILD_ID = String(
+  process.env.ADMIN_WEB_SSO_DISCORD_GUILD_ID || '',
+).trim();
+const SSO_DISCORD_DEFAULT_ROLE = normalizeRole(
+  process.env.ADMIN_WEB_SSO_DEFAULT_ROLE || 'mod',
+);
+const SSO_STATE_TTL_MS = Math.max(
+  60 * 1000,
+  Number(process.env.ADMIN_WEB_SSO_STATE_TTL_MS || 10 * 60 * 1000),
+);
+const METRICS_SERIES_INTERVAL_MS = Math.max(
+  2_000,
+  Number(process.env.ADMIN_WEB_METRICS_SERIES_INTERVAL_MS || 15_000),
+);
+const METRICS_SERIES_RETENTION_MS = Math.max(
+  10 * 60 * 1000,
+  Number(process.env.ADMIN_WEB_METRICS_SERIES_RETENTION_MS || 24 * 60 * 60 * 1000),
+);
+const BACKUP_DIR = path.resolve(
+  String(process.env.ADMIN_WEB_BACKUP_DIR || path.join(DATA_DIR, 'backups')),
+);
+const DISCORD_API_BASE = 'https://discord.com/api/v10';
 
 function envBool(name, fallback = false) {
   const raw = String(process.env[name] || '').trim().toLowerCase();
   if (!raw) return fallback;
   return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+}
+
+function normalizeRole(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (raw === 'owner') return 'owner';
+  if (raw === 'admin') return 'admin';
+  return 'mod';
+}
+
+function hasRoleAtLeast(actualRole, requiredRole) {
+  const actual = ROLE_ORDER[normalizeRole(actualRole)] || 0;
+  const required = ROLE_ORDER[normalizeRole(requiredRole)] || 0;
+  return actual >= required;
+}
+
+function parseCsvSet(value) {
+  const out = new Set();
+  for (const item of String(value || '').split(',')) {
+    const text = item.trim();
+    if (text) out.add(text);
+  }
+  return out;
+}
+
+function decodeBase32(input) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  const clean = String(input || '')
+    .toUpperCase()
+    .replace(/[^A-Z2-7]/g, '');
+  if (!clean) return Buffer.alloc(0);
+  let bits = '';
+  for (const ch of clean) {
+    const idx = alphabet.indexOf(ch);
+    if (idx < 0) continue;
+    bits += idx.toString(2).padStart(5, '0');
+  }
+  const bytes = [];
+  for (let i = 0; i + 8 <= bits.length; i += 8) {
+    bytes.push(Number.parseInt(bits.slice(i, i + 8), 2));
+  }
+  return Buffer.from(bytes);
+}
+
+function computeTotp(secretBuffer, counter) {
+  const buf = Buffer.alloc(8);
+  buf.writeBigUInt64BE(BigInt(counter));
+  const hmac = crypto.createHmac('sha1', secretBuffer).update(buf).digest();
+  const offset = hmac[hmac.length - 1] & 0x0f;
+  const code =
+    ((hmac[offset] & 0x7f) << 24)
+    | ((hmac[offset + 1] & 0xff) << 16)
+    | ((hmac[offset + 2] & 0xff) << 8)
+    | (hmac[offset + 3] & 0xff);
+  return String(code % 1_000_000).padStart(6, '0');
+}
+
+function verifyTotpCode(secretText, otpInput, windowSteps = 1) {
+  const secret = decodeBase32(secretText);
+  if (!secret.length) return false;
+  const otp = String(otpInput || '').trim();
+  if (!/^\d{6}$/.test(otp)) return false;
+  const nowCounter = Math.floor(Date.now() / 1000 / 30);
+  const drift = Math.max(0, Math.trunc(Number(windowSteps || 0)));
+  for (let i = -drift; i <= drift; i += 1) {
+    const code = computeTotp(secret, nowCounter + i);
+    if (secureEqual(code, otp)) return true;
+  }
+  return false;
 }
 
 function jsonReplacer(_key, value) {
@@ -261,6 +410,107 @@ function openLiveStream(req, res) {
   req.on('aborted', cleanup);
 }
 
+function compactSeries(series, now = Date.now()) {
+  const cutoff = now - METRICS_SERIES_RETENTION_MS;
+  while (series.length > 0 && series[0].at < cutoff) {
+    series.shift();
+  }
+}
+
+function recordSeriesPoint(key, value, now = Date.now()) {
+  const series = metricsSeries[key];
+  if (!Array.isArray(series)) return;
+  series.push({
+    at: now,
+    value: Number.isFinite(Number(value)) ? Number(value) : 0,
+  });
+  compactSeries(series, now);
+}
+
+function captureMetricsSeries(now = Date.now()) {
+  const delivery = typeof getDeliveryMetricsSnapshot === 'function'
+    ? getDeliveryMetricsSnapshot(now)
+    : { queueLength: 0, failRate: 0 };
+  const login = getLoginFailureMetrics(now);
+  const webhook = typeof getWebhookMetricsSnapshot === 'function'
+    ? getWebhookMetricsSnapshot(now)
+    : { errorRate: 0 };
+
+  recordSeriesPoint('deliveryQueueLength', Number(delivery.queueLength || 0), now);
+  recordSeriesPoint('deliveryFailRate', Number(delivery.failRate || 0), now);
+  recordSeriesPoint('loginFailures', Number(login.failures || 0), now);
+  recordSeriesPoint('webhookErrorRate', Number(webhook.errorRate || 0), now);
+}
+
+function clampMetricsWindowMs(value) {
+  const parsed = asInt(value, null);
+  if (parsed == null) return null;
+  return Math.max(60 * 1000, Math.min(parsed, METRICS_SERIES_RETENTION_MS));
+}
+
+function parseMetricsSeriesKeys(value) {
+  const requested = parseCsvSet(value);
+  if (requested.size === 0) return [];
+  return METRICS_SERIES_KEYS.filter((key) => requested.has(key));
+}
+
+function listMetricsSeries(options = {}) {
+  const seriesKeys = Array.isArray(options.keys) && options.keys.length > 0
+    ? options.keys
+    : METRICS_SERIES_KEYS;
+  const windowMs = clampMetricsWindowMs(options.windowMs);
+  const cutoff = windowMs == null ? null : Date.now() - windowMs;
+  const out = {};
+  for (const key of seriesKeys) {
+    if (!METRICS_SERIES_KEYS.includes(key)) continue;
+    const series = Array.isArray(metricsSeries[key]) ? metricsSeries[key] : [];
+    const filtered = cutoff == null
+      ? series
+      : series.filter((point) => Number(point?.at || 0) >= cutoff);
+    out[key] = filtered.map((point) => ({
+      at: new Date(point.at).toISOString(),
+      value: Number(point.value || 0),
+    }));
+  }
+  return out;
+}
+
+function ensureMetricsSeriesTimer() {
+  if (metricsSeriesTimer) return;
+  captureMetricsSeries();
+  metricsSeriesTimer = setInterval(() => {
+    captureMetricsSeries();
+  }, METRICS_SERIES_INTERVAL_MS);
+  if (typeof metricsSeriesTimer.unref === 'function') {
+    metricsSeriesTimer.unref();
+  }
+}
+
+function stopMetricsSeriesTimer() {
+  if (!metricsSeriesTimer) return;
+  clearInterval(metricsSeriesTimer);
+  metricsSeriesTimer = null;
+}
+
+function closeAllLiveStreams() {
+  if (liveClients.size === 0) {
+    stopLiveHeartbeatIfIdle();
+    return;
+  }
+  for (const res of liveClients) {
+    try {
+      if (!res.writableEnded) {
+        res.end();
+      }
+      if (typeof res.destroy === 'function') {
+        res.destroy();
+      }
+    } catch {}
+  }
+  liveClients.clear();
+  stopLiveHeartbeatIfIdle();
+}
+
 function getDashboardHtml() {
   if (!cachedDashboardHtml) {
     cachedDashboardHtml = fs.readFileSync(dashboardHtmlPath, 'utf8');
@@ -300,6 +550,92 @@ function getAdminLoginPassword() {
   // Backward compatibility: use token as password when explicit password is not set.
   resolvedLoginPassword = getAdminToken();
   return resolvedLoginPassword;
+}
+
+function getAdminUsers() {
+  if (resolvedAdminUsers) return resolvedAdminUsers;
+
+  let users = [];
+  if (ADMIN_WEB_USERS_JSON) {
+    try {
+      const parsed = JSON.parse(ADMIN_WEB_USERS_JSON);
+      if (Array.isArray(parsed)) {
+        users = parsed
+          .map((row) => {
+            if (!row || typeof row !== 'object') return null;
+            const username = String(row.username || '').trim();
+            const password = String(row.password || '').trim();
+            if (!username || !password) return null;
+            return {
+              username,
+              password,
+              role: normalizeRole(row.role || 'mod'),
+            };
+          })
+          .filter(Boolean);
+      }
+    } catch (error) {
+      console.warn('[admin-web] ADMIN_WEB_USERS_JSON parse failed:', error.message);
+    }
+  }
+
+  if (users.length === 0) {
+    users.push({
+      username: ADMIN_WEB_USER,
+      password: getAdminLoginPassword(),
+      role: ADMIN_WEB_USER_ROLE,
+    });
+  }
+
+  resolvedAdminUsers = users;
+  return users;
+}
+
+function getUserByCredentials(username, password) {
+  const name = String(username || '').trim();
+  const pass = String(password || '');
+  if (!name || !pass) return null;
+  for (const user of getAdminUsers()) {
+    if (!secureEqual(name, user.username)) continue;
+    if (!secureEqual(pass, user.password)) continue;
+    return {
+      username: user.username,
+      role: normalizeRole(user.role),
+      authMethod: 'password',
+    };
+  }
+  return null;
+}
+
+function getSsoDiscordRole(roleIds = []) {
+  const ownerIds = parseCsvSet(process.env.ADMIN_WEB_SSO_DISCORD_OWNER_ROLE_IDS);
+  const adminIds = parseCsvSet(process.env.ADMIN_WEB_SSO_DISCORD_ADMIN_ROLE_IDS);
+  const modIds = parseCsvSet(process.env.ADMIN_WEB_SSO_DISCORD_MOD_ROLE_IDS);
+  const source = new Set(Array.isArray(roleIds) ? roleIds.map((v) => String(v)) : []);
+  for (const id of ownerIds) {
+    if (source.has(id)) return 'owner';
+  }
+  for (const id of adminIds) {
+    if (source.has(id)) return 'admin';
+  }
+  for (const id of modIds) {
+    if (source.has(id)) return 'mod';
+  }
+  return SSO_DISCORD_DEFAULT_ROLE;
+}
+
+function getDiscordRedirectUri(host, port) {
+  if (SSO_DISCORD_REDIRECT_URI) return SSO_DISCORD_REDIRECT_URI;
+  return `http://${host}:${port}/admin/auth/discord/callback`;
+}
+
+function cleanupDiscordOauthStates() {
+  const now = Date.now();
+  for (const [state, payload] of discordOauthStates.entries()) {
+    if (!payload || now - payload.createdAt > SSO_STATE_TTL_MS) {
+      discordOauthStates.delete(state);
+    }
+  }
 }
 
 function parseCookies(req) {
@@ -447,10 +783,13 @@ function cleanupSessions() {
   }
 }
 
-function createSession() {
+function createSession(user, role = 'mod', authMethod = 'password') {
   cleanupSessions();
   const sessionId = crypto.randomBytes(24).toString('hex');
   sessions.set(sessionId, {
+    user: String(user || ADMIN_WEB_USER),
+    role: normalizeRole(role),
+    authMethod: String(authMethod || 'password'),
     createdAt: Date.now(),
     expiresAt: Date.now() + SESSION_TTL_MS,
   });
@@ -467,16 +806,20 @@ function getSessionId(req) {
   return String(cookies[SESSION_COOKIE_NAME] || '').trim();
 }
 
-function hasValidSession(req) {
+function getSessionFromRequest(req) {
   const sessionId = getSessionId(req);
-  if (!sessionId) return false;
+  if (!sessionId) return null;
   const session = sessions.get(sessionId);
-  if (!session) return false;
+  if (!session) return null;
   if (session.expiresAt <= Date.now()) {
     sessions.delete(sessionId);
-    return false;
+    return null;
   }
-  return true;
+  return session;
+}
+
+function hasValidSession(req) {
+  return getSessionFromRequest(req) != null;
 }
 
 function buildSessionCookie(sessionId) {
@@ -517,11 +860,73 @@ function getRequestToken(req, urlObj) {
   return '';
 }
 
-function isAuthorized(req, urlObj) {
-  if (hasValidSession(req)) return true;
+function getAuthContext(req, urlObj) {
+  const session = getSessionFromRequest(req);
+  if (session) {
+    return {
+      mode: 'session',
+      user: session.user || ADMIN_WEB_USER,
+      role: normalizeRole(session.role || 'mod'),
+      authMethod: session.authMethod || 'password',
+    };
+  }
+
   const requestToken = getRequestToken(req, urlObj);
   const expected = getAdminToken();
-  return requestToken !== '' && secureEqual(requestToken, expected);
+  if (requestToken !== '' && secureEqual(requestToken, expected)) {
+    return {
+      mode: 'token',
+      user: 'token',
+      role: ADMIN_WEB_TOKEN_ROLE,
+      authMethod: 'token',
+    };
+  }
+  return null;
+}
+
+function isAuthorized(req, urlObj) {
+  return getAuthContext(req, urlObj) != null;
+}
+
+function ensureRole(req, urlObj, minRole, res) {
+  const auth = getAuthContext(req, urlObj);
+  if (!auth) {
+    sendJson(res, 401, { ok: false, error: 'Unauthorized' });
+    return null;
+  }
+  if (!hasRoleAtLeast(auth.role, minRole)) {
+    sendJson(res, 403, {
+      ok: false,
+      error: `Forbidden: ${minRole} role required`,
+      role: auth.role,
+    });
+    return null;
+  }
+  return auth;
+}
+
+function requiredRoleForPostPath(pathname) {
+  const ownerOnly = new Set([
+    '/admin/api/config/set',
+    '/admin/api/config/reset',
+    '/admin/api/welcome/clear',
+    '/admin/api/rentbike/reset-now',
+    '/admin/api/backup/create',
+    '/admin/api/backup/restore',
+  ]);
+  if (ownerOnly.has(pathname)) return 'owner';
+
+  const modAllowed = new Set([
+    '/admin/api/ticket/claim',
+    '/admin/api/ticket/close',
+    '/admin/api/moderation/add',
+    '/admin/api/stats/add-kill',
+    '/admin/api/stats/add-death',
+    '/admin/api/stats/add-playtime',
+    '/admin/api/scum/status',
+  ]);
+  if (modAllowed.has(pathname)) return 'mod';
+  return 'admin';
 }
 
 function normalizeOrigin(value) {
@@ -705,16 +1110,234 @@ function normalizeWallet(wallet) {
   };
 }
 
-function buildObservabilitySnapshot() {
+function ensureBackupDir() {
+  fs.mkdirSync(BACKUP_DIR, { recursive: true });
+}
+
+function makeBackupId() {
+  const datePart = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);
+  const randPart = crypto.randomBytes(3).toString('hex');
+  return `backup-${datePart}-${randPart}`;
+}
+
+function sanitizeBackupName(input) {
+  const value = String(input || '').trim();
+  if (!value) return null;
+  if (!/^[a-zA-Z0-9._-]+$/.test(value)) return null;
+  if (value.includes('..')) return null;
+  return value;
+}
+
+function listBackupFiles() {
+  ensureBackupDir();
+  const rows = fs
+    .readdirSync(BACKUP_DIR, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
+    .map((entry) => {
+      const absolute = path.join(BACKUP_DIR, entry.name);
+      const stat = fs.statSync(absolute);
+      return {
+        id: entry.name.replace(/\.json$/i, ''),
+        file: entry.name,
+        sizeBytes: stat.size,
+        createdAt: stat.birthtime?.toISOString?.() || stat.ctime.toISOString(),
+        updatedAt: stat.mtime.toISOString(),
+      };
+    })
+    .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+  return rows;
+}
+
+function saveBackupPayload(payload, backupId = null) {
+  ensureBackupDir();
+  const id = backupId || makeBackupId();
+  const file = `${id}.json`;
+  const absolute = path.join(BACKUP_DIR, file);
+  fs.writeFileSync(absolute, JSON.stringify(payload, jsonReplacer, 2), 'utf8');
+  const stat = fs.statSync(absolute);
+  return {
+    id,
+    file,
+    absolutePath: absolute,
+    sizeBytes: stat.size,
+    createdAt: stat.birthtime?.toISOString?.() || stat.ctime.toISOString(),
+  };
+}
+
+function readBackupPayloadByName(inputName) {
+  const safeName = sanitizeBackupName(inputName);
+  if (!safeName) {
+    throw new Error('Invalid backup name');
+  }
+  const file = safeName.endsWith('.json') ? safeName : `${safeName}.json`;
+  const absolute = path.join(BACKUP_DIR, file);
+  if (!fs.existsSync(absolute)) {
+    throw new Error('Backup file not found');
+  }
+  const raw = fs.readFileSync(absolute, 'utf8');
+  const parsed = JSON.parse(raw);
+  return {
+    file,
+    absolutePath: absolute,
+    payload: parsed,
+  };
+}
+
+async function replacePrismaTablesFromSnapshot(snapshot = {}) {
+  const wallets = Array.isArray(snapshot.wallets) ? snapshot.wallets : [];
+  const shopItems = Array.isArray(snapshot.shopItems) ? snapshot.shopItems : [];
+  const purchases = Array.isArray(snapshot.purchases) ? snapshot.purchases : [];
+
+  await prisma.$transaction([
+    prisma.userWallet.deleteMany({}),
+    prisma.purchase.deleteMany({}),
+    prisma.shopItem.deleteMany({}),
+  ]);
+
+  for (const row of wallets) {
+    if (!row || typeof row !== 'object') continue;
+    const userId = String(row.userId || '').trim();
+    if (!userId) continue;
+    await prisma.userWallet.create({
+      data: {
+        userId,
+        balance: Number(row.balance || 0),
+        lastDaily:
+          row.lastDaily == null || row.lastDaily === ''
+            ? null
+            : BigInt(Math.trunc(Number(row.lastDaily))),
+        lastWeekly:
+          row.lastWeekly == null || row.lastWeekly === ''
+            ? null
+            : BigInt(Math.trunc(Number(row.lastWeekly))),
+      },
+    });
+  }
+
+  for (const row of shopItems) {
+    if (!row || typeof row !== 'object') continue;
+    const id = String(row.id || '').trim();
+    if (!id) continue;
+    const deliveryItems = Array.isArray(row.deliveryItems)
+      ? row.deliveryItems
+          .map((entry) => ({
+            gameItemId: String(entry?.gameItemId || '').trim(),
+            quantity: Math.max(1, Number(entry?.quantity || 1)),
+            iconUrl: entry?.iconUrl ? String(entry.iconUrl) : null,
+          }))
+          .filter((entry) => entry.gameItemId)
+      : [];
+    const primary = deliveryItems[0] || null;
+    const kind = String(row.kind || 'item').toLowerCase() === 'vip' ? 'vip' : 'item';
+    await prisma.shopItem.create({
+      data: {
+        id,
+        name: String(row.name || id),
+        price: Number(row.price || 0),
+        description: String(row.description || ''),
+        kind,
+        gameItemId: kind === 'item'
+          ? String(primary?.gameItemId || row.gameItemId || '').trim() || null
+          : null,
+        quantity: kind === 'item'
+          ? Math.max(1, Number(primary?.quantity || row.quantity || 1))
+          : 1,
+        iconUrl: kind === 'item'
+          ? (primary?.iconUrl || (row.iconUrl ? String(row.iconUrl) : null))
+          : null,
+        deliveryItemsJson:
+          kind === 'item' && deliveryItems.length > 0
+            ? JSON.stringify(deliveryItems)
+            : null,
+      },
+    });
+  }
+
+  for (const row of purchases) {
+    if (!row || typeof row !== 'object') continue;
+    const code = String(row.code || '').trim();
+    const userId = String(row.userId || '').trim();
+    const itemId = String(row.itemId || '').trim();
+    if (!code || !userId || !itemId) continue;
+    await prisma.purchase.create({
+      data: {
+        code,
+        userId,
+        itemId,
+        price: Number(row.price || 0),
+        status: String(row.status || 'pending'),
+        createdAt: row.createdAt ? new Date(row.createdAt) : new Date(),
+      },
+    });
+  }
+}
+
+async function restoreSnapshotData(snapshot = {}) {
+  await replacePrismaTablesFromSnapshot(snapshot);
+
+  replaceTickets(
+    Array.isArray(snapshot.tickets) ? snapshot.tickets : [],
+    Number(snapshot.ticketCounter || 0) || null,
+  );
+  replaceBounties(Array.isArray(snapshot.bounties) ? snapshot.bounties : []);
+  replaceEvents(
+    Array.isArray(snapshot.events) ? snapshot.events : [],
+    Array.isArray(snapshot.events)
+      ? snapshot.events.map((eventRow) => ({
+          eventId: eventRow?.id,
+          participants: Array.isArray(eventRow?.participants)
+            ? eventRow.participants
+            : [],
+        }))
+      : [],
+    Number(snapshot.eventCounter || 0) || null,
+  );
+  replaceLinks(Array.isArray(snapshot.links) ? snapshot.links : []);
+  replaceMemberships(Array.isArray(snapshot.memberships) ? snapshot.memberships : []);
+  replaceWeaponStats(Array.isArray(snapshot.weaponStats) ? snapshot.weaponStats : []);
+  replaceStats(Array.isArray(snapshot.stats) ? snapshot.stats : []);
+  replaceGiveaways(Array.isArray(snapshot.giveaways) ? snapshot.giveaways : []);
+  replacePunishments(Array.isArray(snapshot.punishments) ? snapshot.punishments : []);
+  replaceCodes(Array.isArray(snapshot.redeemCodes) ? snapshot.redeemCodes : []);
+  replaceClaims(Array.isArray(snapshot.welcomeClaims) ? snapshot.welcomeClaims : []);
+  replaceTopPanels(Array.isArray(snapshot.topPanels) ? snapshot.topPanels : []);
+  replaceCarts(Array.isArray(snapshot.carts) ? snapshot.carts : []);
+  replaceStatus(snapshot.status || {});
+  replaceDeliveryAudit(Array.isArray(snapshot.deliveryAudit) ? snapshot.deliveryAudit : []);
+  replaceDeliveryQueue(Array.isArray(snapshot.deliveryQueue) ? snapshot.deliveryQueue : []);
+  replaceDeliveryDeadLetters(Array.isArray(snapshot.deliveryDeadLetters) ? snapshot.deliveryDeadLetters : []);
+  await replaceRentBikeData(
+    Array.isArray(snapshot.dailyRents) ? snapshot.dailyRents : [],
+    Array.isArray(snapshot.rentalVehicles) ? snapshot.rentalVehicles : [],
+  );
+
+  if (snapshot.config && typeof config.setFullConfig === 'function') {
+    config.setFullConfig(snapshot.config);
+  }
+}
+
+function buildObservabilitySnapshot(options = {}) {
+  captureMetricsSeries();
+  const windowMs = clampMetricsWindowMs(options.windowMs);
+  const seriesKeys = Array.isArray(options.seriesKeys) ? options.seriesKeys : [];
   const deliveryMetrics = typeof getDeliveryMetricsSnapshot === 'function'
     ? getDeliveryMetricsSnapshot()
     : { queueLength: listDeliveryQueue(1000).length };
   const loginMetrics = getLoginFailureMetrics();
+  const webhookMetrics = typeof getWebhookMetricsSnapshot === 'function'
+    ? getWebhookMetricsSnapshot()
+    : { attempts: 0, errors: 0, errorRate: 0 };
 
   return {
     generatedAt: new Date().toISOString(),
     delivery: deliveryMetrics,
     adminLogin: loginMetrics,
+    webhook: webhookMetrics,
+    timeSeriesWindowMs: windowMs || METRICS_SERIES_RETENTION_MS,
+    timeSeries: listMetricsSeries({
+      windowMs,
+      keys: seriesKeys,
+    }),
   };
 }
 
@@ -768,9 +1391,12 @@ async function buildSnapshot(client) {
     rentalVehicles,
     rentBikeRuntime: getRentBikeRuntime(),
     deliveryQueue: listDeliveryQueue(500),
+    deliveryDeadLetters: listDeliveryDeadLetters(1000),
     deliveryAudit: listDeliveryAudit(1000),
     observability: buildObservabilitySnapshot(),
+    backups: listBackupFiles().slice(0, 50),
     topPanels: listTopPanels(),
+    carts: listAllCarts(),
     config: normalizeConfig(),
   };
 }
@@ -814,7 +1440,7 @@ async function tryNotifyTicket(client, ticket, action, staffId) {
   }
 }
 
-async function handlePostAction(client, pathname, body, res) {
+async function handlePostAction(client, pathname, body, res, auth) {
   if (pathname === '/admin/api/wallet/set') {
     const userId = requiredString(body, 'userId');
     const balance = asInt(body.balance);
@@ -913,7 +1539,7 @@ async function handlePostAction(client, pathname, body, res) {
 
   if (pathname === '/admin/api/ticket/claim') {
     const channelId = requiredString(body, 'channelId');
-    const staffId = requiredString(body, 'staffId');
+    const staffId = requiredString(body, 'staffId') || auth?.user || 'admin-web';
     if (!channelId || !staffId) return sendJson(res, 400, { ok: false, error: 'Invalid request payload' });
     const ticket = claimTicket(channelId, staffId);
     if (!ticket) return sendJson(res, 404, { ok: false, error: 'Resource not found' });
@@ -933,7 +1559,7 @@ async function handlePostAction(client, pathname, body, res) {
   if (pathname === '/admin/api/bounty/create') {
     const targetName = requiredString(body, 'targetName');
     const amount = asInt(body.amount);
-    const createdBy = requiredString(body, 'createdBy') || 'admin-web';
+    const createdBy = requiredString(body, 'createdBy') || auth?.user || 'admin-web';
     if (!targetName || amount == null) return sendJson(res, 400, { ok: false, error: 'Invalid request payload' });
     const bounty = createBounty({ targetName, amount, createdBy });
     return sendJson(res, 200, { ok: true, data: bounty });
@@ -1056,7 +1682,7 @@ async function handlePostAction(client, pathname, body, res) {
     const userId = requiredString(body, 'userId');
     const type = requiredString(body, 'type');
     const reason = requiredString(body, 'reason');
-    const staffId = requiredString(body, 'staffId') || 'admin-web';
+    const staffId = requiredString(body, 'staffId') || auth?.user || 'admin-web';
     const durationMinutes = body.durationMinutes == null || body.durationMinutes === ''
       ? null
       : asInt(body.durationMinutes);
@@ -1165,6 +1791,35 @@ async function handlePostAction(client, pathname, body, res) {
     return sendJson(res, 200, { ok: true, data: result });
   }
 
+  if (pathname === '/admin/api/delivery/dead-letter/retry') {
+    const code = requiredString(body, 'code');
+    if (!code) {
+      return sendJson(res, 400, { ok: false, error: 'Invalid request payload' });
+    }
+    const result = await retryDeliveryDeadLetter(code, {
+      guildId: requiredString(body, 'guildId') || undefined,
+    });
+    if (!result?.ok) {
+      return sendJson(res, 400, {
+        ok: false,
+        error: result?.reason || 'ไม่สามารถ retry dead-letter ได้',
+      });
+    }
+    return sendJson(res, 200, { ok: true, data: result });
+  }
+
+  if (pathname === '/admin/api/delivery/dead-letter/delete') {
+    const code = requiredString(body, 'code');
+    if (!code) {
+      return sendJson(res, 400, { ok: false, error: 'Invalid request payload' });
+    }
+    const removed = removeDeliveryDeadLetter(code);
+    if (!removed) {
+      return sendJson(res, 404, { ok: false, error: 'Resource not found' });
+    }
+    return sendJson(res, 200, { ok: true, data: removed });
+  }
+
   if (pathname === '/admin/api/delivery/cancel') {
     const code = requiredString(body, 'code');
     if (!code) {
@@ -1178,7 +1833,7 @@ async function handlePostAction(client, pathname, body, res) {
   }
 
   if (pathname === '/admin/api/rentbike/reset-now') {
-    const reason = requiredString(body, 'reason') || 'admin-web';
+    const reason = requiredString(body, 'reason') || `admin-web:${auth?.user || 'unknown'}`;
     await runRentBikeMidnightReset(reason);
     return sendJson(res, 200, {
       ok: true,
@@ -1199,7 +1854,141 @@ async function handlePostAction(client, pathname, body, res) {
     return sendJson(res, 200, { ok: true, data: getStatus() });
   }
 
+  if (pathname === '/admin/api/backup/create') {
+    const note = requiredString(body, 'note') || null;
+    const includeSnapshot = body?.includeSnapshot !== false;
+    const snapshot = includeSnapshot ? await buildSnapshot(client) : {};
+    const payload = {
+      schemaVersion: 1,
+      createdAt: new Date().toISOString(),
+      createdBy: auth?.user || 'unknown',
+      role: auth?.role || 'unknown',
+      note,
+      snapshot,
+    };
+    const saved = saveBackupPayload(payload);
+    return sendJson(res, 200, {
+      ok: true,
+      data: {
+        ...saved,
+        note,
+      },
+    });
+  }
+
+  if (pathname === '/admin/api/backup/restore') {
+    const backupName = requiredString(body, 'backup');
+    const dryRun = body?.dryRun === true;
+    if (!backupName) {
+      return sendJson(res, 400, { ok: false, error: 'Invalid request payload' });
+    }
+    const loaded = readBackupPayloadByName(backupName);
+    const snapshot = loaded?.payload?.snapshot;
+    if (!snapshot || typeof snapshot !== 'object') {
+      return sendJson(res, 400, { ok: false, error: 'Backup payload is invalid' });
+    }
+    if (dryRun) {
+      return sendJson(res, 200, {
+        ok: true,
+        data: {
+          dryRun: true,
+          backup: loaded.file,
+          counts: {
+            wallets: Array.isArray(snapshot.wallets) ? snapshot.wallets.length : 0,
+            shopItems: Array.isArray(snapshot.shopItems) ? snapshot.shopItems.length : 0,
+            purchases: Array.isArray(snapshot.purchases) ? snapshot.purchases.length : 0,
+            tickets: Array.isArray(snapshot.tickets) ? snapshot.tickets.length : 0,
+            bounties: Array.isArray(snapshot.bounties) ? snapshot.bounties.length : 0,
+            events: Array.isArray(snapshot.events) ? snapshot.events.length : 0,
+            carts: Array.isArray(snapshot.carts) ? snapshot.carts.length : 0,
+          },
+        },
+      });
+    }
+    await restoreSnapshotData(snapshot);
+    publishAdminLiveUpdate('backup-restore', {
+      backup: loaded.file,
+      actor: auth?.user || 'unknown',
+      role: auth?.role || 'unknown',
+    });
+    return sendJson(res, 200, {
+      ok: true,
+      data: {
+        restored: true,
+        backup: loaded.file,
+      },
+    });
+  }
+
   return sendJson(res, 404, { ok: false, error: 'Resource not found' });
+}
+
+async function exchangeDiscordOauthCode(code, redirectUri) {
+  const body = new URLSearchParams({
+    client_id: SSO_DISCORD_CLIENT_ID,
+    client_secret: SSO_DISCORD_CLIENT_SECRET,
+    grant_type: 'authorization_code',
+    code,
+    redirect_uri: redirectUri,
+  });
+  const res = await fetch(`${DISCORD_API_BASE}/oauth2/token`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+    },
+    body,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(`Discord token exchange failed (${res.status})`);
+  }
+  if (!data.access_token) {
+    throw new Error('Discord token response missing access_token');
+  }
+  return data;
+}
+
+async function fetchDiscordProfile(accessToken) {
+  const res = await fetch(`${DISCORD_API_BASE}/users/@me`, {
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+    },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.id) {
+    throw new Error('Discord profile fetch failed');
+  }
+  return data;
+}
+
+async function fetchDiscordGuildMember(accessToken, guildId) {
+  if (!guildId) return null;
+  const res = await fetch(
+    `${DISCORD_API_BASE}/users/@me/guilds/${encodeURIComponent(guildId)}/member`,
+    {
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+  if (!res.ok) {
+    throw new Error('Discord guild member fetch failed');
+  }
+  return res.json().catch(() => null);
+}
+
+function buildDiscordAuthorizeUrl({ host, port, state }) {
+  const redirectUri = getDiscordRedirectUri(host, port);
+  const scopes = SSO_DISCORD_GUILD_ID
+    ? 'identify guilds.members.read'
+    : 'identify';
+  const url = new URL(`${DISCORD_API_BASE}/oauth2/authorize`);
+  url.searchParams.set('client_id', SSO_DISCORD_CLIENT_ID);
+  url.searchParams.set('redirect_uri', redirectUri);
+  url.searchParams.set('response_type', 'code');
+  url.searchParams.set('scope', scopes);
+  url.searchParams.set('state', state);
+  return url.toString();
 }
 
 function startAdminWebServer(client) {
@@ -1209,6 +1998,7 @@ function startAdminWebServer(client) {
   const port = asInt(process.env.ADMIN_WEB_PORT, 3200) || 3200;
   const allowedOrigins = buildAllowedOrigins(host, port);
   const token = getAdminToken();
+  ensureMetricsSeriesTimer();
   if (!liveBusBound) {
     adminLiveBus.on('update', (evt) => {
       broadcastLiveUpdate(evt?.type || 'update', evt?.payload || {});
@@ -1230,6 +2020,20 @@ function startAdminWebServer(client) {
       return res.end();
     }
 
+    if (req.method === 'GET' && pathname === '/healthz') {
+      return sendJson(res, 200, {
+        ok: true,
+        data: {
+          now: new Date().toISOString(),
+          service: 'admin-web',
+          uptimeSec: Math.round(process.uptime()),
+          delivery: typeof getDeliveryMetricsSnapshot === 'function'
+            ? getDeliveryMetricsSnapshot()
+            : null,
+        },
+      });
+    }
+
     if (req.method === 'GET' && (pathname === '/admin/login' || pathname === '/admin/login/')) {
       if (isAuthorized(req, urlObj)) {
         res.writeHead(302, { Location: '/admin' });
@@ -1244,6 +2048,77 @@ function startAdminWebServer(client) {
         return res.end();
       }
       return sendHtml(res, 200, getDashboardHtml());
+    }
+
+    if (req.method === 'GET' && pathname === '/admin/auth/discord/start') {
+      if (!SSO_DISCORD_ACTIVE) {
+        return sendText(res, 404, 'SSO is disabled');
+      }
+      cleanupDiscordOauthStates();
+      const state = crypto.randomBytes(18).toString('hex');
+      discordOauthStates.set(state, {
+        createdAt: Date.now(),
+      });
+      const authorizeUrl = buildDiscordAuthorizeUrl({
+        host,
+        port,
+        state,
+      });
+      res.writeHead(302, { Location: authorizeUrl });
+      return res.end();
+    }
+
+    if (req.method === 'GET' && pathname === '/admin/auth/discord/callback') {
+      if (!SSO_DISCORD_ACTIVE) {
+        return sendText(res, 404, 'SSO is disabled');
+      }
+      try {
+        cleanupDiscordOauthStates();
+        const code = String(urlObj.searchParams.get('code') || '').trim();
+        const state = String(urlObj.searchParams.get('state') || '').trim();
+        const errorText = String(urlObj.searchParams.get('error') || '').trim();
+        if (errorText) {
+          res.writeHead(302, {
+            Location: `/admin/login?error=${encodeURIComponent('Discord authorization denied')}`,
+          });
+          return res.end();
+        }
+        if (!code || !state || !discordOauthStates.has(state)) {
+          res.writeHead(302, {
+            Location: `/admin/login?error=${encodeURIComponent('Invalid SSO state')}`,
+          });
+          return res.end();
+        }
+        discordOauthStates.delete(state);
+
+        const redirectUri = getDiscordRedirectUri(host, port);
+        const tokenResult = await exchangeDiscordOauthCode(code, redirectUri);
+        const profile = await fetchDiscordProfile(tokenResult.access_token);
+        let resolvedRole = SSO_DISCORD_DEFAULT_ROLE;
+        if (SSO_DISCORD_GUILD_ID) {
+          const member = await fetchDiscordGuildMember(
+            tokenResult.access_token,
+            SSO_DISCORD_GUILD_ID,
+          );
+          resolvedRole = getSsoDiscordRole(member?.roles || []);
+        }
+
+        const username = profile.username && profile.discriminator
+          ? `${profile.username}#${profile.discriminator}`
+          : String(profile.username || profile.id);
+        const sessionId = createSession(username, resolvedRole, 'discord-sso');
+        res.writeHead(302, {
+          Location: '/admin',
+          'Set-Cookie': buildSessionCookie(sessionId),
+        });
+        return res.end();
+      } catch (error) {
+        console.error('[admin-web] discord sso callback failed', error);
+        res.writeHead(302, {
+          Location: `/admin/login?error=${encodeURIComponent('Discord SSO failed')}`,
+        });
+        return res.end();
+      }
     }
 
     if (pathname.startsWith('/admin/api/')) {
@@ -1286,22 +2161,38 @@ function startAdminWebServer(client) {
             return sendJson(res, 400, { ok: false, error: 'Invalid request payload' });
           }
 
-          const usernameOk = secureEqual(username, ADMIN_WEB_USER);
-          const passwordOk = secureEqual(password, getAdminLoginPassword());
-          if (!usernameOk || !passwordOk) {
+          const user = getUserByCredentials(username, password);
+          if (!user) {
             recordLoginAttempt(req, false);
             return sendJson(res, 401, { ok: false, error: 'Invalid username or password' });
           }
 
+          if (ADMIN_WEB_2FA_ACTIVE) {
+            const otp = requiredString(body, 'otp');
+            if (!otp) {
+              recordLoginAttempt(req, false);
+              return sendJson(res, 401, {
+                ok: false,
+                error: 'OTP required',
+                requiresOtp: true,
+              });
+            }
+            if (!verifyTotpCode(ADMIN_WEB_2FA_SECRET, otp, ADMIN_WEB_2FA_WINDOW_STEPS)) {
+              recordLoginAttempt(req, false);
+              return sendJson(res, 401, { ok: false, error: 'Invalid 2FA code' });
+            }
+          }
+
           recordLoginAttempt(req, true);
-          const sessionId = createSession();
+          const sessionId = createSession(user.username, user.role, user.authMethod);
           return sendJson(
             res,
             200,
             {
               ok: true,
               data: {
-                user: ADMIN_WEB_USER,
+                user: user.username,
+                role: user.role,
                 sessionTtlHours: Math.round(SESSION_TTL_MS / (60 * 60 * 1000)),
               },
             },
@@ -1322,46 +2213,74 @@ function startAdminWebServer(client) {
           );
         }
 
+        if (req.method === 'GET' && pathname === '/admin/api/auth/providers') {
+          return sendJson(res, 200, {
+            ok: true,
+            data: {
+              password: true,
+              discordSso: SSO_DISCORD_ACTIVE,
+              twoFactor: ADMIN_WEB_2FA_ACTIVE,
+            },
+          });
+        }
+
         if (req.method === 'GET' && pathname === '/admin/api/me') {
-          if (!isAuthorized(req, urlObj)) {
+          const auth = getAuthContext(req, urlObj);
+          if (!auth) {
             return sendJson(res, 401, { ok: false, error: 'Unauthorized' });
           }
           return sendJson(res, 200, {
             ok: true,
             data: {
-              user: ADMIN_WEB_USER,
+              user: auth.user,
+              role: auth.role,
+              authMethod: auth.authMethod,
               session: hasValidSession(req),
             },
           });
         }
 
-        if (!isAuthorized(req, urlObj)) {
-          return sendJson(res, 401, { ok: false, error: 'Unauthorized' });
-        }
-
         if (req.method === 'GET' && pathname === '/admin/api/health') {
+          const auth = ensureRole(req, urlObj, 'mod', res);
+          if (!auth) return undefined;
           return sendJson(res, 200, {
             ok: true,
             data: {
               now: new Date().toISOString(),
               guilds: client.guilds.cache.size,
+              role: auth.role,
             },
           });
         }
 
         if (req.method === 'GET' && pathname === '/admin/api/observability') {
+          const auth = ensureRole(req, urlObj, 'mod', res);
+          if (!auth) return undefined;
+          const windowMs = clampMetricsWindowMs(
+            urlObj.searchParams.get('windowMs'),
+          );
+          const seriesKeys = parseMetricsSeriesKeys(
+            urlObj.searchParams.get('series'),
+          );
           return sendJson(res, 200, {
             ok: true,
-            data: buildObservabilitySnapshot(),
+            data: buildObservabilitySnapshot({
+              windowMs,
+              seriesKeys,
+            }),
           });
         }
 
         if (req.method === 'GET' && pathname === '/admin/api/live') {
+          const auth = ensureRole(req, urlObj, 'mod', res);
+          if (!auth) return undefined;
           openLiveStream(req, res);
           return undefined;
         }
 
         if (req.method === 'GET' && pathname === '/admin/api/items/catalog') {
+          const auth = ensureRole(req, urlObj, 'mod', res);
+          if (!auth) return undefined;
           const query = String(urlObj.searchParams.get('q') || '').trim();
           const limit = asInt(urlObj.searchParams.get('limit'), 120);
           const items = listItemIconCatalog(query, limit || 120);
@@ -1375,14 +2294,38 @@ function startAdminWebServer(client) {
           });
         }
 
+        if (req.method === 'GET' && pathname === '/admin/api/delivery/dead-letter') {
+          const auth = ensureRole(req, urlObj, 'mod', res);
+          if (!auth) return undefined;
+          const limit = asInt(urlObj.searchParams.get('limit'), 500) || 500;
+          return sendJson(res, 200, {
+            ok: true,
+            data: listDeliveryDeadLetters(limit),
+          });
+        }
+
         if (req.method === 'GET' && pathname === '/admin/api/snapshot') {
+          const auth = ensureRole(req, urlObj, 'mod', res);
+          if (!auth) return undefined;
           const data = await buildSnapshot(client);
           return sendJson(res, 200, { ok: true, data });
         }
 
+        if (req.method === 'GET' && pathname === '/admin/api/backup/list') {
+          const auth = ensureRole(req, urlObj, 'owner', res);
+          if (!auth) return undefined;
+          return sendJson(res, 200, {
+            ok: true,
+            data: listBackupFiles(),
+          });
+        }
+
         if (req.method === 'POST') {
+          const requiredRole = requiredRoleForPostPath(pathname);
+          const auth = ensureRole(req, urlObj, requiredRole, res);
+          if (!auth) return undefined;
           const body = await readJsonBody(req);
-          const out = await handlePostAction(client, pathname, body, res);
+          const out = await handlePostAction(client, pathname, body, res, auth);
           if (
             res.statusCode >= 200 &&
             res.statusCode < 300 &&
@@ -1390,7 +2333,11 @@ function startAdminWebServer(client) {
             pathname !== '/admin/api/login' &&
             pathname !== '/admin/api/logout'
           ) {
-            publishAdminLiveUpdate('admin-action', { path: pathname });
+            publishAdminLiveUpdate('admin-action', {
+              path: pathname,
+              user: auth.user,
+              role: auth.role,
+            });
           }
           return out;
         }
@@ -1413,9 +2360,19 @@ function startAdminWebServer(client) {
     console.error('[admin-web] เซิร์ฟเวอร์ผิดพลาด', err);
   });
 
+  adminServer.on('close', () => {
+    closeAllLiveStreams();
+    stopMetricsSeriesTimer();
+    adminServer = null;
+  });
+
   adminServer.listen(port, host, () => {
     console.log(`[admin-web] เปิดใช้งานที่ http://${host}:${port}/admin`);
-    console.log(`[admin-web] login user: ${ADMIN_WEB_USER}`);
+    console.log(
+      `[admin-web] login users: ${getAdminUsers()
+        .map((user) => `${user.username}(${user.role})`)
+        .join(', ')}`,
+    );
     if ((host !== '127.0.0.1' && host !== 'localhost') && !SESSION_SECURE_COOKIE) {
       console.warn(
         '[admin-web] SESSION cookie is not secure. Set ADMIN_WEB_SECURE_COOKIE=true for HTTPS production.',
@@ -1428,6 +2385,18 @@ function startAdminWebServer(client) {
     }
     if (!process.env.ADMIN_WEB_TOKEN) {
       console.log(`[admin-web] โทเค็น/รหัสผ่านชั่วคราว: ${token}`);
+    }
+    if (ADMIN_WEB_2FA_ACTIVE) {
+      console.log('[admin-web] 2FA (TOTP) is enabled');
+    } else if (ADMIN_WEB_2FA_ENABLED) {
+      console.warn('[admin-web] ADMIN_WEB_2FA_ENABLED=true but ADMIN_WEB_2FA_SECRET is empty');
+    }
+    if (SSO_DISCORD_ACTIVE) {
+      console.log(
+        `[admin-web] Discord SSO enabled: http://${host}:${port}/admin/auth/discord/start`,
+      );
+    } else if (SSO_DISCORD_ENABLED) {
+      console.warn('[admin-web] ADMIN_WEB_SSO_DISCORD_ENABLED=true but client id/secret missing');
     }
   });
 

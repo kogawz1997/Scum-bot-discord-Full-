@@ -63,9 +63,23 @@ function clearDeliveryAudit() {
   scheduleSave();
 }
 
+function replaceDeliveryAudit(nextAudits = []) {
+  audits.length = 0;
+  for (const row of Array.isArray(nextAudits) ? nextAudits : []) {
+    const normalized = normalizeAudit(row);
+    if (!normalized) continue;
+    audits.push(normalized);
+  }
+  if (audits.length > MAX_AUDIT_ITEMS) {
+    audits.splice(0, audits.length - MAX_AUDIT_ITEMS);
+  }
+  scheduleSave();
+  return audits.length;
+}
+
 module.exports = {
   addDeliveryAudit,
   listDeliveryAudit,
   clearDeliveryAudit,
+  replaceDeliveryAudit,
 };
-

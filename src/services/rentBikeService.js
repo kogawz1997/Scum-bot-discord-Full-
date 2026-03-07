@@ -317,7 +317,7 @@ async function processSingleOrder(orderId) {
 
     await sendRentLog(
       order.guildId || null,
-      `🏍️ **RentBike delivered** | order: \`${orderId}\` | userKey: \`${order.userKey}\` | vehicle: \`${selected.id}\``,
+      `[RENTBIKE] Delivered | order: \`${orderId}\` | userKey: \`${order.userKey}\` | vehicle: \`${selected.id}\``,
     );
   } catch (error) {
     const message = String(error?.message || 'Unknown rentbike error');
@@ -327,7 +327,7 @@ async function processSingleOrder(orderId) {
     });
     await sendRentLog(
       order.guildId || null,
-      `❌ **RentBike failed** | order: \`${orderId}\` | userKey: \`${order.userKey}\` | reason: ${message}`,
+      `[RENTBIKE] Failed | order: \`${orderId}\` | userKey: \`${order.userKey}\` | reason: ${message}`,
     );
   }
 }
@@ -339,14 +339,14 @@ async function requestRentBike(discordUserId, guildId = null) {
     return {
       ok: false,
       reason: 'not-configured',
-      message: 'ยังไม่ตั้งค่า rentBike.vehicle.spawnId ใน config',
+      message: 'rentBike.vehicle.spawnId is not configured.',
     };
   }
   if (!getRconTemplate(settings)) {
     return {
       ok: false,
       reason: 'rcon-template-missing',
-      message: 'ยังไม่ตั้งค่า RCON_EXEC_TEMPLATE',
+      message: 'RCON_EXEC_TEMPLATE is not configured.',
     };
   }
 
@@ -354,7 +354,7 @@ async function requestRentBike(discordUserId, guildId = null) {
     return {
       ok: false,
       reason: 'maintenance',
-      message: 'ระบบกำลังรีเซ็ตรถเช่า กรุณาลองใหม่อีกสักครู่',
+      message: 'Rent bike service is in maintenance mode. Please try again shortly.',
     };
   }
 
@@ -363,7 +363,7 @@ async function requestRentBike(discordUserId, guildId = null) {
     return {
       ok: false,
       reason: 'link-required',
-      message: 'ต้องลิงก์ SteamID ก่อนใช้งาน (`/linksteam set ...`)',
+      message: 'SteamID link is required first (`/linksteam set ...`).',
     };
   }
 
@@ -374,7 +374,7 @@ async function requestRentBike(discordUserId, guildId = null) {
     return {
       ok: false,
       reason: 'daily-limit',
-      message: `วันนี้คุณใช้สิทธิ์เช่ามอไซไปแล้ว (รีเซ็ต ${getNextResetText()})`,
+      message: `You already used today's rent quota (reset ${getNextResetText()}).`,
     };
   }
 
@@ -388,7 +388,7 @@ async function requestRentBike(discordUserId, guildId = null) {
         return {
           ok: false,
           reason: 'cooldown',
-          message: `กรุณารออีก ${remainMin} นาทีแล้วค่อยเช่าใหม่`,
+          message: `Please wait ${remainMin} more minute(s) before renting again.`,
         };
       }
     }
@@ -413,7 +413,7 @@ async function requestRentBike(discordUserId, guildId = null) {
       return {
         ok: false,
         reason: 'db-error',
-        message: `สร้างออเดอร์เช่ามอไซไม่สำเร็จ: ${String(error?.message || 'unknown error')}`,
+        message: `Failed to create rent bike order: ${String(error?.message || 'unknown error')}`,
       };
     }
   }
@@ -424,7 +424,7 @@ async function requestRentBike(discordUserId, guildId = null) {
     ok: true,
     orderId,
     userKey,
-    message: `รับคำสั่งเช่ามอไซแล้ว (order: \`${orderId}\`) ระบบกำลังจัดส่งรถ`,
+    message: `Rent bike request accepted (order: \`${orderId}\`), delivery is in queue.`,
   };
 }
 

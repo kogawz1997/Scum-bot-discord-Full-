@@ -57,11 +57,31 @@ function removeGiveaway(messageId) {
   scheduleSave();
 }
 
+function replaceGiveaways(nextGiveaways = []) {
+  giveaways.clear();
+  for (const row of Array.isArray(nextGiveaways) ? nextGiveaways : []) {
+    if (!row || typeof row !== 'object') continue;
+    const messageId = String(row.messageId || '').trim();
+    if (!messageId) continue;
+    giveaways.set(messageId, {
+      messageId,
+      channelId: row.channelId ? String(row.channelId) : null,
+      guildId: row.guildId ? String(row.guildId) : null,
+      prize: row.prize ? String(row.prize) : null,
+      winnersCount: Number(row.winnersCount || 1),
+      endsAt: row.endsAt ? new Date(row.endsAt) : null,
+      entrants: new Set(Array.isArray(row.entrants) ? row.entrants.map((v) => String(v)) : []),
+    });
+  }
+  scheduleSave();
+  return giveaways.size;
+}
+
 module.exports = {
   giveaways,
   createGiveaway,
   getGiveaway,
   addEntrant,
   removeGiveaway,
+  replaceGiveaways,
 };
-

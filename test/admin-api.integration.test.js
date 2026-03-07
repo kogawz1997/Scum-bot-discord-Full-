@@ -21,6 +21,8 @@ test('admin API auth + validation integration flow', async (t) => {
   process.env.ADMIN_WEB_USER = 'admin_test';
   process.env.ADMIN_WEB_PASSWORD = 'pass_test';
   process.env.ADMIN_WEB_TOKEN = 'token_test';
+  process.env.ADMIN_WEB_USERS_JSON = '';
+  process.env.ADMIN_WEB_2FA_ENABLED = 'false';
 
   const fakeClient = {
     guilds: {
@@ -130,4 +132,97 @@ test('admin API auth + validation integration flow', async (t) => {
   assert.equal(observability.data.ok, true);
   assert.equal(typeof observability.data.data.delivery.queueLength, 'number');
   assert.equal(typeof observability.data.data.adminLogin.failures, 'number');
+  assert.equal(typeof observability.data.data.webhook.errorRate, 'number');
+  assert.equal(
+    typeof observability.data.data.timeSeriesWindowMs,
+    'number',
+  );
+
+  const observabilityFiltered = await request(
+    '/admin/api/observability?windowMs=60000&series=loginFailures,webhookErrorRate',
+    'GET',
+    null,
+    cookie,
+  );
+  assert.equal(observabilityFiltered.res.status, 200);
+  assert.equal(observabilityFiltered.data.ok, true);
+  assert.deepEqual(
+    Object.keys(observabilityFiltered.data.data.timeSeries || {}).sort(),
+    ['loginFailures', 'webhookErrorRate'],
+  );
+  assert.equal(observabilityFiltered.data.data.timeSeriesWindowMs, 60000);
+
+  const healthz = await request('/healthz');
+  assert.equal(healthz.res.status, 200);
+  assert.equal(healthz.data.ok, true);
+  assert.equal(healthz.data.data.service, 'admin-web');
+
+  const deadLetterList = await request('/admin/api/delivery/dead-letter', 'GET', null, cookie);
+  assert.equal(deadLetterList.res.status, 200);
+  assert.equal(deadLetterList.data.ok, true);
+  assert.ok(Array.isArray(deadLetterList.data.data));
+
+  const probeUserId = '999999999999999991';
+  const walletSetA = await request('/admin/api/wallet/set', 'POST', {
+    userId: probeUserId,
+    balance: 123456,
+  }, cookie);
+  assert.equal(walletSetA.res.status, 200);
+  assert.equal(walletSetA.data.ok, true);
+
+  const backupCreate = await request('/admin/api/backup/create', 'POST', {
+    note: 'integration-test-backup',
+    includeSnapshot: true,
+  }, cookie);
+  assert.equal(backupCreate.res.status, 200);
+  assert.equal(backupCreate.data.ok, true);
+  assert.ok(String(backupCreate.data.data.file || '').endsWith('.json'));
+  const backupFile = String(backupCreate.data.data.file || '').trim();
+  assert.ok(backupFile.length > 0);
+
+  const backupList = await request('/admin/api/backup/list', 'GET', null, cookie);
+  assert.equal(backupList.res.status, 200);
+  assert.equal(backupList.data.ok, true);
+  assert.ok(Array.isArray(backupList.data.data));
+  assert.ok(
+    backupList.data.data.some((row) => String(row?.file || '') === backupFile),
+    'expected created backup to appear in list',
+  );
+
+  const walletSetB = await request('/admin/api/wallet/set', 'POST', {
+    userId: probeUserId,
+    balance: 654321,
+  }, cookie);
+  assert.equal(walletSetB.res.status, 200);
+  assert.equal(walletSetB.data.ok, true);
+
+  const snapshotBeforeRestore = await request('/admin/api/snapshot', 'GET', null, cookie);
+  assert.equal(snapshotBeforeRestore.res.status, 200);
+  const walletBeforeRestore = (snapshotBeforeRestore.data?.data?.wallets || []).find(
+    (row) => String(row?.userId || '') === probeUserId,
+  );
+  assert.equal(Number(walletBeforeRestore?.balance || 0), 654321);
+
+  const restoreDryRun = await request('/admin/api/backup/restore', 'POST', {
+    backup: backupFile,
+    dryRun: true,
+  }, cookie);
+  assert.equal(restoreDryRun.res.status, 200);
+  assert.equal(restoreDryRun.data.ok, true);
+  assert.equal(restoreDryRun.data.data.dryRun, true);
+
+  const restoreLive = await request('/admin/api/backup/restore', 'POST', {
+    backup: backupFile,
+    dryRun: false,
+  }, cookie);
+  assert.equal(restoreLive.res.status, 200);
+  assert.equal(restoreLive.data.ok, true);
+  assert.equal(restoreLive.data.data.restored, true);
+
+  const snapshotAfterRestore = await request('/admin/api/snapshot', 'GET', null, cookie);
+  assert.equal(snapshotAfterRestore.res.status, 200);
+  const walletAfterRestore = (snapshotAfterRestore.data?.data?.wallets || []).find(
+    (row) => String(row?.userId || '') === probeUserId,
+  );
+  assert.equal(Number(walletAfterRestore?.balance || 0), 123456);
 });

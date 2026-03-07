@@ -106,10 +106,6 @@ function buildShopButtons(itemId) {
       .setCustomId(`panel-shop-cart:${itemId}`)
       .setLabel('เพิ่มลงตะกร้า')
       .setStyle(ButtonStyle.Primary),
-    new ButtonBuilder()
-      .setCustomId('panel-shop-checkout')
-      .setLabel('ชำระเงิน')
-      .setStyle(ButtonStyle.Secondary),
   );
 }
 
@@ -207,6 +203,19 @@ module.exports = {
             .setDescription('ลิงก์รูปภาพ (ไม่บังคับ)')
             .setRequired(false),
         ),
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName('shop-refresh-buttons')
+        .setDescription('ลบปุ่มชำระเงินเก่าจากโพสต์ร้านค้าในช่องนี้')
+        .addIntegerOption((option) =>
+          option
+            .setName('limit')
+            .setDescription('จำนวนข้อความย้อนหลังที่ต้องการสแกน (1-100)')
+            .setMinValue(1)
+            .setMaxValue(100)
+            .setRequired(false),
+        ),
     ),
 
   async execute(interaction) {
@@ -228,6 +237,7 @@ module.exports = {
     if (sub === 'top-economy') return postTopEconomy(interaction);
     if (sub === 'shop-card') return postShopCard(interaction);
     if (sub === 'shop-feed') return postShopFeed(interaction);
+    if (sub === 'shop-refresh-buttons') return refreshShopButtons(interaction);
 
     return interaction.reply({
       content: 'ไม่พบคำสั่งย่อย',
@@ -430,4 +440,94 @@ async function postShopFeed(interaction) {
     const row = buildShopButtons(item.id);
     await interaction.channel.send({ embeds: [embed], components: [row] });
   }
+}
+
+function isLegacyCheckoutRow(row) {
+  if (!row?.components?.length) return false;
+  return row.components.some((component) => component.customId === 'panel-shop-checkout');
+}
+
+function isShopPanelMessage(message) {
+  if (!message?.components?.length) return false;
+  return message.components.some((row) =>
+    row.components.some(
+      (component) =>
+        component.customId?.startsWith('panel-shop-buy:') ||
+        component.customId?.startsWith('panel-shop-cart:'),
+    ),
+  );
+}
+
+async function refreshShopButtons(interaction) {
+  if (!interaction.deferred && !interaction.replied) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  }
+
+  const limit = interaction.options.getInteger('limit') || 50;
+  const channel = interaction.channel;
+  if (!channel || !channel.isTextBased?.()) {
+    return replyOrEdit(interaction, {
+      content: 'คำสั่งนี้ต้องใช้ในช่องข้อความเท่านั้น',
+    });
+  }
+
+  let messages;
+  try {
+    messages = await channel.messages.fetch({ limit });
+  } catch (error) {
+    return replyOrEdit(interaction, {
+      content: `อ่านข้อความย้อนหลังไม่สำเร็จ: ${error.message}`,
+    });
+  }
+
+  let scanned = 0;
+  let updated = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  for (const message of messages.values()) {
+    scanned += 1;
+    if (message.author?.id !== interaction.client.user.id) {
+      skipped += 1;
+      continue;
+    }
+    if (!isShopPanelMessage(message)) {
+      skipped += 1;
+      continue;
+    }
+    if (!message.components.some((row) => isLegacyCheckoutRow(row))) {
+      skipped += 1;
+      continue;
+    }
+
+    const nextRows = message.components
+      .map((row) => {
+        const keep = row.components.filter(
+          (component) => component.customId !== 'panel-shop-checkout',
+        );
+        if (keep.length === 0) return null;
+        return {
+          type: 1,
+          components: keep.map((component) => component.toJSON()),
+        };
+      })
+      .filter(Boolean);
+
+    try {
+      await message.edit({ components: nextRows });
+      updated += 1;
+    } catch (error) {
+      failed += 1;
+      console.error('[panel] failed to refresh shop buttons:', error.message);
+    }
+  }
+
+  return replyOrEdit(interaction, {
+    content:
+      `รีเฟรชปุ่มร้านค้าเรียบร้อย\n` +
+      `- สแกน: ${scanned} ข้อความ\n` +
+      `- แก้ไขสำเร็จ: ${updated} ข้อความ\n` +
+      `- ข้าม: ${skipped} ข้อความ\n` +
+      `- ล้มเหลว: ${failed} ข้อความ`,
+  });
 }

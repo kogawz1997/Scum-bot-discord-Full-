@@ -72,11 +72,41 @@ function closeTicket(channelId) {
   return t;
 }
 
+function replaceTickets(nextTickets = [], nextCounter = null) {
+  tickets.clear();
+  for (const row of Array.isArray(nextTickets) ? nextTickets : []) {
+    if (!row || typeof row !== 'object') continue;
+    const channelId = String(row.channelId || '').trim();
+    if (!channelId) continue;
+    tickets.set(channelId, {
+      id: Number(row.id || 0) || 0,
+      guildId: row.guildId ? String(row.guildId) : null,
+      userId: row.userId ? String(row.userId) : null,
+      channelId,
+      category: row.category ? String(row.category) : null,
+      reason: row.reason ? String(row.reason) : null,
+      status: String(row.status || 'open'),
+      claimedBy: row.claimedBy ? String(row.claimedBy) : null,
+      createdAt: row.createdAt ? new Date(row.createdAt) : new Date(),
+      closedAt: row.closedAt ? new Date(row.closedAt) : null,
+    });
+  }
+
+  if (Number.isFinite(Number(nextCounter)) && Number(nextCounter) > 0) {
+    ticketCounter = Math.max(1, Math.trunc(Number(nextCounter)));
+  } else {
+    const maxId = Math.max(0, ...Array.from(tickets.values()).map((t) => Number(t.id || 0)));
+    ticketCounter = maxId + 1;
+  }
+  scheduleSave();
+  return tickets.size;
+}
+
 module.exports = {
   tickets,
   createTicket,
   getTicketByChannel,
   claimTicket,
   closeTicket,
+  replaceTickets,
 };
-

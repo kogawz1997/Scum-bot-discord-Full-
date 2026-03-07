@@ -15,7 +15,42 @@ const WEBHOOK_REQUEST_TIMEOUT_MS = Math.max(
   1000,
   Number(process.env.SCUM_WEBHOOK_REQUEST_TIMEOUT_MS || 10_000),
 );
+const WEBHOOK_METRICS_WINDOW_MS = Math.max(
+  60 * 1000,
+  Number(process.env.SCUM_WEBHOOK_ERROR_ALERT_WINDOW_MS || 5 * 60 * 1000),
+);
 const ALLOWED_TYPES = new Set(['status', 'join', 'leave', 'kill', 'restart']);
+const webhookOutcomes = [];
+
+function compactWebhookOutcomes(now = Date.now()) {
+  const cutoff = now - WEBHOOK_METRICS_WINDOW_MS;
+  while (webhookOutcomes.length > 0 && webhookOutcomes[0].at < cutoff) {
+    webhookOutcomes.shift();
+  }
+}
+
+function recordWebhookOutcome(ok) {
+  webhookOutcomes.push({
+    at: Date.now(),
+    ok: ok === true,
+  });
+  compactWebhookOutcomes();
+}
+
+function getWebhookMetricsSnapshot(now = Date.now()) {
+  compactWebhookOutcomes(now);
+  const attempts = webhookOutcomes.length;
+  const errors = webhookOutcomes.reduce(
+    (sum, item) => sum + (item.ok ? 0 : 1),
+    0,
+  );
+  return {
+    windowMs: WEBHOOK_METRICS_WINDOW_MS,
+    attempts,
+    errors,
+    errorRate: attempts > 0 ? errors / attempts : 0,
+  };
+}
 
 function secureEqual(a, b) {
   const left = Buffer.from(String(a || ''));
@@ -70,6 +105,7 @@ function startScumServer(client) {
 
     const contentType = String(req.headers['content-type'] || '').toLowerCase();
     if (!contentType.includes('application/json')) {
+      recordWebhookOutcome(false);
       res.writeHead(415);
       return res.end('Unsupported Media Type');
     }
@@ -84,23 +120,27 @@ function startScumServer(client) {
       const data = await readJsonBody(req, WEBHOOK_MAX_BODY_BYTES);
       const eventType = String(data.type || '').trim().toLowerCase();
       if (!ALLOWED_TYPES.has(eventType)) {
+        recordWebhookOutcome(false);
         res.writeHead(400);
         return res.end('Invalid event type');
       }
 
       if (secret && !secureEqual(data.secret, secret)) {
+        recordWebhookOutcome(false);
         res.writeHead(403);
         return res.end('Forbidden');
       }
 
       const guildId = String(data.guildId || '').trim();
       if (!guildId) {
+        recordWebhookOutcome(false);
         res.writeHead(400);
         return res.end('Missing guildId');
       }
 
       const guild = client.guilds.cache.get(guildId);
       if (!guild) {
+        recordWebhookOutcome(false);
         res.writeHead(400);
         return res.end('Unknown guild');
       }
@@ -131,6 +171,7 @@ function startScumServer(client) {
         await sendRestartAlert(guild, data.message || 'เซิร์ฟเวอร์กำลังรีสตาร์ท');
       }
 
+      recordWebhookOutcome(true);
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       return res.end(JSON.stringify({ ok: true }));
     } catch (error) {
@@ -139,6 +180,7 @@ function startScumServer(client) {
         : error?.message === 'Invalid JSON payload'
           ? 400
           : 500;
+      recordWebhookOutcome(false);
       console.error('Error in SCUM webhook handler', error);
       res.writeHead(statusCode);
       return res.end(statusCode === 500 ? 'Internal error' : error.message);
@@ -170,4 +212,5 @@ function startScumServer(client) {
 
 module.exports = {
   startScumServer,
+  getWebhookMetricsSnapshot,
 };

@@ -98,6 +98,26 @@ function listCodes() {
   }));
 }
 
+function replaceCodes(nextCodes = []) {
+  codes.clear();
+  for (const row of Array.isArray(nextCodes) ? nextCodes : []) {
+    if (!row || typeof row !== 'object') continue;
+    const code = String(row.code || '').trim().toUpperCase();
+    if (!code) continue;
+    const type = String(row.type || '').trim();
+    if (!['coins', 'item'].includes(type)) continue;
+    codes.set(code, {
+      type,
+      amount: row.amount == null ? null : Number(row.amount),
+      itemId: row.itemId ? String(row.itemId) : null,
+      usedBy: row.usedBy ? String(row.usedBy) : null,
+      usedAt: row.usedAt ? new Date(row.usedAt) : null,
+    });
+  }
+  scheduleSave();
+  return codes.size;
+}
+
 module.exports = {
   getCode,
   markUsed,
@@ -106,4 +126,5 @@ module.exports = {
   resetCodeUsage,
   listCodes,
   codes,
+  replaceCodes,
 };

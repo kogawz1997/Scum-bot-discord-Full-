@@ -135,6 +135,18 @@ function listTopPanels() {
   }));
 }
 
+function replaceTopPanels(nextPanels = []) {
+  panelsByGuild.clear();
+  for (const row of Array.isArray(nextPanels) ? nextPanels : []) {
+    if (!row || typeof row !== 'object') continue;
+    const guildId = String(row.guildId || '').trim();
+    if (!guildId) continue;
+    panelsByGuild.set(guildId, normalizeState(row));
+  }
+  scheduleSave();
+  return panelsByGuild.size;
+}
+
 module.exports = {
   normalizePanelType,
   setTopPanelMessage,
@@ -142,4 +154,5 @@ module.exports = {
   removeTopPanelMessage,
   getTopPanelsForGuild,
   listTopPanels,
+  replaceTopPanels,
 };

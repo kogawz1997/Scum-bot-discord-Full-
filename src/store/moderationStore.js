@@ -66,10 +66,36 @@ function listAllPunishments() {
   }));
 }
 
+function replacePunishments(nextRows = []) {
+  punishments.clear();
+  for (const row of Array.isArray(nextRows) ? nextRows : []) {
+    if (!row || typeof row !== 'object') continue;
+    const userId = String(row.userId || '').trim();
+    if (!userId) continue;
+    const entries = Array.isArray(row.entries) ? row.entries : [];
+    punishments.set(
+      userId,
+      entries.map((entry) => ({
+        type: String(entry?.type || 'note'),
+        reason: String(entry?.reason || ''),
+        staffId: String(entry?.staffId || ''),
+        durationMinutes:
+          entry?.durationMinutes == null
+            ? null
+            : Number(entry.durationMinutes),
+        createdAt: entry?.createdAt ? new Date(entry.createdAt) : new Date(),
+      })),
+    );
+  }
+  scheduleSave();
+  return punishments.size;
+}
+
 module.exports = {
   pushMessage,
   getRecentMessages,
   addPunishment,
   getPunishments,
   listAllPunishments,
+  replacePunishments,
 };

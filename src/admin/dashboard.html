@@ -381,49 +381,6 @@
       gap: 10px;
     }
 
-    .section-map {
-      margin-top: 14px;
-      margin-bottom: 14px;
-    }
-
-    .ops-strip {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 10px;
-    }
-
-    .ops-chip {
-      text-align: left;
-      display: grid;
-      gap: 3px;
-      border-radius: 12px;
-      border: 1px solid var(--line);
-      background: linear-gradient(155deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.03));
-      color: var(--text);
-      padding: 12px;
-      min-height: 72px;
-      box-shadow: inset 0 0 0 1px rgba(145, 179, 236, 0.08);
-      transition: transform 120ms ease, border-color 150ms ease, box-shadow 160ms ease;
-    }
-
-    .ops-chip:hover {
-      transform: translateY(-1px);
-      border-color: rgba(145, 197, 255, 0.46);
-      box-shadow: inset 0 0 0 1px rgba(145, 179, 236, 0.15), 0 10px 20px rgba(10, 26, 51, 0.35);
-    }
-
-    .ops-chip strong {
-      font-family: "Chakra Petch", sans-serif;
-      letter-spacing: 0.25px;
-      font-size: 14px;
-    }
-
-    .ops-chip span {
-      font-size: 12px;
-      color: var(--muted);
-      line-height: 1.35;
-    }
-
     .metric {
       border-radius: 12px;
       border: 1px solid var(--line);
@@ -452,44 +409,6 @@
       font-weight: 700;
       font-family: "Chakra Petch", sans-serif;
     }
-
-    .quick { margin-top: 14px; margin-bottom: 14px; }
-
-    .quick-grid {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 10px;
-    }
-
-    .quick-grid form {
-      display: grid;
-      gap: 8px;
-      padding: 10px;
-      border-radius: 12px;
-      border: 1px solid var(--line);
-      background: linear-gradient(165deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.03));
-      box-shadow: inset 0 0 0 1px rgba(153, 185, 241, 0.08);
-      position: relative;
-      overflow: hidden;
-    }
-
-    .quick-grid form::before {
-      content: "";
-      position: absolute;
-      inset: 0 auto 0 0;
-      width: 4px;
-      background: linear-gradient(180deg, var(--accent-2), var(--accent));
-      opacity: 0.85;
-    }
-
-    .quick-grid h3 {
-      margin: 0;
-      font-size: 16px;
-      font-family: "Chakra Petch", sans-serif;
-      letter-spacing: 0.25px;
-    }
-
-    .quick-grid p { margin: 0; font-size: 13px; color: var(--muted); }
 
     .workspace {
       display: grid;
@@ -547,26 +466,8 @@
 
     .tab-menu {
       display: grid;
-      gap: 10px;
+      gap: 8px;
       align-content: start;
-    }
-
-    .tab-group {
-      display: grid;
-      gap: 7px;
-    }
-
-    .tab-group-title {
-      font-size: 11px;
-      color: var(--muted);
-      letter-spacing: 0.9px;
-      text-transform: uppercase;
-      padding-left: 4px;
-    }
-
-    .tab-group-body {
-      display: grid;
-      gap: 7px;
     }
 
     .tab-btn {
@@ -620,7 +521,6 @@
     .tab-btn.danger::before { background: linear-gradient(180deg, #ff8772, #ffb06a); }
     .tab-btn.danger.active { background: linear-gradient(135deg, var(--danger), #ff9a5b); color: #2a100f; }
     .tab-btn.hidden-by-filter { display: none !important; }
-    .tab-group[hidden] { display: none !important; }
 
     .tab-content {
       border-radius: 12px;
@@ -1000,10 +900,8 @@
       .top { grid-template-columns: 1fr; }
       .auth { justify-content: flex-start; }
       .pill { min-width: 100%; }
-      .quick-grid { grid-template-columns: 1fr; }
       .form-grid { grid-template-columns: 1fr; }
       .tab-menu { grid-template-columns: 1fr; }
-      .ops-strip { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -1045,94 +943,6 @@
       <div id="summary" class="summary"></div>
     </section>
 
-    <section class="panel section-map">
-      <h2 class="title">แผนที่หมวดระบบ</h2>
-      <p class="help" style="margin-bottom:10px;">เลือกหมวดหลักเพื่อเลื่อนไปยังฟอร์มที่เกี่ยวข้องทันที</p>
-      <div class="ops-strip">
-        <button type="button" class="ops-chip" data-open-tab="economy">
-          <strong>เศรษฐกิจ + ร้านค้า</strong>
-          <span>กระเป๋าเหรียญ, สินค้า, สถานะคำสั่งซื้อ</span>
-        </button>
-        <button type="button" class="ops-chip" data-open-tab="community">
-          <strong>คอมมูนิตี้</strong>
-          <span>ทิคเก็ต, กิจกรรม, ค่าหัว</span>
-        </button>
-        <button type="button" class="ops-chip" data-open-tab="players">
-          <strong>ผู้เล่น + VIP</strong>
-          <span>ลิงก์ Steam, VIP, โค้ดแลกรางวัล</span>
-        </button>
-        <button type="button" class="ops-chip" data-open-tab="delivery">
-          <strong>RCON + เช่ามอไซ</strong>
-          <span>คิวส่งของ, รีลอง, รีเซ็ตระบบเช่า</span>
-        </button>
-        <button type="button" class="ops-chip" data-open-tab="config">
-          <strong>คอนฟิกบอท</strong>
-          <span>ตั้งค่าง่าย + แก้ JSON ทั้งระบบ</span>
-        </button>
-        <button type="button" class="ops-chip" data-open-tab="danger">
-          <strong>Danger Zone</strong>
-          <span>ลบ/ล้าง/รีเซ็ตที่มีผลกระทบสูง</span>
-        </button>
-      </div>
-    </section>
-
-    <section class="panel quick">
-      <h2 class="title">ภารกิจด่วน</h2>
-      <div class="quick-grid">
-        <form data-endpoint="/admin/api/wallet/add">
-          <h3>เพิ่มเหรียญทันที</h3>
-          <p>ใช้เวลาต้องการช่วยเหลือผู้เล่นแบบด่วน</p>
-          <label class="field">
-            <span>รหัสผู้ใช้ Discord</span>
-            <input name="userId" placeholder="เช่น 123456789012345678" required>
-          </label>
-          <label class="field">
-            <span>จำนวนเหรียญ (+)</span>
-            <input name="amount" type="number" placeholder="เช่น 500" required>
-          </label>
-          <button type="submit">เพิ่มเหรียญ</button>
-        </form>
-
-        <form data-endpoint="/admin/api/purchase/status">
-          <h3>อัปเดตสถานะคำสั่งซื้อ</h3>
-          <p>ใช้แก้สถานะเมื่อผู้เล่นแจ้งปัญหาเรื่องสินค้า</p>
-          <label class="field">
-            <span>โค้ดคำสั่งซื้อ</span>
-            <input name="code" placeholder="เช่น P-ABC123" required>
-          </label>
-          <label class="field">
-            <span>สถานะ</span>
-            <input name="status" placeholder="รอดำเนินการ / ส่งแล้ว / คืนเงินแล้ว" required>
-          </label>
-          <button type="submit">บันทึกสถานะ</button>
-        </form>
-
-        <form data-endpoint="/admin/api/delivery/retry">
-          <h3>สั่งส่งของใหม่</h3>
-          <p>ดันคิว RCON ให้ลองส่งอีกรอบทันที</p>
-          <label class="field">
-            <span>โค้ดคำสั่งซื้อ</span>
-            <input name="code" placeholder="โค้ดคำสั่งซื้อ" required>
-          </label>
-          <button type="submit">ลองส่งใหม่ทันที</button>
-        </form>
-
-        <form data-endpoint="/admin/api/scum/status">
-          <h3>อัปเดตสถานะเซิร์ฟเวอร์</h3>
-          <p>ปรับค่าหน้าเซิร์ฟเวอร์แบบกำหนดเองกรณีฉุกเฉิน</p>
-          <label class="field">
-            <span>ผู้เล่นออนไลน์</span>
-            <input name="onlinePlayers" type="number" placeholder="เช่น 42">
-          </label>
-          <label class="field">
-            <span>พิง (ms)</span>
-            <input name="pingMs" type="number" placeholder="เช่น 65">
-          </label>
-          <button type="submit">อัปเดตสถานะ</button>
-        </form>
-      </div>
-    </section>
-
     <main class="workspace">
       <section class="panel">
         <h2 class="title">ศูนย์จัดการระบบ</h2>
@@ -1145,36 +955,14 @@
             </div>
 
             <div class="tab-menu">
-              <div class="tab-group" data-group="economy">
-                <div class="tab-group-title">ระบบเศรษฐกิจ</div>
-                <div class="tab-group-body">
-                  <button class="tab-btn active" data-tab="economy" data-tab-label="เศรษฐกิจ ร้านค้า wallet purchase coins shop" type="button">เศรษฐกิจ + ร้านค้า<span class="desc">กระเป๋า, ร้านค้า, คำสั่งซื้อ</span></button>
-                </div>
-              </div>
-
-              <div class="tab-group" data-group="community">
-                <div class="tab-group-title">คอมมูนิตี้และผู้เล่น</div>
-                <div class="tab-group-body">
-                  <button class="tab-btn" data-tab="community" data-tab-label="ทิคเก็ต ticket กิจกรรม event ค่าหัว bounty" type="button">ตั๋ว + กิจกรรม + ค่าหัว<span class="desc">ทิคเก็ต, กิจกรรม, ค่าหัว</span></button>
-                  <button class="tab-btn" data-tab="players" data-tab-label="ผู้เล่น player vip redeem link steam code" type="button">ผู้เล่น + VIP + ระบบแลกรางวัล<span class="desc">ลิงก์, VIP, โค้ด</span></button>
-                  <button class="tab-btn" data-tab="moderation" data-tab-label="ลงโทษ moderation สถิติ stats ต้อนรับ welcome" type="button">ลงโทษ + สถิติ + ต้อนรับ<span class="desc">ดูแล, สถิติ, ต้อนรับ</span></button>
-                </div>
-              </div>
-
-              <div class="tab-group" data-group="operations">
-                <div class="tab-group-title">ปฏิบัติการเซิร์ฟเวอร์</div>
-                <div class="tab-group-body">
-                  <button class="tab-btn" data-tab="delivery" data-tab-label="ส่งของ delivery rcon queue เช่ามอไซ rentbike" type="button">ส่งของ RCON + เช่ามอไซ<span class="desc">คิว, ลองใหม่, รีเซ็ต</span></button>
-                  <button class="tab-btn" data-tab="config" data-tab-label="คอนฟิก config setting patch" type="button">แก้ไขคอนฟิก<span class="desc">แก้บางส่วน / ตั้งค่าทั้งหมด</span></button>
-                </div>
-              </div>
-
-              <div class="tab-group" data-group="danger">
-                <div class="tab-group-title">คำสั่งเสี่ยงสูง</div>
-                <div class="tab-group-body">
-                  <button class="tab-btn danger" data-tab="danger" data-tab-label="danger โซนอันตราย ลบ รีเซ็ต clear reset" type="button">โซนอันตราย<span class="desc">ลบ / ล้าง / รีเซ็ต</span></button>
-                </div>
-              </div>
+              <button class="tab-btn active" data-tab="economy" data-tab-label="เศรษฐกิจ ร้านค้า wallet purchase coins shop" type="button">เศรษฐกิจ + ร้านค้า<span class="desc">กระเป๋า, ร้านค้า, คำสั่งซื้อ</span></button>
+              <button class="tab-btn" data-tab="community" data-tab-label="ทิคเก็ต ticket กิจกรรม event ค่าหัว bounty" type="button">ตั๋ว + กิจกรรม + ค่าหัว<span class="desc">ทิคเก็ต, กิจกรรม, ค่าหัว</span></button>
+              <button class="tab-btn" data-tab="players" data-tab-label="ผู้เล่น player vip redeem link steam code" type="button">ผู้เล่น + VIP + ระบบแลกรางวัล<span class="desc">ลิงก์, VIP, โค้ด</span></button>
+              <button class="tab-btn" data-tab="moderation" data-tab-label="ลงโทษ moderation สถิติ stats ต้อนรับ welcome" type="button">ลงโทษ + สถิติ + ต้อนรับ<span class="desc">ดูแล, สถิติ, ต้อนรับ</span></button>
+              <button class="tab-btn" data-tab="delivery" data-tab-label="ส่งของ delivery rcon queue เช่ามอไซ rentbike" type="button">ส่งของ RCON + เช่ามอไซ<span class="desc">คิว, ลองใหม่, รีเซ็ต</span></button>
+              <button class="tab-btn" data-tab="metrics" data-tab-label="metrics observability timeline charts alert webhook login delivery" type="button">Metrics Timeline<span class="desc">กราฟเวลา + แนวโน้มระบบ</span></button>
+              <button class="tab-btn" data-tab="config" data-tab-label="คอนฟิก config setting patch" type="button">แก้ไขคอนฟิก<span class="desc">แก้บางส่วน / ตั้งค่าทั้งหมด</span></button>
+              <button class="tab-btn danger" data-tab="danger" data-tab-label="danger โซนอันตราย ลบ รีเซ็ต clear reset" type="button">โซนอันตราย<span class="desc">ลบ / ล้าง / รีเซ็ต</span></button>
             </div>
           </aside>
 
@@ -1714,6 +1502,34 @@
                 </div>
               </form>
 
+              <form class="form-card" data-endpoint="/admin/api/delivery/dead-letter/retry">
+                <h4>Retry จาก Dead-Letter</h4>
+                <p class="help">นำรายการที่ fail ถาวรกลับเข้า queue อีกครั้ง</p>
+                <div class="form-grid">
+                  <label class="field">
+                    <span>โค้ดคำสั่งซื้อ</span>
+                    <input name="code" placeholder="P-XXXXXX" required>
+                  </label>
+                  <label class="field">
+                    <span>รหัสกิลด์ (ถ้ามี)</span>
+                    <input name="guildId" placeholder="123456789012345678">
+                  </label>
+                  <button type="submit">Retry Dead-Letter</button>
+                </div>
+              </form>
+
+              <form class="form-card" data-endpoint="/admin/api/delivery/dead-letter/delete">
+                <h4>ลบรายการ Dead-Letter</h4>
+                <p class="help">ใช้เมื่อตรวจแล้วว่าไม่ต้อง retry รายการนั้น</p>
+                <div class="form-grid">
+                  <label class="field">
+                    <span>โค้ดคำสั่งซื้อ</span>
+                    <input name="code" placeholder="P-XXXXXX" required>
+                  </label>
+                  <button type="submit" class="danger">ลบ Dead-Letter</button>
+                </div>
+              </form>
+
               <form class="form-card" data-endpoint="/admin/api/delivery/cancel">
                 <h4>ยกเลิกงานในคิว</h4>
                 <p class="help">ใช้เมื่อคำสั่งซื้อผิดรายการหรือไม่ต้องส่งแล้ว</p>
@@ -1730,7 +1546,7 @@
                 </div>
               </form>
 
-              <form class="form-card" data-endpoint="/admin/api/rentbike/reset-now">
+              <form class="form-card" data-endpoint="/admin/api/rentbike/reset-now" data-min-role="owner">
                 <h4>รีเซ็ตรถเช่ารอบเที่ยงคืน</h4>
                 <p class="help">สั่งรีเซ็ตระบบเช่ามอไซทันที (ปกติทำตอนเที่ยงคืน)</p>
                 <div class="form-grid">
@@ -1741,6 +1557,50 @@
                   <button type="submit">รีเซ็ตทันที</button>
                 </div>
               </form>
+            </section>
+
+            <section class="tab-panel" data-tab-panel="metrics">
+              <div class="tab-panel-head">
+                <h3>Metrics Timeline</h3>
+                <p>ดูแนวโน้มตามเวลา: queue, fail rate, login failure และ webhook error rate</p>
+              </div>
+
+              <div class="form-card">
+                <h4>ช่วงเวลาแสดงผล</h4>
+                <p class="help">เลือก time-window เพื่อดูแนวโน้มในช่วงเวลาที่ต้องการ</p>
+                <div class="form-grid">
+                  <label class="field">
+                    <span>Time Window</span>
+                    <select id="metricsWindowSelect">
+                      <option value="900000">15 นาทีล่าสุด</option>
+                      <option value="3600000">1 ชั่วโมงล่าสุด</option>
+                      <option value="21600000">6 ชั่วโมงล่าสุด</option>
+                      <option value="86400000" selected>24 ชั่วโมงล่าสุด</option>
+                    </select>
+                  </label>
+                  <button type="button" id="metricsApplyWindowBtn" class="ghost">อัปเดตกราฟ</button>
+                </div>
+              </div>
+
+              <div class="form-card">
+                <h4>Delivery Queue Length</h4>
+                <canvas id="chartDeliveryQueue" height="120"></canvas>
+              </div>
+
+              <div class="form-card">
+                <h4>Delivery Fail Rate</h4>
+                <canvas id="chartDeliveryFailRate" height="120"></canvas>
+              </div>
+
+              <div class="form-card">
+                <h4>Admin Login Failures</h4>
+                <canvas id="chartLoginFailures" height="120"></canvas>
+              </div>
+
+              <div class="form-card">
+                <h4>SCUM Webhook Error Rate</h4>
+                <canvas id="chartWebhookErrorRate" height="120"></canvas>
+              </div>
             </section>
 
             <section class="tab-panel" data-tab-panel="config">
@@ -1812,9 +1672,9 @@
                   ></textarea>
                 </label>
                 <div class="config-tools">
-                  <button type="button" id="configLoadBtn" class="ghost">โหลดค่าปัจจุบัน</button>
-                  <button type="button" id="configPatchBtn" class="ghost">บันทึกแบบแพตช์</button>
-                  <button type="submit">บันทึกคอนฟิกทั้งชุด</button>
+                  <button type="button" id="configLoadBtn" class="ghost" data-min-role="mod">โหลดค่าปัจจุบัน</button>
+                  <button type="button" id="configPatchBtn" class="ghost" data-min-role="admin">บันทึกแบบแพตช์</button>
+                  <button type="submit" data-min-role="owner">บันทึกคอนฟิกทั้งชุด</button>
                 </div>
               </form>
             </section>
@@ -1851,7 +1711,7 @@
                 </div>
               </form>
 
-              <form class="form-card" data-endpoint="/admin/api/welcome/clear">
+              <form class="form-card" data-endpoint="/admin/api/welcome/clear" data-min-role="owner">
                 <h4>ล้างประวัติการรับแพ็กต้อนรับทั้งหมด</h4>
                 <p class="help">ผู้เล่นทุกคนจะสามารถรับแพ็กต้อนรับใหม่ได้</p>
                 <div class="form-grid">
@@ -1859,11 +1719,42 @@
                 </div>
               </form>
 
+              <form class="form-card" data-endpoint="/admin/api/backup/create" data-min-role="owner">
+                <h4>สร้าง Backup ทั้งระบบ</h4>
+                <p class="help">สำรองข้อมูล snapshot ปัจจุบันไว้ในเซิร์ฟเวอร์</p>
+                <div class="form-grid">
+                  <label class="field wide">
+                    <span>หมายเหตุ (ไม่บังคับ)</span>
+                    <input name="note" placeholder="เช่น ก่อนปรับ config production">
+                  </label>
+                  <button type="submit">สร้าง Backup</button>
+                </div>
+              </form>
+
+              <form class="form-card" data-endpoint="/admin/api/backup/restore" data-min-role="owner">
+                <h4>Restore จาก Backup</h4>
+                <p class="help">ใส่ชื่อไฟล์ backup แล้วกู้คืนข้อมูลกลับทั้งระบบ</p>
+                <div class="form-grid">
+                  <label class="field">
+                    <span>ชื่อ Backup</span>
+                    <input name="backup" placeholder="backup-YYYYMMDDHHMMSS-xxxxxx.json" required>
+                  </label>
+                  <label class="field">
+                    <span>Dry-run</span>
+                    <select name="dryRun">
+                      <option value="">ปิด (กู้คืนจริง)</option>
+                      <option value="true">เปิด (ตรวจสอบก่อน)</option>
+                    </select>
+                  </label>
+                  <button type="submit" class="danger">Restore Backup</button>
+                </div>
+              </form>
+
               <div class="form-card">
                 <h4>รีเซ็ตคอนฟิกบอทเป็นค่าเริ่มต้น</h4>
                 <p class="help">จะรีเซ็ตค่าทุกระบบในคอนฟิกกลับค่าเริ่มต้นทั้งหมด</p>
                 <div class="form-grid">
-                  <button type="button" id="configResetBtn" class="danger">รีเซ็ตคอนฟิกทั้งหมด</button>
+                  <button type="button" id="configResetBtn" class="danger" data-min-role="owner">รีเซ็ตคอนฟิกทั้งหมด</button>
                 </div>
               </div>
             </section>
@@ -1881,6 +1772,7 @@
               <option value="shopItems">รายการสินค้า</option>
               <option value="purchases">ประวัติซื้อ</option>
               <option value="deliveryQueue">คิวส่งของ</option>
+              <option value="deliveryDeadLetters">Dead-Letter ส่งของ</option>
               <option value="deliveryAudit">บันทึกส่งของ</option>
             </optgroup>
             <optgroup label="ผู้เล่น / คอมมูนิตี้">
@@ -1905,6 +1797,7 @@
             </optgroup>
             <optgroup label="เซิร์ฟเวอร์ / วิเคราะห์">
               <option value="observability">metrics & alerts</option>
+              <option value="backups">backup files</option>
               <option value="guilds">กิลด์ Discord</option>
               <option value="config">คอนฟิกทั้งหมด</option>
             </optgroup>
@@ -1969,19 +1862,24 @@
     const shopAddIdInput = document.getElementById('shopAddIdInput');
     const shopAddNameInput = document.getElementById('shopAddNameInput');
     const tabSearchInput = document.getElementById('tabSearchInput');
-    const openTabButtons = Array.from(document.querySelectorAll('[data-open-tab]'));
     const tabButtons = Array.from(document.querySelectorAll('.tab-btn'));
-    const tabGroups = Array.from(document.querySelectorAll('.tab-group'));
     const tabPanels = Array.from(document.querySelectorAll('.tab-panel'));
-    const actionCenterSection = document.querySelector('.workspace .panel');
+    const chartDeliveryQueue = document.getElementById('chartDeliveryQueue');
+    const chartDeliveryFailRate = document.getElementById('chartDeliveryFailRate');
+    const chartLoginFailures = document.getElementById('chartLoginFailures');
+    const chartWebhookErrorRate = document.getElementById('chartWebhookErrorRate');
+    const metricsWindowSelect = document.getElementById('metricsWindowSelect');
+    const metricsApplyWindowBtn = document.getElementById('metricsApplyWindowBtn');
     const protectedControls = Array.from(
       document.querySelectorAll(
-        '.quick input, .quick select, .quick textarea, .quick button, .workspace input, .workspace select, .workspace textarea, .workspace button',
+        '.workspace input, .workspace select, .workspace textarea, .workspace button',
       ),
     );
 
     let snapshot = null;
     let isAuthed = false;
+    let currentUserRole = 'mod';
+    let currentUserName = '';
     let liveEnabled = true;
     let liveIntervalMs = Math.max(1000, Number(liveIntervalSelect.value || 2000));
     let liveTimer = null;
@@ -1993,9 +1891,20 @@
     let shopCatalogFetchTimer = null;
     let shopCatalogRequestId = 0;
     let shopDeliveryItems = [];
+    let currentMetricsWindowMs = Math.max(
+      60 * 1000,
+      Number(metricsWindowSelect?.value || 24 * 60 * 60 * 1000),
+    );
+    const METRICS_SERIES_NAMES = [
+      'deliveryQueueLength',
+      'deliveryFailRate',
+      'loginFailures',
+      'webhookErrorRate',
+    ];
 
     const THEME_STORAGE_KEY = 'scum_admin_theme';
     const SUPPORTED_THEMES = new Set(['military', 'neon']);
+    const ROLE_LEVEL = { mod: 1, admin: 2, owner: 3 };
 
     function normalizeThemeName(value) {
       const raw = String(value || '').trim().toLowerCase();
@@ -2076,15 +1985,16 @@
 
     function setConnectedStatus() {
       if (!isAuthed) return;
+      const roleText = currentUserRole ? `สิทธิ์: ${currentUserRole}` : '';
       if (!liveEnabled) {
-        setStatus('เชื่อมต่อแล้ว', '#43dd86', 'ระบบอัปเดตสดถูกปิดไว้', 'ok');
+        setStatus('เชื่อมต่อแล้ว', '#43dd86', `${roleText} | ระบบอัปเดตสดถูกปิดไว้`, 'ok');
         return;
       }
       const streamText = liveStreamConnected ? 'เชื่อมต่อ SSE แล้ว' : 'กำลังเชื่อมต่อ SSE ใหม่';
       setStatus(
         `สดทุก ${Math.round(liveIntervalMs / 1000)} วินาที`,
         liveStreamConnected ? '#43dd86' : '#ffb84d',
-        `${streamText} | ใช้ polling สำรอง`,
+        `${roleText} | ${streamText} | ใช้ polling สำรอง`,
         liveStreamConnected ? 'ok' : 'warn',
       );
     }
@@ -2172,6 +2082,8 @@
         'scum-kill',
         'scum-restart',
         'delivery-queue',
+        'delivery-dead-letter',
+        'ops-alert',
       ];
       for (const evtName of events) {
         attachLiveEvent(source, evtName);
@@ -2274,11 +2186,202 @@
         const visible = !query || label.includes(query) || text.includes(query);
         btn.classList.toggle('hidden-by-filter', !visible);
       }
+    }
 
-      for (const group of tabGroups) {
-        const hasVisibleButton = Array.from(group.querySelectorAll('.tab-btn'))
-          .some((btn) => !btn.classList.contains('hidden-by-filter'));
-        group.hidden = !hasVisibleButton;
+    function normalizeRole(role) {
+      const raw = String(role || '').trim().toLowerCase();
+      if (raw === 'owner') return 'owner';
+      if (raw === 'admin') return 'admin';
+      return 'mod';
+    }
+
+    function hasRoleAtLeast(actualRole, requiredRole) {
+      const actual = ROLE_LEVEL[normalizeRole(actualRole)] || 0;
+      const required = ROLE_LEVEL[normalizeRole(requiredRole)] || 0;
+      return actual >= required;
+    }
+
+    function minRoleForEndpoint(endpoint) {
+      const path = String(endpoint || '').trim();
+      if (!path) return 'mod';
+      const ownerOnly = new Set([
+        '/admin/api/config/set',
+        '/admin/api/config/reset',
+        '/admin/api/welcome/clear',
+        '/admin/api/rentbike/reset-now',
+        '/admin/api/backup/create',
+        '/admin/api/backup/restore',
+      ]);
+      const modAllowed = new Set([
+        '/admin/api/ticket/claim',
+        '/admin/api/ticket/close',
+        '/admin/api/moderation/add',
+        '/admin/api/stats/add-kill',
+        '/admin/api/stats/add-death',
+        '/admin/api/stats/add-playtime',
+        '/admin/api/scum/status',
+      ]);
+      if (ownerOnly.has(path)) return 'owner';
+      if (modAllowed.has(path)) return 'mod';
+      return 'admin';
+    }
+
+    function applyRolePermissions() {
+      if (!isAuthed) return;
+      const forms = Array.from(document.querySelectorAll('form[data-endpoint]'));
+      for (const form of forms) {
+        const endpoint = String(form.dataset.endpoint || '').trim();
+        const required = String(form.dataset.minRole || minRoleForEndpoint(endpoint));
+        const allowed = hasRoleAtLeast(currentUserRole, required);
+        for (const el of form.querySelectorAll('input,select,textarea,button')) {
+          if ('disabled' in el) {
+            el.disabled = !allowed;
+          }
+        }
+        form.style.opacity = allowed ? '1' : '0.45';
+      }
+
+      const gatedControls = Array.from(document.querySelectorAll('[data-min-role]'));
+      for (const control of gatedControls) {
+        const required = String(control.dataset.minRole || 'mod');
+        const allowed = hasRoleAtLeast(currentUserRole, required);
+        if ('disabled' in control) {
+          control.disabled = !allowed;
+        }
+      }
+
+      if (configEditorForm) {
+        const submitButton = configEditorForm.querySelector('button[type="submit"]');
+        const allowed = submitButton
+          ? hasRoleAtLeast(currentUserRole, submitButton.dataset.minRole || 'owner')
+          : false;
+        configEditorForm.style.opacity = allowed ? '1' : '0.45';
+      }
+    }
+
+    function drawLineChart(canvas, points, options = {}) {
+      if (!canvas || !canvas.getContext) return;
+      const width = canvas.clientWidth || canvas.width || 640;
+      const height = canvas.clientHeight || canvas.height || 120;
+      canvas.width = width;
+      canvas.height = height;
+
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, width, height);
+
+      const data = Array.isArray(points) ? points.slice(-120) : [];
+      if (data.length === 0) {
+        ctx.fillStyle = 'rgba(180, 190, 210, 0.8)';
+        ctx.font = '13px Space Grotesk, sans-serif';
+        ctx.fillText('ไม่มีข้อมูล time-series', 12, 24);
+        return;
+      }
+
+      const values = data.map((point) => Number(point?.value || 0));
+      const min = Math.min(...values);
+      const max = Math.max(...values);
+      const range = Math.max(0.000001, max - min);
+      const left = 12;
+      const right = width - 10;
+      const top = 12;
+      const bottom = height - 18;
+
+      ctx.strokeStyle = 'rgba(140, 170, 220, 0.25)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(left, bottom);
+      ctx.lineTo(right, bottom);
+      ctx.stroke();
+
+      ctx.strokeStyle = options.color || '#57a7ff';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      data.forEach((point, index) => {
+        const x = left + ((right - left) * index) / Math.max(1, data.length - 1);
+        const y =
+          bottom - ((Number(point?.value || 0) - min) / range) * (bottom - top);
+        if (index === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+
+      const latest = values[values.length - 1];
+      ctx.fillStyle = 'rgba(220, 235, 255, 0.95)';
+      ctx.font = '12px Space Grotesk, sans-serif';
+      const suffix = options.suffix || '';
+      const text = `${options.label || 'ล่าสุด'}: ${latest.toFixed(2)}${suffix}`;
+      ctx.fillText(text, left, height - 4);
+    }
+
+    function filterSeriesByWindow(points, windowMs) {
+      const list = Array.isArray(points) ? points : [];
+      const duration = Math.max(60 * 1000, Number(windowMs || 24 * 60 * 60 * 1000));
+      const cutoff = Date.now() - duration;
+      return list.filter((point) => {
+        const at = Date.parse(String(point?.at || ''));
+        if (!Number.isFinite(at)) return false;
+        return at >= cutoff;
+      });
+    }
+
+    function renderMetricsCharts() {
+      const series = snapshot?.observability?.timeSeries || {};
+      drawLineChart(
+        chartDeliveryQueue,
+        filterSeriesByWindow(series.deliveryQueueLength, currentMetricsWindowMs),
+        {
+        color: '#57a7ff',
+        label: 'Queue',
+        },
+      );
+      drawLineChart(
+        chartDeliveryFailRate,
+        filterSeriesByWindow(series.deliveryFailRate, currentMetricsWindowMs),
+        {
+        color: '#ffb84d',
+        label: 'Fail rate',
+        suffix: '',
+        },
+      );
+      drawLineChart(
+        chartLoginFailures,
+        filterSeriesByWindow(series.loginFailures, currentMetricsWindowMs),
+        {
+        color: '#ff6b7b',
+        label: 'Failures',
+        },
+      );
+      drawLineChart(
+        chartWebhookErrorRate,
+        filterSeriesByWindow(series.webhookErrorRate, currentMetricsWindowMs),
+        {
+        color: '#31d6b6',
+        label: 'Error rate',
+        },
+      );
+    }
+
+    function buildObservabilityRequestPath() {
+      const params = new URLSearchParams();
+      params.set('windowMs', String(currentMetricsWindowMs));
+      params.set('series', METRICS_SERIES_NAMES.join(','));
+      return `/admin/api/observability?${params.toString()}`;
+    }
+
+    async function refreshObservabilitySnapshot(options = {}) {
+      const { silent = true } = options;
+      if (!isAuthed) return;
+      const res = await api(buildObservabilityRequestPath(), 'GET');
+      if (!snapshot || typeof snapshot !== 'object') {
+        snapshot = {};
+      }
+      snapshot.observability = res.data || {};
+      renderMetricsCharts();
+      if (datasetSelect?.value === 'observability') {
+        renderSelectedDataset();
+      }
+      if (!silent) {
+        toast('อัปเดต metrics แล้ว');
       }
     }
 
@@ -2298,6 +2401,8 @@
       }
 
       if (!authed) {
+        currentUserRole = 'mod';
+        currentUserName = '';
         stopLiveUpdates();
         setStatus('ยังไม่ยืนยันตัวตน', '#ffb84d', 'กรุณาเข้าสู่ระบบก่อนใช้งาน', 'warn');
         summaryEl.innerHTML = '<div class="metric"><div class="k">สถานะ</div><div class="v">ต้องเข้าสู่ระบบก่อน</div></div>';
@@ -2308,6 +2413,7 @@
         if (shopKindSelect && String(shopKindSelect.value || 'item') === 'item') {
           scheduleGameItemCatalogFetch(shopGameItemSearchInput.value || '');
         }
+        applyRolePermissions();
         setConnectedStatus();
         startLiveUpdates();
       }
@@ -2716,6 +2822,7 @@
         ['จำนวนโควต้าเช่ารายวัน', (snapshot.dailyRents || []).length],
         ['จำนวนรถเช่า', (snapshot.rentalVehicles || []).length],
         ['จำนวนคิวส่งของ', (snapshot.deliveryQueue || []).length],
+        ['จำนวน dead-letter ส่งของ', (snapshot.deliveryDeadLetters || []).length],
         ['จำนวนบันทึกส่งของ', (snapshot.deliveryAudit || []).length],
       ];
       summaryEl.innerHTML = metrics
@@ -2744,6 +2851,7 @@
         snapshot = res.data;
         renderSummary();
         renderSelectedDataset();
+        renderMetricsCharts();
         if (syncConfigInputs) {
           fillSimpleConfigFromSnapshot();
           if (!String(configJsonInput?.value || '').trim()) {
@@ -2767,7 +2875,9 @@
 
     async function checkSession() {
       try {
-        await api('/admin/api/me');
+        const me = await api('/admin/api/me');
+        currentUserRole = normalizeRole(me?.data?.role || 'mod');
+        currentUserName = String(me?.data?.user || '').trim();
         setAuthState(true);
         await refreshSnapshot();
       } catch {
@@ -2810,6 +2920,10 @@
           delete payload.quantity;
           delete payload.deliveryItems;
         }
+      }
+
+      if (form.dataset.endpoint === '/admin/api/backup/restore') {
+        payload.dryRun = String(payload.dryRun || '').toLowerCase() === 'true';
       }
 
       await api(form.dataset.endpoint, form.dataset.method || 'POST', payload);
@@ -2892,6 +3006,45 @@
     }
 
     datasetSelect.addEventListener('change', renderSelectedDataset);
+    if (metricsWindowSelect) {
+      metricsWindowSelect.addEventListener('change', () => {
+        currentMetricsWindowMs = Math.max(
+          60 * 1000,
+          Number(metricsWindowSelect.value || 24 * 60 * 60 * 1000),
+        );
+        if (snapshot) {
+          renderMetricsCharts();
+        }
+      });
+    }
+    if (metricsApplyWindowBtn) {
+      metricsApplyWindowBtn.addEventListener('click', async () => {
+        currentMetricsWindowMs = Math.max(
+          60 * 1000,
+          Number(metricsWindowSelect?.value || currentMetricsWindowMs),
+        );
+        if (!isAuthed) {
+          toast('กรุณาเข้าสู่ระบบก่อน');
+          return;
+        }
+        try {
+          await runWithButtonState(
+            metricsApplyWindowBtn,
+            'กำลังโหลด metrics...',
+            async () => {
+              await refreshObservabilitySnapshot({ silent: true });
+            },
+          );
+          toast('อัปเดตกราฟตามช่วงเวลาแล้ว');
+        } catch (error) {
+          toast(error.message || 'โหลด metrics ไม่สำเร็จ');
+        }
+      });
+    }
+    window.addEventListener('resize', () => {
+      if (!snapshot) return;
+      renderMetricsCharts();
+    });
 
     if (shopKindSelect) {
       shopKindSelect.addEventListener('change', () => {
@@ -3070,17 +3223,6 @@
     if (tabSearchInput) {
       tabSearchInput.addEventListener('input', () => {
         applyTabFilter(tabSearchInput.value);
-      });
-    }
-
-    for (const btn of openTabButtons) {
-      btn.addEventListener('click', () => {
-        const tab = String(btn.dataset.openTab || '').trim();
-        if (!tab) return;
-        activateTab(tab);
-        if (actionCenterSection) {
-          actionCenterSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
       });
     }
 

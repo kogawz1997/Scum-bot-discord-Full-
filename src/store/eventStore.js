@@ -82,6 +82,48 @@ function getParticipants(id) {
   return Array.from(set);
 }
 
+function replaceEvents(nextEvents = [], nextParticipants = [], nextCounter = null) {
+  events.clear();
+  eventParticipants.clear();
+
+  for (const row of Array.isArray(nextEvents) ? nextEvents : []) {
+    if (!row || typeof row !== 'object') continue;
+    const id = Number(row.id || 0);
+    if (!Number.isFinite(id) || id <= 0) continue;
+    events.set(id, {
+      id,
+      name: String(row.name || ''),
+      time: String(row.time || ''),
+      reward: String(row.reward || ''),
+      status: String(row.status || 'scheduled'),
+    });
+    eventParticipants.set(id, new Set());
+  }
+
+  if (Array.isArray(nextParticipants)) {
+    for (const row of nextParticipants) {
+      if (!row || typeof row !== 'object') continue;
+      const eventId = Number(row.eventId || row.id || 0);
+      if (!Number.isFinite(eventId) || eventId <= 0) continue;
+      const set = eventParticipants.get(eventId) || new Set();
+      for (const userId of Array.isArray(row.participants) ? row.participants : []) {
+        const normalized = String(userId || '').trim();
+        if (normalized) set.add(normalized);
+      }
+      eventParticipants.set(eventId, set);
+    }
+  }
+
+  if (Number.isFinite(Number(nextCounter)) && Number(nextCounter) > 0) {
+    eventCounter = Math.max(1, Math.trunc(Number(nextCounter)));
+  } else {
+    const maxId = Math.max(0, ...Array.from(events.keys()).map((n) => Number(n)));
+    eventCounter = maxId + 1;
+  }
+  scheduleSave();
+  return events.size;
+}
+
 module.exports = {
   createEvent,
   getEvent,
@@ -90,5 +132,5 @@ module.exports = {
   startEvent,
   endEvent,
   getParticipants,
+  replaceEvents,
 };
-

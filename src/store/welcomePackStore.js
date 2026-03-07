@@ -41,10 +41,21 @@ function clearClaims() {
   scheduleSave();
 }
 
+function replaceClaims(nextClaims = []) {
+  claimed.clear();
+  for (const userId of Array.isArray(nextClaims) ? nextClaims : []) {
+    const normalized = String(userId || '').trim();
+    if (normalized) claimed.add(normalized);
+  }
+  scheduleSave();
+  return claimed.size;
+}
+
 module.exports = {
   hasClaimed,
   claim,
   listClaimed,
   revokeClaim,
   clearClaims,
+  replaceClaims,
 };

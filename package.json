@@ -7,11 +7,12 @@
     "start": "node src/bot.js",
     "register-commands": "node src/register-commands.js",
     "watch-scum": "node scum-log-watcher.js",
-    "test": "node --test",
+    "test": "node --test --test-concurrency=1",
     "lint": "node scripts/check-js-syntax.js && node scripts/check-text-encoding.js",
     "check": "npm run lint && npm test",
     "doctor": "node scripts/doctor.js",
-    "security:check": "node scripts/security-check.js"
+    "security:check": "node scripts/security-check.js",
+    "security:generate-secrets": "node scripts/generate-secrets.js"
   },
   "keywords": [
     "discord",

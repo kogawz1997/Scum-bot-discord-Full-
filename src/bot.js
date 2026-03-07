@@ -31,6 +31,7 @@ const {
 } = require('./services/rconDelivery');
 const { startAdminWebServer } = require('./adminWebServer');
 const { queueLeaderboardRefreshForGuild } = require('./services/leaderboardPanels');
+const { adminLiveBus } = require('./services/adminLiveBus');
 const { assertBotEnv } = require('./utils/env');
 const { claim: claimWelcomePack, hasClaimed: hasClaimedWelcomePack } = require('./store/welcomePackStore');
 const {
@@ -40,11 +41,19 @@ const {
   createPurchase,
   removeCoins,
 } = require('./store/memoryStore');
+const {
+  addCartItem,
+} = require('./store/cartStore');
+const {
+  getResolvedCart,
+  checkoutCart,
+} = require('./services/cartService');
 const { normalizeSteamId, setLink, getLinkBySteamId } = require('./store/linkStore');
 const { createTicket, tickets } = require('./store/ticketStore');
 
 assertBotEnv();
 const token = process.env.DISCORD_TOKEN;
+let opsAlertRouteBound = false;
 
 const client = new Client({
   intents: [
@@ -89,6 +98,7 @@ client.once(Events.ClientReady, (c) => {
     console.error('[rent-bike] failed to start service:', error.message);
   });
   startRconDeliveryWorker(client);
+  bindOpsAlertRoute(client);
 
   // งานย่อยสำหรับถอดยศ VIP ที่หมดอายุ
   setInterval(async () => {
@@ -108,6 +118,72 @@ client.once(Events.ClientReady, (c) => {
     }
   }, 60 * 1000);
 });
+
+function formatOpsAlertMessage(payload = {}) {
+  const kind = String(payload.kind || 'alert');
+  if (kind === 'queue-pressure') {
+    return (
+      `[OPS] queue-pressure | length=${payload.queueLength || 0} ` +
+      `threshold=${payload.threshold || '-'}`
+    );
+  }
+  if (kind === 'queue-stuck') {
+    return (
+      `[OPS] queue-stuck | oldestDueMs=${payload.oldestDueMs || 0} ` +
+      `thresholdMs=${payload.thresholdMs || '-'} ` +
+      `queueLength=${payload.queueLength || 0} ` +
+      `code=${payload.purchaseCode || '-'}`
+    );
+  }
+  if (kind === 'fail-rate') {
+    const failRate = Number(payload.failRate || 0);
+    return (
+      `[OPS] fail-rate | failRate=${failRate.toFixed(3)} ` +
+      `attempts=${payload.attempts || 0} failures=${payload.failures || 0} ` +
+      `threshold=${payload.threshold || '-'}`
+    );
+  }
+  if (kind === 'login-failure-spike') {
+    return (
+      `[OPS] login-failure-spike | failures=${payload.failures || 0} ` +
+      `windowMs=${payload.windowMs || '-'} threshold=${payload.threshold || '-'} ` +
+      `topIps=${Array.isArray(payload.topIps) ? payload.topIps.join(',') : '-'}`
+    );
+  }
+  return `[OPS] ${JSON.stringify(payload)}`;
+}
+
+function bindOpsAlertRoute(clientInstance) {
+  if (opsAlertRouteBound) return;
+  opsAlertRouteBound = true;
+
+  adminLiveBus.on('update', async (evt) => {
+    try {
+      if (evt?.type !== 'ops-alert') return;
+      const content = formatOpsAlertMessage(evt?.payload || {});
+
+      for (const guild of clientInstance.guilds.cache.values()) {
+        const channel =
+          guild.channels.cache.find(
+            (c) =>
+              c.name === channels.adminLog &&
+              c.isTextBased &&
+              c.isTextBased(),
+          ) ||
+          guild.channels.cache.find(
+            (c) =>
+              c.name === channels.shopLog &&
+              c.isTextBased &&
+              c.isTextBased(),
+          );
+        if (!channel) continue;
+        await channel.send(content).catch(() => null);
+      }
+    } catch (error) {
+      console.error('[ops-alert-route] failed to send alert to Discord', error);
+    }
+  });
+}
 
 function hasTicketCreatePermissions(guild, parent) {
   const me = guild.members.me;
@@ -481,16 +557,104 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     if (interaction.customId.startsWith('panel-shop-cart:')) {
       const itemId = interaction.customId.split(':')[1];
+      const item = await getShopItemById(itemId);
+      if (!item) {
+        return interaction.reply({
+          content: `ไม่พบสินค้า: ${itemId}`,
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+
+      addCartItem(interaction.user.id, item.id, 1);
+      const cart = await getResolvedCart(interaction.user.id);
+      const preview = cart.rows
+        .slice(0, 4)
+        .map(
+          (row) =>
+            `- ${row.item.name} x${row.quantity} (${economy.currencySymbol}${row.lineTotal.toLocaleString()})`,
+        )
+        .join('\n');
+      const moreText = cart.rows.length > 4
+        ? `\n- และอีก ${cart.rows.length - 4} รายการ`
+        : '';
+
       return interaction.reply({
-        content: `เพิ่มเข้าตะกร้าชั่วคราว: **${itemId}** (เวอร์ชันนี้ยังไม่ทำระบบตะกร้าจริง ใช้ /buy ได้ทันที)`,
+        content:
+          `เพิ่ม **${item.name}** ลงตะกร้าแล้ว\n\n` +
+          `ตะกร้าปัจจุบัน (${cart.rows.length} รายการ / ${cart.totalUnits} ชิ้น)\n` +
+          `${preview || '-'}${moreText}\n` +
+          `ยอดรวม: ${economy.currencySymbol} **${cart.totalPrice.toLocaleString()}**\n\n` +
+          `ใช้ \`/cart view\` เพื่อดูทั้งหมด หรือ \`/cart checkout\` เพื่อชำระ`,
         flags: MessageFlags.Ephemeral,
       });
     }
 
     if (interaction.customId === 'panel-shop-checkout') {
-      return interaction.reply({
-        content: 'เช็กเอาต์: ไปที่ `/inventory` เพื่อตรวจรายการ และใช้ `/buy` สำหรับรายการที่ต้องการซื้อ',
-        flags: MessageFlags.Ephemeral,
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      const result = await checkoutCart(interaction.user.id, {
+        guildId: interaction.guildId || null,
+      });
+
+      if (!result.ok && result.reason === 'empty') {
+        return interaction.editReply({
+          content: 'ตะกร้าของคุณว่างอยู่',
+        });
+      }
+
+      if (!result.ok && result.reason === 'insufficient') {
+        return interaction.editReply({
+          content:
+            `ยอดเหรียญไม่พอสำหรับชำระตะกร้า\n` +
+            `ต้องใช้: ${economy.currencySymbol} **${result.totalPrice.toLocaleString()}**\n` +
+            `ยอดคงเหลือ: ${economy.currencySymbol} **${Number(result.walletBalance || 0).toLocaleString()}**`,
+        });
+      }
+
+      queueLeaderboardRefreshForGuild(
+        interaction.client,
+        interaction.guildId,
+        'panel-shop-checkout',
+      );
+
+      try {
+        const guild = interaction.guild;
+        if (guild) {
+          const logChannel = guild.channels.cache.find(
+            (c) => c.name === channels.shopLog,
+          );
+          if (logChannel && logChannel.isTextBased()) {
+            await logChannel.send(
+              `🛒 **ชำระตะกร้า** | ผู้ใช้: ${interaction.user} | รายการ: ${result.rows.length} | ชิ้นรวม: ${result.totalUnits} | ตัดเหรียญ: ${economy.currencySymbol} **${result.totalPrice.toLocaleString()}** | คำสั่งซื้อที่สร้าง: ${result.purchases.length} | fail: ${result.failures.length}`,
+            );
+          }
+        }
+      } catch (error) {
+        console.error('ไม่สามารถส่ง log ชำระตะกร้าไปยัง shop-log ได้', error);
+      }
+
+      const codePreview = result.purchases
+        .slice(0, 10)
+        .map((row) => `\`${row.purchase.code}\``)
+        .join(', ');
+      const moreCodeText = result.purchases.length > 10
+        ? ` และอีก ${result.purchases.length - 10} รายการ`
+        : '';
+
+      const lines = [
+        'ชำระตะกร้าสำเร็จ ✅',
+        `รวม ${result.rows.length} รายการ (${result.totalUnits} ชิ้น)`,
+        `ตัดเหรียญ: ${economy.currencySymbol} **${result.totalPrice.toLocaleString()}**`,
+        `สร้างคำสั่งซื้อ: **${result.purchases.length}** รายการ`,
+      ];
+      if (codePreview) {
+        lines.push(`โค้ดอ้างอิง: ${codePreview}${moreCodeText}`);
+      }
+      if (result.failures.length > 0) {
+        lines.push(`มี ${result.failures.length} รายการที่ระบบส่งของมีปัญหา (ตรวจสอบใน /inventory และ shop-log)`);
+      }
+
+      return interaction.editReply({
+        content: lines.join('\n'),
       });
     }
     if (

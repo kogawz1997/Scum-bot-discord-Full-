@@ -218,3 +218,9 @@ coverage/
 # Local compare/temp/IDE folders
 _compare/
 .vs/
+
+# Runtime app artifacts
+data/backups/
+data/*.json
+logs/
+

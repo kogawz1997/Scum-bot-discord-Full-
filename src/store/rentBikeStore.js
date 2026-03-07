@@ -286,6 +286,77 @@ async function getLatestRentalByUser(userKey) {
   return normalizeRental(rows[0] || null);
 }
 
+async function replaceRentBikeData(nextDailyRents = [], nextRentalVehicles = []) {
+  await ensureTables();
+
+  await prisma.$executeRawUnsafe('DELETE FROM daily_rent;');
+  await prisma.$executeRawUnsafe('DELETE FROM rental_vehicles;');
+
+  for (const row of Array.isArray(nextDailyRents) ? nextDailyRents : []) {
+    if (!row || typeof row !== 'object') continue;
+    const userKey = String(row.userKey || row.user_key || '').trim();
+    const date = String(row.date || '').trim();
+    if (!userKey || !date) continue;
+    const used = row.used === true || Number(row.used || 0) === 1 ? 1 : 0;
+    await prisma.$executeRaw`
+      INSERT INTO daily_rent (user_key, date, used, updated_at)
+      VALUES (${userKey}, ${date}, ${used}, CURRENT_TIMESTAMP)
+    `;
+  }
+
+  for (const row of Array.isArray(nextRentalVehicles) ? nextRentalVehicles : []) {
+    if (!row || typeof row !== 'object') continue;
+    const orderId = String(row.orderId || row.order_id || '').trim();
+    const userKey = String(row.userKey || row.user_key || '').trim();
+    if (!orderId || !userKey) continue;
+    const status = String(row.status || 'pending');
+    const createdAt = row.createdAt || row.created_at
+      ? new Date(row.createdAt || row.created_at)
+      : new Date();
+    const destroyedAt = row.destroyedAt || row.destroyed_at
+      ? new Date(row.destroyedAt || row.destroyed_at)
+      : null;
+    await prisma.$executeRaw`
+      INSERT INTO rental_vehicles (
+        order_id,
+        user_key,
+        guild_id,
+        vehicle_instance_id,
+        status,
+        created_at,
+        destroyed_at,
+        updated_at,
+        attempt_count,
+        last_error
+      ) VALUES (
+        ${orderId},
+        ${userKey},
+        ${
+          row.guildId == null && row.guild_id == null
+            ? null
+            : String(row.guildId || row.guild_id)
+        },
+        ${
+          row.vehicleInstanceId == null && row.vehicle_instance_id == null
+            ? null
+            : String(row.vehicleInstanceId || row.vehicle_instance_id)
+        },
+        ${status},
+        ${createdAt},
+        ${destroyedAt},
+        CURRENT_TIMESTAMP,
+        ${Number(row.attemptCount || row.attempt_count || 0)},
+        ${row.lastError == null ? null : String(row.lastError || row.last_error)}
+      )
+    `;
+  }
+
+  return {
+    dailyRents: Array.isArray(nextDailyRents) ? nextDailyRents.length : 0,
+    rentalVehicles: Array.isArray(nextRentalVehicles) ? nextRentalVehicles.length : 0,
+  };
+}
+
 module.exports = {
   ensureRentBikeTables: ensureTables,
   getDailyRent,
@@ -298,4 +369,5 @@ module.exports = {
   listRentalVehicles,
   listDailyRents,
   getLatestRentalByUser,
+  replaceRentBikeData,
 };
