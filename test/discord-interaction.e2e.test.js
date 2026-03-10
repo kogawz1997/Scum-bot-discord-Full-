@@ -10,8 +10,16 @@ const {
 const botPath = path.resolve(__dirname, '../src/bot.js');
 
 function freshBotModule() {
+  const previousNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'test';
   delete require.cache[botPath];
-  return require(botPath);
+  const loaded = require(botPath);
+  if (previousNodeEnv == null) {
+    delete process.env.NODE_ENV;
+  } else {
+    process.env.NODE_ENV = previousNodeEnv;
+  }
+  return loaded;
 }
 
 function randomSteamId() {

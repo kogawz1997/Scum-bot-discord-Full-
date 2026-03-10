@@ -93,6 +93,7 @@ flowchart LR
 - บังคับมาตรฐาน bundle template:
   - สินค้าแบบหลายไอเทมต้องมี `{gameItemId}` หรือ `{quantity}`
   - ถ้าไม่ผ่านจะ reject ตั้งแต่ enqueue
+- เพิ่ม runtime health endpoint แยก process (bot/worker/watcher)
 
 ### 3.3 SCUM Integration
 
@@ -107,6 +108,7 @@ flowchart LR
 - ทำงานบน queue ทีละคำสั่ง ลดปัญหาแยก vehicle id ผิด
 - เก็บสถานะ rental vehicle สำหรับ cleanup
 - มีงาน reset รอบวันตาม timezone ที่กำหนด
+- ย้าย persistence rent bike เป็น Prisma models (`DailyRent`, `RentalVehicle`)
 
 ### 3.5 Admin Web (ปรับ UX แล้ว)
 
@@ -132,6 +134,10 @@ flowchart LR
 - มี alert event สำหรับ queue pressure / fail-rate spike / login-failure spike
 - route alert ไป Discord ช่องแอดมินอัตโนมัติ (`ops-alert`)
 - มี health endpoint สำหรับ monitor ภายนอก (`GET /healthz`)
+- เพิ่ม health endpoint ราย runtime:
+  - bot (`BOT_HEALTH_PORT`)
+  - worker (`WORKER_HEALTH_PORT`)
+  - watcher (`SCUM_WATCHER_HEALTH_PORT`)
 
 ### 3.7 Item Icons + Mapping
 
@@ -294,6 +300,8 @@ npm run register-commands
 - [x] ย้าย `linkStore`, `bountyStore`, `statsStore`, `cartStore`, `redeemStore`, `vipStore`, `scumStore`, `eventStore`, `ticketStore`, `weaponStatsStore`, `welcomePackStore`, `moderationStore`, `giveawayStore`, `topPanelStore`, `deliveryAuditStore` ไป Prisma (cache + startup hydration + write-through)
 - [x] ย้าย store หลักที่ยังเป็น JSON ไป Prisma แบบ write-through ครบ
 - [x] ย้าย persistence นอก store (`config-overrides`, `delivery queue/dead-letter`) ไป Prisma (`BotConfig`, `DeliveryQueueJob`, `DeliveryDeadLetter`)
+- [x] ย้าย `luckyWheelStore` และ `partyChatStore` ไป Prisma
+- [x] ย้าย rent bike persistence เป็น Prisma model operations (`DailyRent`, `RentalVehicle`)
 - [ ] เปิด `PERSIST_REQUIRE_DB=true` ใน production หลัง migration ครบ
 
 #### Phase 2/3 ที่ยังค้าง
@@ -301,6 +309,9 @@ npm run register-commands
 - [x] แยก process bot/web/worker ระดับ runtime flags + worker entrypoint + PM2 manifest
 - [ ] แยก process bot/web/worker ใน production environment จริง (ปรับ env + deploy + smoke test)
 - [ ] รวม domain service กลางไปคำสั่ง/flow อื่นที่เหลือให้ครบทั้งระบบ
+- [x] เพิ่ม deployment story ให้แน่น (PM2 + Docker + systemd + reverse proxy example + backup/restore step-by-step)
+- [x] เพิ่ม one-click deploy script สำหรับลูกค้า (Windows + PM2)
+- [x] เพิ่ม customer onboarding docs แบบ one-click / panel-based
 
 ### 7.3 ลำดับทำจริงรอบถัดไป
 
@@ -316,11 +327,74 @@ npm run register-commands
 
 ### 2026-03-09
 
+- ปรับสคริปต์หมุน secret ให้ใช้ production จริงได้ทันที:
+  - `scripts/rotate-production-secrets.js` รองรับการใส่ค่า Discord จริงผ่าน args
+    (`--discord-token`, `--portal-discord-secret`, `--admin-sso-discord-secret`)
+  - ไม่บังคับเขียน placeholder โดยค่าเริ่มต้นแล้ว (แต่ยังรองรับ `--force-discord-placeholder`)
+- ปรับ one-click deploy ให้เข้มขึ้น:
+  - `deploy/one-click-production.cmd` รันจาก root อัตโนมัติ
+  - เพิ่ม gate `npm run security:check` ก่อนติดตั้ง/มิเกรต/สตาร์ต PM2
+  - เปลี่ยนเป็น `npm install` เพื่อให้ `prisma` พร้อมใช้ระหว่าง deploy
+- ปรับ runtime split ให้ใช้งานแอดมินได้ครบ:
+  - PM2 production/local ตั้ง `BOT_ENABLE_ADMIN_WEB=true`
+  - ยังแยก queue/rentbike ออกไป worker ตามเดิม
+- ปิด fallback production ที่ data layer ชัดเจนขึ้น:
+  - `src/store/_persist.js` บังคับ fail-fast เมื่อ `NODE_ENV=production` แต่ `PERSIST_REQUIRE_DB!=true`
+- เพิ่ม security check ฝั่ง player portal:
+  - `scripts/security-check.js` โหลด env ของ standalone portal ด้วย
+  - ตรวจ `WEB_PORTAL_DISCORD_CLIENT_ID/SECRET` ไม่ให้ว่างหรือ placeholder
+- ปรับเอกสาร deployment/onboarding ใหม่ทั้งชุด:
+  - `docs/CUSTOMER_ONBOARDING.md`
+  - `docs/DEPLOYMENT_STORY.md`
+  - `docs/ARCHITECTURE.md`
+  - `docs/REPO_PRESENTATION.md`
+- แก้ regression test หลังเปิด production env จริง:
+  - `test/discord-interaction.e2e.test.js` บังคับ `NODE_ENV=test` ก่อนโหลด `src/bot.js`
+
+- เพิ่ม automation รอบ production hardening:
+  - `scripts/rotate-production-secrets.js` (หมุน secret + set production flags ลง `.env` จริง)
+  - `deploy/one-click-production.cmd` (rotate -> migrate -> pm2 split runtime -> readiness -> smoke)
+  - `npm run security:rotate:prod:dry`
+  - `npm run security:rotate:prod`
+  - `npm run deploy:oneclick:win`
+- เพิ่มคู่มือลูกค้า:
+  - `docs/CUSTOMER_ONBOARDING.md` (one-click + panel-based operations)
+- เพิ่ม deploy artifacts สำหรับ production เพิ่มเติม:
+  - `Dockerfile`
+  - `deploy/docker-compose.production.yml`
+  - `deploy/systemd/*.service`
+  - `deploy/nginx.player-admin.example.conf`
+- อัปเดต README ให้รองรับ 3 วิธี deploy ชัดเจน:
+  - PM2
+  - Docker Compose
+  - systemd
+- ปิด data-layer migration เพิ่มเติม:
+  - เพิ่ม Prisma models/migration สำหรับ `LuckyWheelState`, `PartyChatMessage`, `DailyRent`, `RentalVehicle`
+  - ย้าย `src/store/luckyWheelStore.js` ไป Prisma
+  - ย้าย `src/store/partyChatStore.js` ไป Prisma
+  - ย้าย `src/store/rentBikeStore.js` จาก raw SQL ไป Prisma model operations
+  - เพิ่ม backup/restore coverage ของ lucky-wheel และ party-chat ใน admin snapshot
+- เพิ่ม runtime health server กลาง `src/services/runtimeHealthServer.js`
+  - bot/worker/watcher สามารถเปิด `/healthz` แยกพอร์ตได้
+  - อัปเดต PM2 manifests ให้มี health ports (`3210/3211/3212`) และ `PERSIST_REQUIRE_DB=true`
+- ปรับ production guard เพิ่ม:
+  - production ต้องตั้ง `PERSIST_REQUIRE_DB=true`
+  - security-check ปรับให้ fail เมื่อ production ไม่บังคับ DB-only persistence
+- เพิ่มเอกสารระบบสำหรับ deploy/presentation:
+  - `docs/ARCHITECTURE.md` (runtime split + health matrix)
+  - `docs/DEPLOYMENT_STORY.md` (PM2 + reverse proxy + backup/restore step-by-step)
+  - `docs/REPO_PRESENTATION.md` (GitHub description/topics/media checklist)
 - ทำ readiness verification รอบล่าสุดครบชุด:
   - `npm run check` ผ่าน (43/43)
   - `npm run security:check` ผ่าน
   - `npm run doctor` ผ่าน
   - `npm run doctor:web-standalone` ผ่าน
+- เพิ่มสคริปต์ readiness/smoke สำหรับ production:
+  - `npm run readiness:full`
+  - `npm run readiness:prod`
+  - `npm run readiness:prod:audit`
+  - `npm run smoke:postdeploy`
+  - `deploy/run-production-checks.cmd` (Windows one-shot)
 - เพิ่ม hardening ฝั่งเว็บ player portal:
   - ถ้าพอร์ตใช้งานอยู่ (`EADDRINUSE`) จะ `exit(1)` ทันที เพื่อไม่ให้ process ค้างเงียบ
   - กรณี server error อื่น ๆ จะ `exit(1)` เช่นกัน
@@ -328,6 +402,7 @@ npm run register-commands
   - อัปเดต `README.md` เป็นสถานะทดสอบ `43/43`
   - เพิ่มคำสั่ง checklist readiness ก่อนปล่อยจริง
   - เพิ่ม troubleshooting พอร์ตชนใน `apps/web-portal-standalone/README.md`
+  - เพิ่มวิธีรัน smoke test หลัง deploy แบบอัตโนมัติ
   - เพิ่มขั้นตอน deploy production ให้เริ่มจาก `.env.production.example`
 - ยืนยันว่า doctor production จะ `PASS` เมื่อ override ค่าเป็น production ที่ถูกต้อง
   (`https` + `secure cookie` + `origin check`)

@@ -44,6 +44,14 @@ const { listAllPunishments, addPunishment, replacePunishments } = require('./sto
 const { listCodes, setCode, deleteCode, resetCodeUsage, replaceCodes } = require('./store/redeemStore');
 const { listClaimed, revokeClaim, clearClaims, replaceClaims } = require('./store/welcomePackStore');
 const { listDailyRents, listRentalVehicles } = require('./store/rentBikeStore');
+const {
+  listLuckyWheelStates,
+  replaceLuckyWheelStates,
+} = require('./store/luckyWheelStore');
+const {
+  listAllPartyMessages,
+  replacePartyMessages,
+} = require('./store/partyChatStore');
 const { listTopPanels, replaceTopPanels } = require('./store/topPanelStore');
 const { listAllCarts, replaceCarts } = require('./store/cartStore');
 const {
@@ -84,6 +92,14 @@ const {
   resolveItemIconUrl,
 } = require('./services/itemIconService');
 const {
+  listWikiWeaponCatalog,
+  getWikiWeaponCatalogMeta,
+} = require('./services/wikiWeaponCatalog');
+const {
+  listManifestItemCatalog,
+  getManifestItemCatalogMeta,
+} = require('./services/wikiItemManifestCatalog');
+const {
   redeemCodeForUser,
   requestRentBikeForUser,
   createBountyForUser,
@@ -94,6 +110,11 @@ const { getWebhookMetricsSnapshot } = require('./scumWebhookServer');
 
 const dashboardHtmlPath = path.join(__dirname, 'admin', 'dashboard.html');
 const loginHtmlPath = path.join(__dirname, 'admin', 'login.html');
+const defaultScumItemsDirPath = path.resolve(process.cwd(), 'scum_items-main');
+const scumItemsDirPath = path.resolve(
+  String(process.env.SCUM_ITEMS_DIR_PATH || defaultScumItemsDirPath).trim()
+    || defaultScumItemsDirPath,
+);
 let adminServer = null;
 let cachedDashboardHtml = null;
 let cachedLoginHtml = null;
@@ -233,6 +254,7 @@ const BACKUP_DIR = path.resolve(
   String(process.env.ADMIN_WEB_BACKUP_DIR || path.join(DATA_DIR, 'backups')),
 );
 const DISCORD_API_BASE = 'https://discord.com/api/v10';
+const STATIC_ICON_EXT = new Set(['.webp', '.png', '.jpg', '.jpeg']);
 
 function envBool(name, fallback = false) {
   const raw = String(process.env[name] || '').trim().toLowerCase();
@@ -368,6 +390,75 @@ function sendText(res, statusCode, text) {
     }),
   );
   res.end(text);
+}
+
+function getIconContentType(ext) {
+  const normalized = String(ext || '').toLowerCase();
+  if (normalized === '.png') return 'image/png';
+  if (normalized === '.jpg' || normalized === '.jpeg') return 'image/jpeg';
+  return 'image/webp';
+}
+
+function resolveStaticScumIconPath(pathname) {
+  const prefixes = ['/assets/scum-items/', '/admin/assets/scum-items/'];
+  let matchedPrefix = null;
+  for (const prefix of prefixes) {
+    if (String(pathname || '').startsWith(prefix)) {
+      matchedPrefix = prefix;
+      break;
+    }
+  }
+  if (!matchedPrefix) return null;
+  let relativeName = '';
+  try {
+    relativeName = decodeURIComponent(
+      String(pathname || '').slice(matchedPrefix.length),
+    );
+  } catch {
+    return null;
+  }
+  if (!relativeName || relativeName.includes('/') || relativeName.includes('\\')) {
+    return null;
+  }
+  if (relativeName.includes('..')) {
+    return null;
+  }
+  const ext = path.extname(relativeName).toLowerCase();
+  if (!STATIC_ICON_EXT.has(ext)) {
+    return null;
+  }
+  const absPath = path.resolve(scumItemsDirPath, relativeName);
+  if (!absPath.startsWith(scumItemsDirPath)) {
+    return null;
+  }
+  return {
+    absPath,
+    ext,
+  };
+}
+
+async function tryServeStaticScumIcon(req, res, pathname) {
+  if (req.method !== 'GET') return false;
+  const resolved = resolveStaticScumIconPath(pathname);
+  if (!resolved) return false;
+  try {
+    const stat = await fs.promises.stat(resolved.absPath);
+    if (!stat.isFile()) {
+      sendText(res, 404, 'Not found');
+      return true;
+    }
+    res.writeHead(200, {
+      ...buildSecurityHeaders({
+        'Content-Type': getIconContentType(resolved.ext),
+        'Cache-Control': 'public, max-age=86400',
+      }),
+    });
+    await pipeline(fs.createReadStream(resolved.absPath), res);
+    return true;
+  } catch {
+    sendText(res, 404, 'Not found');
+    return true;
+  }
 }
 
 function writeLiveEvent(res, eventType, payload) {
@@ -1609,6 +1700,12 @@ async function restoreSnapshotData(snapshot = {}) {
     Array.isArray(snapshot.dailyRents) ? snapshot.dailyRents : [],
     Array.isArray(snapshot.rentalVehicles) ? snapshot.rentalVehicles : [],
   );
+  await replaceLuckyWheelStates(
+    Array.isArray(snapshot.luckyWheelStates) ? snapshot.luckyWheelStates : [],
+  );
+  await replacePartyMessages(
+    Array.isArray(snapshot.partyChatMessages) ? snapshot.partyChatMessages : [],
+  );
 
   if (snapshot.config && typeof config.setFullConfig === 'function') {
     config.setFullConfig(snapshot.config);
@@ -1650,6 +1747,8 @@ async function buildSnapshot(client) {
     playerAccounts,
     dailyRents,
     rentalVehicles,
+    luckyWheelStates,
+    partyChatMessages,
   ] = await Promise.all([
     listShopItems(),
     prisma.userWallet.findMany({
@@ -1674,6 +1773,8 @@ async function buildSnapshot(client) {
     }),
     listDailyRents(1000),
     listRentalVehicles(1000),
+    listLuckyWheelStates(2000),
+    listAllPartyMessages(5000),
   ]);
 
   const shopItemsWithIcon = shopItems.map((item) => ({
@@ -1713,6 +1814,8 @@ async function buildSnapshot(client) {
     welcomeClaims: listClaimed(),
     dailyRents,
     rentalVehicles,
+    luckyWheelStates,
+    partyChatMessages,
     rentBikeRuntime: getRentBikeRuntime(),
     deliveryQueue: listDeliveryQueue(500),
     deliveryDeadLetters: listDeliveryDeadLetters(1000),
@@ -2335,6 +2438,12 @@ async function handlePostAction(client, pathname, body, res, auth) {
             bounties: Array.isArray(snapshot.bounties) ? snapshot.bounties.length : 0,
             events: Array.isArray(snapshot.events) ? snapshot.events.length : 0,
             carts: Array.isArray(snapshot.carts) ? snapshot.carts.length : 0,
+            luckyWheelStates: Array.isArray(snapshot.luckyWheelStates)
+              ? snapshot.luckyWheelStates.length
+              : 0,
+            partyChatMessages: Array.isArray(snapshot.partyChatMessages)
+              ? snapshot.partyChatMessages.length
+              : 0,
           },
         },
       });
@@ -2443,6 +2552,10 @@ function startAdminWebServer(client) {
   adminServer = http.createServer(async (req, res) => {
     const urlObj = new URL(req.url || '/', `http://${host}:${port}`);
     const { pathname } = urlObj;
+
+    if (await tryServeStaticScumIcon(req, res, pathname)) {
+      return;
+    }
 
     if (req.method === 'GET' && pathname === '/favicon.ico') {
       res.writeHead(204);
@@ -2725,6 +2838,46 @@ function startAdminWebServer(client) {
             data: {
               total: items.length,
               query,
+              items,
+            },
+          });
+        }
+
+        if (req.method === 'GET' && pathname === '/admin/api/items/weapons-catalog') {
+          const auth = ensureRole(req, urlObj, 'mod', res);
+          if (!auth) return undefined;
+          const query = String(urlObj.searchParams.get('q') || '').trim();
+          const limit = asInt(urlObj.searchParams.get('limit'), 200);
+          const items = listWikiWeaponCatalog(query, limit || 200);
+          return sendJson(res, 200, {
+            ok: true,
+            data: {
+              query,
+              total: items.length,
+              meta: getWikiWeaponCatalogMeta(),
+              items,
+            },
+          });
+        }
+
+        if (req.method === 'GET' && pathname === '/admin/api/items/manifest-catalog') {
+          const auth = ensureRole(req, urlObj, 'mod', res);
+          if (!auth) return undefined;
+          const query = String(urlObj.searchParams.get('q') || '').trim();
+          const category = String(urlObj.searchParams.get('category') || '').trim();
+          const limit = asInt(urlObj.searchParams.get('limit'), 300);
+          const items = listManifestItemCatalog({
+            query,
+            category,
+            limit: limit || 300,
+          });
+          return sendJson(res, 200, {
+            ok: true,
+            data: {
+              query,
+              category,
+              total: items.length,
+              meta: getManifestItemCatalogMeta(),
               items,
             },
           });

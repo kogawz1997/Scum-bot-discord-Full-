@@ -1,4 +1,4 @@
-const crypto = require('node:crypto');
+﻿const crypto = require('node:crypto');
 const http = require('node:http');
 const {
   sendStatusOnline,
@@ -177,6 +177,8 @@ function startScumServer(client) {
           weapon: data.weapon,
           distance: data.distance,
           hitZone: data.hitZone,
+          ...(data.sector != null ? { sector: data.sector } : {}),
+          ...(data.mapImageUrl != null ? { mapImageUrl: data.mapImageUrl } : {}),
         });
       } else if (eventType === 'restart') {
         await sendRestartAlert(guild, data.message || 'เซิร์ฟเวอร์กำลังรีสตาร์ท');
@@ -229,4 +231,5 @@ module.exports = {
   startScumServer,
   getWebhookMetricsSnapshot,
 };
+
 

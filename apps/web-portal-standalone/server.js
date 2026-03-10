@@ -4,6 +4,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
+const { pipeline } = require('node:stream/promises');
 const { URL, URLSearchParams } = require('node:url');
 
 const dotenv = require('dotenv');
@@ -141,6 +142,12 @@ const DISCORD_API_BASE = 'https://discord.com/api/v10';
 const LOGIN_HTML_PATH = path.join(__dirname, 'public', 'login.html');
 const PLAYER_HTML_PATH = path.join(__dirname, 'public', 'player.html');
 const DEFAULT_MAP_PORTAL_URL = 'https://scum-map.com/th/map/bunkers_and_killboxes';
+const DEFAULT_SCUM_ITEMS_DIR_PATH = path.resolve(process.cwd(), 'scum_items-main');
+const SCUM_ITEMS_DIR_PATH = path.resolve(
+  String(process.env.SCUM_ITEMS_DIR_PATH || DEFAULT_SCUM_ITEMS_DIR_PATH).trim()
+    || DEFAULT_SCUM_ITEMS_DIR_PATH,
+);
+const STATIC_ICON_EXT = new Set(['.webp', '.png', '.jpg', '.jpeg']);
 
 const FAVICON_SVG = [
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">',
@@ -162,6 +169,8 @@ const PARTY_CHAT_MAX_LENGTH = 280;
 
 let cachedLoginHtml = null;
 let cachedPlayerHtml = null;
+let cachedLoginHtmlMtimeMs = 0;
+let cachedPlayerHtmlMtimeMs = 0;
 
 function asInt(raw, fallback, min, max) {
   const parsed = Number(raw);
@@ -424,9 +433,12 @@ function msToCountdownText(ms) {
   return msToDaysHours(value);
 }
 
-function buildWheelStatePayload(discordId, wheelConfig, limit = 20) {
-  const check = canSpinWheel(discordId, wheelConfig.cooldownMs);
-  const state = getUserWheelState(discordId, limit) || {
+async function buildWheelStatePayload(discordId, wheelConfig, limit = 20) {
+  const [check, stateRaw] = await Promise.all([
+    canSpinWheel(discordId, wheelConfig.cooldownMs),
+    getUserWheelState(discordId, limit),
+  ]);
+  const state = stateRaw || {
     userId: String(discordId || ''),
     lastSpinAt: null,
     totalSpins: 0,
@@ -677,6 +689,77 @@ function sendFavicon(res) {
   res.end(FAVICON_SVG);
 }
 
+function getIconContentType(ext) {
+  const normalized = String(ext || '').toLowerCase();
+  if (normalized === '.png') return 'image/png';
+  if (normalized === '.jpg' || normalized === '.jpeg') return 'image/jpeg';
+  return 'image/webp';
+}
+
+function resolveStaticScumIconPath(pathname) {
+  const prefixes = ['/assets/scum-items/', '/player/assets/scum-items/'];
+  let matchedPrefix = null;
+  for (const prefix of prefixes) {
+    if (String(pathname || '').startsWith(prefix)) {
+      matchedPrefix = prefix;
+      break;
+    }
+  }
+  if (!matchedPrefix) return null;
+
+  let relativeName = '';
+  try {
+    relativeName = decodeURIComponent(
+      String(pathname || '').slice(matchedPrefix.length),
+    );
+  } catch {
+    return null;
+  }
+  if (!relativeName || relativeName.includes('/') || relativeName.includes('\\')) {
+    return null;
+  }
+  if (relativeName.includes('..')) {
+    return null;
+  }
+  const ext = path.extname(relativeName).toLowerCase();
+  if (!STATIC_ICON_EXT.has(ext)) {
+    return null;
+  }
+  const absPath = path.resolve(SCUM_ITEMS_DIR_PATH, relativeName);
+  if (!absPath.startsWith(SCUM_ITEMS_DIR_PATH)) {
+    return null;
+  }
+  return {
+    absPath,
+    ext,
+  };
+}
+
+async function tryServeStaticScumIcon(req, res, pathname) {
+  if (String(req.method || '').toUpperCase() !== 'GET') return false;
+  const resolved = resolveStaticScumIconPath(pathname);
+  if (!resolved) return false;
+  try {
+    const stat = await fs.promises.stat(resolved.absPath);
+    if (!stat.isFile()) {
+      sendJson(res, 404, { ok: false, error: 'Not found' });
+      return true;
+    }
+    res.writeHead(
+      200,
+      buildSecurityHeaders({
+        'Content-Type': getIconContentType(resolved.ext),
+        'Cache-Control': 'public, max-age=86400',
+      }),
+    );
+    await pipeline(fs.createReadStream(resolved.absPath), res);
+    return true;
+  } catch {
+    sendJson(res, 404, { ok: false, error: 'Not found' });
+    return true;
+  }
+}
+
 function parseCookies(req) {
   const out = {};
   const raw = String(req.headers.cookie || '');
@@ -882,16 +965,29 @@ function loadHtmlTemplate(filePath) {
   return fs.readFileSync(filePath, 'utf8');
 }
 
+function getFileMtimeMs(filePath) {
+  try {
+    const stat = fs.statSync(filePath);
+    return Number(stat.mtimeMs || 0);
+  } catch {
+    return 0;
+  }
+}
+
 function getPlayerHtml() {
-  if (!cachedPlayerHtml) {
+  const mtimeMs = getFileMtimeMs(PLAYER_HTML_PATH);
+  if (!cachedPlayerHtml || !IS_PRODUCTION || mtimeMs > cachedPlayerHtmlMtimeMs) {
     cachedPlayerHtml = loadHtmlTemplate(PLAYER_HTML_PATH);
+    cachedPlayerHtmlMtimeMs = mtimeMs;
   }
   return cachedPlayerHtml;
 }
 
 function renderLoginPage(message) {
-  if (!cachedLoginHtml) {
+  const mtimeMs = getFileMtimeMs(LOGIN_HTML_PATH);
+  if (!cachedLoginHtml || !IS_PRODUCTION || mtimeMs > cachedLoginHtmlMtimeMs) {
     cachedLoginHtml = loadHtmlTemplate(LOGIN_HTML_PATH);
+    cachedLoginHtmlMtimeMs = mtimeMs;
   }
   const safe = escapeHtml(String(message || ''));
   return cachedLoginHtml.replace('__ERROR_MESSAGE__', safe);
@@ -1514,7 +1610,7 @@ async function handlePlayerApi(req, res, urlObj) {
     const party = await resolvePartyContext(session.discordId);
     const items =
       party.chatEnabled && party.partyKey
-        ? listPartyMessages(party.partyKey, limit)
+        ? await listPartyMessages(party.partyKey, limit)
         : [];
     return sendJson(res, 200, {
       ok: true,
@@ -1576,7 +1672,7 @@ async function handlePlayerApi(req, res, urlObj) {
     const me = party.members.find((row) => row.discordId === session.discordId);
     const displayName =
       normalizeText(me?.displayName) || normalizeText(session.user) || session.discordId;
-    const addResult = addPartyMessage(party.partyKey, {
+    const addResult = await addPartyMessage(party.partyKey, {
       userId: session.discordId,
       displayName,
       message,
@@ -1761,7 +1857,7 @@ async function handlePlayerApi(req, res, urlObj) {
     const limit = asInt(urlObj.searchParams.get('limit'), 20, 1, 80);
     return sendJson(res, 200, {
       ok: true,
-      data: buildWheelStatePayload(session.discordId, wheelConfig, limit),
+      data: await buildWheelStatePayload(session.discordId, wheelConfig, limit),
     });
   }
 
@@ -1777,7 +1873,7 @@ async function handlePlayerApi(req, res, urlObj) {
       });
     }
 
-    const check = canSpinWheel(session.discordId, wheelConfig.cooldownMs);
+    const check = await canSpinWheel(session.discordId, wheelConfig.cooldownMs);
     if (!check.ok) {
       return sendJson(res, 429, {
         ok: false,
@@ -1885,7 +1981,7 @@ async function handlePlayerApi(req, res, urlObj) {
       itemRewardQueueReason = normalizeText(enqueueResult?.reason) || null;
     }
 
-    const recorded = recordWheelSpin(session.discordId, {
+    const recorded = await recordWheelSpin(session.discordId, {
       id: reward.id,
       label: reward.label,
       type: rewardType,
@@ -1930,7 +2026,11 @@ async function handlePlayerApi(req, res, urlObj) {
       }
     }
 
-    const wheelState = buildWheelStatePayload(session.discordId, wheelConfig, 20);
+    const wheelState = await buildWheelStatePayload(
+      session.discordId,
+      wheelConfig,
+      20,
+    );
     const rewardLabel = normalizeText(reward.label || reward.id) || 'รางวัลพิเศษ';
     let message = `หมุนวงล้อสำเร็จ! ผลลัพธ์: ${rewardLabel}`;
     if (rewardType === 'coins' && rewardAmount > 0) {
@@ -2747,6 +2847,10 @@ async function requestHandler(req, res) {
   const urlObj = new URL(req.url || '/', BASE_URL);
   const pathname = urlObj.pathname;
   const method = String(req.method || 'GET').toUpperCase();
+
+  if (await tryServeStaticScumIcon(req, res, pathname)) {
+    return;
+  }
 
   const canonicalRedirectUrl = getCanonicalRedirectUrl(req);
   if (canonicalRedirectUrl && (method === 'GET' || method === 'HEAD')) {

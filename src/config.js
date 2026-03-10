@@ -1,4 +1,4 @@
-// ค่าคอนฟิกพื้นฐานของบอทเซิร์ฟ SCUM
+﻿// à¸„à¹ˆà¸²à¸„à¸­à¸™à¸Ÿà¸´à¸à¸žà¸·à¹‰à¸™à¸à¸²à¸™à¸‚à¸­à¸‡à¸šà¸­à¸—à¹€à¸‹à¸´à¸£à¹Œà¸Ÿ SCUM
 
 const { loadJson, saveJsonDebounced } = require('./store/_persist');
 const { prisma } = require('./prisma');
@@ -99,7 +99,7 @@ function mergePatchInPlace(target, patch) {
 
 const defaultConfig = {
   economy: {
-    currencySymbol: '💰',
+    currencySymbol: 'ðŸ’°',
     dailyReward: 250,
     weeklyReward: 1500,
     dailyCooldownMs: 24 * 60 * 60 * 1000,
@@ -124,51 +124,51 @@ const defaultConfig = {
     ],
   },
   shop: {
-    // รายการเริ่มต้น (สามารถแก้ได้เอง)
+    // à¸£à¸²à¸¢à¸à¸²à¸£à¹€à¸£à¸´à¹ˆà¸¡à¸•à¹‰à¸™ (à¸ªà¸²à¸¡à¸²à¸£à¸–à¹à¸à¹‰à¹„à¸”à¹‰à¹€à¸­à¸‡)
     initialItems: [
       {
         id: 'vip-7d',
-        name: 'VIP 7 วัน',
+        name: 'VIP 7 à¸§à¸±à¸™',
         price: 5000,
-        description: 'VIP 7 วัน + เข้าห้อง VIP + สีชื่อพิเศษ',
+        description: 'VIP 7 à¸§à¸±à¸™ + à¹€à¸‚à¹‰à¸²à¸«à¹‰à¸­à¸‡ VIP + à¸ªà¸µà¸Šà¸·à¹ˆà¸­à¸žà¸´à¹€à¸¨à¸©',
       },
       {
         id: 'vip-30d',
-        name: 'VIP 30 วัน',
+        name: 'VIP 30 à¸§à¸±à¸™',
         price: 15000,
-        description: 'VIP 30 วัน + เข้าห้อง VIP + สีชื่อพิเศษ',
+        description: 'VIP 30 à¸§à¸±à¸™ + à¹€à¸‚à¹‰à¸²à¸«à¹‰à¸­à¸‡ VIP + à¸ªà¸µà¸Šà¸·à¹ˆà¸­à¸žà¸´à¹€à¸¨à¸©',
       },
       {
         id: 'loot-box',
-        name: 'Loot Box (ในเกม)',
+        name: 'Loot Box (à¹ƒà¸™à¹€à¸à¸¡)',
         price: 2000,
-        description: 'กล่องสุ่มของในเกม (สตาฟเป็นคนแจกในเกมตาม code)',
+        description: 'à¸à¸¥à¹ˆà¸­à¸‡à¸ªà¸¸à¹ˆà¸¡à¸‚à¸­à¸‡à¹ƒà¸™à¹€à¸à¸¡ (à¸ªà¸•à¸²à¸Ÿà¹€à¸›à¹‡à¸™à¸„à¸™à¹à¸ˆà¸à¹ƒà¸™à¹€à¸à¸¡à¸•à¸²à¸¡ code)',
       },
     ],
   },
   serverInfo: {
-    name: 'SCUM TH เซิร์ฟเวอร์',
+    name: 'SCUM TH à¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œ',
     ip: '127.0.0.1',
     port: '12345',
     maxPlayers: 90,
     description:
-      'เซิร์ฟ SCUM PVP/PVE เน้น community ไทย ไม่ pay2win\nอ่านกติกาใน #server-info ก่อนเข้าเล่น',
+      'à¹€à¸‹à¸´à¸£à¹Œà¸Ÿ SCUM PVP/PVE à¹€à¸™à¹‰à¸™ community à¹„à¸—à¸¢ à¹„à¸¡à¹ˆ pay2win\nà¸­à¹ˆà¸²à¸™à¸à¸•à¸´à¸à¸²à¹ƒà¸™ #server-info à¸à¹ˆà¸­à¸™à¹€à¸‚à¹‰à¸²à¹€à¸¥à¹ˆà¸™',
     rulesShort: [
-      'ห้ามใช้โปรแกรมช่วยเล่น / cheat / macro ผิดกติกา',
-      'ห้าม toxic หนัก, เหยียดชาติ/ศาสนา/เพศ',
-      'ห้ามทำลายของใน safe zone',
+      'à¸«à¹‰à¸²à¸¡à¹ƒà¸Šà¹‰à¹‚à¸›à¸£à¹à¸à¸£à¸¡à¸Šà¹ˆà¸§à¸¢à¹€à¸¥à¹ˆà¸™ / cheat / macro à¸œà¸´à¸”à¸à¸•à¸´à¸à¸²',
+      'à¸«à¹‰à¸²à¸¡ toxic à¸«à¸™à¸±à¸, à¹€à¸«à¸¢à¸µà¸¢à¸”à¸Šà¸²à¸•à¸´/à¸¨à¸²à¸ªà¸™à¸²/à¹€à¸žà¸¨',
+      'à¸«à¹‰à¸²à¸¡à¸—à¸³à¸¥à¸²à¸¢à¸‚à¸­à¸‡à¹ƒà¸™ safe zone',
     ],
     website: null,
   },
   restartSchedule: [
-    'ทุกวัน 06:00',
-    'ทุกวัน 12:00',
-    'ทุกวัน 18:00',
-    'ทุกวัน 00:00',
+    'à¸—à¸¸à¸à¸§à¸±à¸™ 06:00',
+    'à¸—à¸¸à¸à¸§à¸±à¸™ 12:00',
+    'à¸—à¸¸à¸à¸§à¸±à¸™ 18:00',
+    'à¸—à¸¸à¸à¸§à¸±à¸™ 00:00',
   ],
   raidTimes: [
-    'จันทร์ - ศุกร์: 18:00 - 23:00',
-    'เสาร์ - อาทิตย์: 14:00 - 23:00',
+    'à¸ˆà¸±à¸™à¸—à¸£à¹Œ - à¸¨à¸¸à¸à¸£à¹Œ: 18:00 - 23:00',
+    'à¹€à¸ªà¸²à¸£à¹Œ - à¸­à¸²à¸—à¸´à¸•à¸¢à¹Œ: 14:00 - 23:00',
   ],
   channels: {
     shopLog: 'shop-log',
@@ -188,6 +188,12 @@ const defaultConfig = {
     defaultWeaponImage:
       'https://img.icons8.com/color/96/rifle.png',
     unknownWeaponLabel: 'อาวุธไม่ทราบชนิด',
+
+    // Optional map snapshot image in kill feed.
+    // mapImageTemplate supports {sector} placeholder.
+    mapImageTemplate: '',
+    defaultMapImage: '',
+    sectorMapImages: {},
 
     // Normalize raw SCUM weapon names to canonical display names.
     weaponAliases: {
@@ -257,24 +263,24 @@ const defaultConfig = {
       intervalMs: 7000,
       muteMinutes: 10,
     },
-    badWordsSoft: ['เหี้ย', 'สัส', 'ควาย'],
-    badWordsHard: ['nigger', 'ควยแม่', 'ไปตาย'],
+    badWordsSoft: ['à¹€à¸«à¸µà¹‰à¸¢', 'à¸ªà¸±à¸ª', 'à¸„à¸§à¸²à¸¢'],
+    badWordsHard: ['nigger', 'à¸„à¸§à¸¢à¹à¸¡à¹ˆ', 'à¹„à¸›à¸•à¸²à¸¢'],
     hardTimeoutMinutes: 30,
   },
   vip: {
     plans: [
       {
         id: 'vip-7d',
-        name: 'VIP 7 วัน',
-        description: 'VIP 7 วัน, ห้อง VIP, สีชื่อพิเศษ, โบนัส daily เล็กน้อย',
+        name: 'VIP 7 à¸§à¸±à¸™',
+        description: 'VIP 7 à¸§à¸±à¸™, à¸«à¹‰à¸­à¸‡ VIP, à¸ªà¸µà¸Šà¸·à¹ˆà¸­à¸žà¸´à¹€à¸¨à¸©, à¹‚à¸šà¸™à¸±à¸ª daily à¹€à¸¥à¹‡à¸à¸™à¹‰à¸­à¸¢',
         priceCoins: 5000,
         durationDays: 7,
       },
       {
         id: 'vip-30d',
-        name: 'VIP 30 วัน',
+        name: 'VIP 30 à¸§à¸±à¸™',
         description:
-          'VIP 30 วัน, ห้อง VIP, สีชื่อพิเศษ, โบนัส daily เล็กน้อย',
+          'VIP 30 à¸§à¸±à¸™, à¸«à¹‰à¸­à¸‡ VIP, à¸ªà¸µà¸Šà¸·à¹ˆà¸­à¸žà¸´à¹€à¸¨à¸©, à¹‚à¸šà¸™à¸±à¸ª daily à¹€à¸¥à¹‡à¸à¸™à¹‰à¸­à¸¢',
         priceCoins: 15000,
         durationDays: 30,
       },
@@ -304,16 +310,22 @@ const defaultConfig = {
   },
   delivery: {
     auto: {
-      enabled: false,
+      enabled: true,
       queueIntervalMs: 1200,
       maxRetries: 3,
       retryDelayMs: 6000,
       retryBackoff: 1.8,
       commandTimeoutMs: 10000,
       failedStatus: 'delivery_failed',
-      // itemId -> command string | command array
+      // itemId OR gameItemId/spawn_id -> command string | command array
       // placeholders: {steamId} {itemId} {itemName} {gameItemId} {quantity} {itemKind} {userId} {purchaseCode}
       itemCommands: {},
+      // If true: auto-use command template from scum_weapons_from_wiki.json
+      // when no explicit itemCommands entry is found.
+      wikiWeaponCommandFallbackEnabled: true,
+      // If true: auto-use generic command template from scum_item_category_manifest.json
+      // for all known item IDs in icon catalog when no explicit itemCommands is found.
+      itemManifestCommandFallbackEnabled: true,
       // Optional fallback if env RCON_EXEC_TEMPLATE is not set.
       // Example:
       // rconExecTemplate: 'mcrcon -H {host} -P {port} -p "{password}" "{command}"',
@@ -478,3 +490,4 @@ Object.defineProperty(module.exports, 'flushConfigWrites', {
   value: flushConfigWrites,
   enumerable: false,
 });
+

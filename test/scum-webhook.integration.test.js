@@ -148,6 +148,8 @@ test('SCUM webhook server validates auth and dispatches events', async (t) => {
     weapon: 'AK-47',
     distance: 120,
     hitZone: 'head',
+    sector: 'B2',
+    mapImageUrl: 'https://cdn.example.com/maps/b2.jpg',
   });
   assert.equal(killOk.status, 200);
 
@@ -175,6 +177,8 @@ test('SCUM webhook server validates auth and dispatches events', async (t) => {
     weapon: 'AK-47',
     distance: 120,
     hitZone: 'head',
+    sector: 'B2',
+    mapImageUrl: 'https://cdn.example.com/maps/b2.jpg',
   });
 });
 

@@ -13,6 +13,9 @@
       --bg-1: #070b12;
       --bg-2: #0d1420;
       --bg-3: #141d2a;
+      --scroll-track: #0d1725;
+      --scroll-thumb: #1c2e46;
+      --scroll-thumb-hover: #28456a;
       --surface: #111927d8;
       --surface-alt: #0d1522e0;
       --line: #9eb5cf33;
@@ -30,6 +33,71 @@
 
     * {
       box-sizing: border-box;
+      scrollbar-width: thin;
+      scrollbar-color: var(--scroll-thumb) var(--scroll-track);
+    }
+
+    *::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+      background: var(--scroll-track);
+    }
+
+    *::-webkit-scrollbar-track {
+      background: var(--scroll-track);
+    }
+
+    *::-webkit-scrollbar-thumb {
+      border-radius: 999px;
+      border: 2px solid var(--scroll-track);
+      background: linear-gradient(180deg, #21364f, #172a42);
+    }
+
+    *::-webkit-scrollbar-thumb:hover {
+      background: var(--scroll-thumb-hover);
+    }
+
+    *::-webkit-scrollbar-corner {
+      background: var(--scroll-track);
+    }
+
+    .sidebar,
+    .menu {
+      scrollbar-width: thin;
+      scrollbar-color: var(--scroll-thumb) var(--scroll-track);
+    }
+
+    .sidebar::-webkit-scrollbar,
+    .menu::-webkit-scrollbar {
+      width: 11px;
+      background: var(--scroll-track);
+    }
+
+    .sidebar::-webkit-scrollbar-track,
+    .menu::-webkit-scrollbar-track,
+    .sidebar::-webkit-scrollbar-track-piece,
+    .menu::-webkit-scrollbar-track-piece {
+      background: var(--scroll-track);
+    }
+
+    .sidebar::-webkit-scrollbar-thumb,
+    .menu::-webkit-scrollbar-thumb {
+      border-radius: 999px;
+      border: 2px solid var(--scroll-track);
+      background: linear-gradient(180deg, #20364f, #172a42);
+    }
+
+    .sidebar::-webkit-scrollbar-thumb:hover,
+    .menu::-webkit-scrollbar-thumb:hover {
+      background: var(--scroll-thumb-hover);
+    }
+
+    .sidebar::-webkit-scrollbar-button,
+    .menu::-webkit-scrollbar-button {
+      height: 12px;
+      background: var(--scroll-track);
+      border: none;
+      box-shadow: none;
     }
 
     html,
@@ -198,14 +266,6 @@
 
     .muted {
       color: var(--muted);
-    }
-
-    .brand .muted {
-      margin-top: 3px;
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: .45px;
-      color: #b8c6d8;
     }
 
     .profile-card .profile-head {
@@ -1119,7 +1179,6 @@
       left: 83px;
     }
 
-    body.sidebar-collapsed .brand .muted,
     body.sidebar-collapsed .profile-card,
     body.sidebar-collapsed #menu {
       display: none;
@@ -1222,7 +1281,6 @@
         padding: 12px;
       }
 
-      body.sidebar-collapsed .brand .muted,
       body.sidebar-collapsed .profile-card {
         display: block;
       }
@@ -1311,7 +1369,6 @@
           <h1>SCUM TH</h1>
           <button id="sidebarToggle" class="sidebar-toggle" type="button" aria-label="ยุบแถบเมนู" title="ยุบ/ขยายเมนู">☰</button>
         </div>
-        <div class="muted">ศูนย์บริการผู้เล่นอย่างเป็นทางการ เชื่อม Discord + SCUM ในหน้าเดียว</div>
       </section>
 
       <section class="card profile-card">
@@ -1334,18 +1391,19 @@
 
       <nav class="menu" id="menu">
         <button type="button" class="active" data-tab="overview">ภาพรวม</button>
-        <button type="button" data-tab="map">แผนที่</button>
+        <button type="button" data-tab="profile">โปรไฟล์ / Steam</button>
         <button type="button" data-tab="wallet">กระเป๋าเงิน</button>
         <button type="button" data-tab="shop">ร้านค้า</button>
         <button type="button" data-tab="orders">คำสั่งซื้อ</button>
         <button type="button" data-tab="redeem">โค้ด / Redeem</button>
+        <button type="button" data-tab="mission">ภารกิจ</button>
         <button type="button" data-tab="vehicle">เช่ารถ</button>
         <button type="button" data-tab="party">ปาร์ตี้ / แชท</button>
-        <button type="button" data-tab="mission">ภารกิจ</button>
-        <button type="button" data-tab="wheel">วงล้อ / คำแนะนำ</button>
         <button type="button" data-tab="pvp">อันดับ / ค่าหัว</button>
         <button type="button" data-tab="notify">การแจ้งเตือน</button>
-        <button type="button" data-tab="profile">โปรไฟล์ / Steam</button>
+        <button type="button" data-tab="map">แผนที่</button>
+        <button type="button" data-tab="wheel">วงล้อ</button>
+        <button type="button" data-tab="guide">คำแนะนำ</button>
         <button type="button" data-tab="market">ตลาด</button>
       </nav>
     </aside>
@@ -1702,18 +1760,6 @@
             </div>
           </article>
 
-          <article class="section span-4">
-            <h3>กฎ + คำแนะนำ</h3>
-            <div class="list-block">
-              <div class="small" style="margin-bottom:5px">กฎเซิร์ฟเวอร์</div>
-              <ul id="rulesList"></ul>
-            </div>
-            <div class="list-block" style="margin-top:8px">
-              <div class="small" style="margin-bottom:5px">คำแนะนำผู้เล่น</div>
-              <ul id="tipsList"></ul>
-            </div>
-          </article>
-
           <article class="section span-6">
             <h3>รายการรางวัลที่เป็นไปได้</h3>
             <div class="table-wrap">
@@ -1745,6 +1791,24 @@
                 </thead>
                 <tbody id="wheelHistoryBody"></tbody>
               </table>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="tab" id="tab-guide">
+        <div class="grid">
+          <article class="section span-6">
+            <h3>กฎเซิร์ฟเวอร์</h3>
+            <div class="list-block">
+              <ul id="rulesList"></ul>
+            </div>
+          </article>
+
+          <article class="section span-6">
+            <h3>คำแนะนำผู้เล่น</h3>
+            <div class="list-block">
+              <ul id="tipsList"></ul>
             </div>
           </article>
         </div>

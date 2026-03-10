@@ -307,3 +307,56 @@ model DeliveryDeadLetter {
   @@index([createdAt])
   @@index([updatedAt])
 }
+
+model LuckyWheelState {
+  userId      String   @id
+  lastSpinAt  DateTime?
+  totalSpins  Int      @default(0)
+  historyJson String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  @@index([updatedAt])
+}
+
+model PartyChatMessage {
+  id          String   @id
+  partyKey    String   @map("party_key")
+  userId      String   @map("user_id")
+  displayName String   @map("display_name")
+  message     String
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([partyKey, createdAt])
+  @@index([userId, createdAt])
+  @@map("party_chat_messages")
+}
+
+model DailyRent {
+  userKey   String   @map("user_key")
+  date      String
+  used      Boolean  @default(false)
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  @@id([userKey, date])
+  @@index([date, updatedAt])
+  @@map("daily_rent")
+}
+
+model RentalVehicle {
+  orderId           String   @id @map("order_id")
+  userKey           String   @map("user_key")
+  guildId           String?  @map("guild_id")
+  vehicleInstanceId String?  @map("vehicle_instance_id")
+  status            String   @default("pending")
+  createdAt         DateTime @default(now()) @map("created_at")
+  destroyedAt       DateTime? @map("destroyed_at")
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at")
+  attemptCount      Int      @default(0) @map("attempt_count")
+  lastError         String?  @map("last_error")
+
+  @@index([status])
+  @@index([userKey])
+  @@index([createdAt])
+  @@map("rental_vehicles")
+}

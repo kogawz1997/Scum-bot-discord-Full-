@@ -156,6 +156,7 @@ curl http://127.0.0.1:3300/healthz
 ```bash
 npm run doctor:web-standalone
 npm run doctor:web-standalone:prod
+npm run readiness:prod
 ```
 
 ---
@@ -182,6 +183,26 @@ npm run doctor:web-standalone:prod
    - linksteam set / unset
 4. ปิด admin web ฝั่งบอท (`BOT_ENABLE_ADMIN_WEB=false`) แล้ว portal ผู้เล่นยังใช้ได้ปกติ (ไม่มี 502 ใน `/player/api/*`)
 5. เข้า `/admin` แล้ว redirect ไป URL admin เดิม
+
+รันแบบอัตโนมัติหลัง deploy:
+
+```bash
+npm run smoke:postdeploy
+```
+
+ตั้งค่า base URL สำหรับ smoke script ได้:
+
+```bash
+set SMOKE_ADMIN_BASE_URL=https://admin.example.com/admin
+set SMOKE_PLAYER_BASE_URL=https://player.example.com
+npm run smoke:postdeploy
+```
+
+Windows helper (รัน readiness + smoke ต่อเนื่อง):
+
+```bat
+deploy\run-production-checks.cmd
+```
 
 หมายเหตุ SteamID:
 - ผู้เล่นผูกได้ 1 ครั้งต่อบัญชี

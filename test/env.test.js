@@ -31,6 +31,7 @@ test('getProductionSecurityErrors blocks weak production config', () => {
     ADMIN_WEB_ALLOW_TOKEN_QUERY: 'true',
     ADMIN_WEB_ENFORCE_ORIGIN_CHECK: 'false',
     ADMIN_WEB_ALLOWED_ORIGINS: 'http://127.0.0.1:3200',
+    PERSIST_REQUIRE_DB: 'false',
   });
   assert.ok(errors.length >= 5);
 });
@@ -48,6 +49,7 @@ test('getProductionSecurityErrors passes strong production config', () => {
     ADMIN_WEB_ALLOW_TOKEN_QUERY: 'false',
     ADMIN_WEB_ENFORCE_ORIGIN_CHECK: 'true',
     ADMIN_WEB_ALLOWED_ORIGINS: 'https://admin.example.com',
+    PERSIST_REQUIRE_DB: 'true',
   });
   assert.deepEqual(errors, []);
 });

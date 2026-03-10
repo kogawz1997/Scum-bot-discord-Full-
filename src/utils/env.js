@@ -19,6 +19,8 @@ function isLikelyPlaceholder(value) {
     'example',
     'changeme',
     'replace',
+    'rotate_in_',
+    'rotate_me',
     'token_here',
     'password_here',
     'put_a_',
@@ -97,6 +99,10 @@ function getProductionSecurityErrors(env = process.env) {
     );
   }
 
+  if (!isTruthy(env.PERSIST_REQUIRE_DB)) {
+    errors.push('Production requires PERSIST_REQUIRE_DB=true.');
+  }
+
   return errors;
 }
 
@@ -157,7 +163,7 @@ function assertRegisterEnv(env = process.env) {
 
   if (env.DISCORD_GUILD_ID && !isSnowflake(env.DISCORD_GUILD_ID)) {
     errors.push(
-      'DISCORD_GUILD_ID must be a numeric snowflake (ไอดีเซิร์ฟเวอร์).',
+      'DISCORD_GUILD_ID must be a numeric snowflake (Server ID).',
     );
   }
 
@@ -174,7 +180,7 @@ function assertWatcherEnv(env = process.env) {
 
   if (env.DISCORD_GUILD_ID && !isSnowflake(env.DISCORD_GUILD_ID)) {
     errors.push(
-      'DISCORD_GUILD_ID must be a numeric snowflake (ไอดีเซิร์ฟเวอร์).',
+      'DISCORD_GUILD_ID must be a numeric snowflake (Server ID).',
     );
   }
 

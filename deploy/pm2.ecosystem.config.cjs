@@ -11,12 +11,15 @@ module.exports = {
       restart_delay: 3000,
       env: {
         NODE_ENV: 'production',
+        PERSIST_REQUIRE_DB: 'true',
         BOT_ENABLE_SCUM_WEBHOOK: 'true',
         BOT_ENABLE_RESTART_SCHEDULER: 'true',
-        BOT_ENABLE_ADMIN_WEB: 'false',
+        BOT_ENABLE_ADMIN_WEB: 'true',
         BOT_ENABLE_RENTBIKE_SERVICE: 'false',
         BOT_ENABLE_DELIVERY_WORKER: 'false',
         BOT_ENABLE_OPS_ALERT_ROUTE: 'true',
+        BOT_HEALTH_HOST: '127.0.0.1',
+        BOT_HEALTH_PORT: '3210',
       },
     },
     {
@@ -30,9 +33,12 @@ module.exports = {
       restart_delay: 3000,
       env: {
         NODE_ENV: 'production',
+        PERSIST_REQUIRE_DB: 'true',
         WORKER_ENABLE_RENTBIKE: 'true',
         WORKER_ENABLE_DELIVERY: 'true',
         WORKER_HEARTBEAT_MS: '60000',
+        WORKER_HEALTH_HOST: '127.0.0.1',
+        WORKER_HEALTH_PORT: '3211',
       },
     },
     {
@@ -46,6 +52,8 @@ module.exports = {
       restart_delay: 3000,
       env: {
         NODE_ENV: 'production',
+        SCUM_WATCHER_HEALTH_HOST: '127.0.0.1',
+        SCUM_WATCHER_HEALTH_PORT: '3212',
       },
     },
     {

@@ -1,11 +1,6 @@
-const { loadJson, saveJsonDebounced } = require('./_persist');
+const { prisma } = require('../prisma');
 
-const STORE_FILENAME = 'lucky-wheel.json';
 const MAX_HISTORY_PER_USER = 80;
-
-const wheelState = {
-  users: {},
-};
 
 function normalizeUserId(userId) {
   const id = String(userId || '').trim();
@@ -23,7 +18,7 @@ function normalizeRewardEntry(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const id = String(raw.id || '').trim() || 'unknown';
   const label = String(raw.label || '').trim() || id;
-  const type = String(raw.type || 'coins').trim().toLowerCase();
+  const type = String(raw.type || 'coins').trim().toLowerCase() || 'coins';
   const amount = Number(raw.amount);
   const quantity = Number(raw.quantity);
   const itemId = String(raw.itemId || '').trim() || null;
@@ -32,7 +27,7 @@ function normalizeRewardEntry(raw) {
   return {
     id,
     label,
-    type: type || 'coins',
+    type,
     amount: Number.isFinite(amount) ? Math.max(0, Math.trunc(amount)) : 0,
     quantity: Number.isFinite(quantity) ? Math.max(0, Math.trunc(quantity)) : 0,
     itemId,
@@ -42,60 +37,50 @@ function normalizeRewardEntry(raw) {
   };
 }
 
-function normalizeUserState(raw) {
-  if (!raw || typeof raw !== 'object') {
-    return {
-      lastSpinAt: null,
-      totalSpins: 0,
-      history: [],
-    };
+function parseHistoryJson(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((row) => normalizeRewardEntry(row))
+      .filter(Boolean)
+      .slice(0, MAX_HISTORY_PER_USER);
+  } catch {
+    return [];
   }
-
-  const totalSpinsRaw = Number(raw.totalSpins);
-  const totalSpins = Number.isFinite(totalSpinsRaw)
-    ? Math.max(0, Math.trunc(totalSpinsRaw))
-    : 0;
-  const history = Array.isArray(raw.history)
-    ? raw.history
-        .map((entry) => normalizeRewardEntry(entry))
-        .filter(Boolean)
-        .slice(0, MAX_HISTORY_PER_USER)
-    : [];
-
-  return {
-    lastSpinAt: normalizeTimestamp(raw.lastSpinAt),
-    totalSpins,
-    history,
-  };
 }
 
-function ensureUserState(userId, createIfMissing = true) {
-  const id = normalizeUserId(userId);
-  if (!id) return null;
-  const current = wheelState.users[id];
-  if (current) return current;
-  if (!createIfMissing) return null;
-  const next = normalizeUserState(null);
-  wheelState.users[id] = next;
-  return next;
+function toHistoryJson(history) {
+  try {
+    return JSON.stringify(Array.isArray(history) ? history : []);
+  } catch {
+    return '[]';
+  }
 }
 
-const scheduleSave = saveJsonDebounced(STORE_FILENAME, () => wheelState);
-
-function getUserWheelState(userId, limit = 20) {
-  const id = normalizeUserId(userId);
-  if (!id) return null;
-  const entry = ensureUserState(id, false) || normalizeUserState(null);
+function toStateView(userId, row, limit = 20) {
   const take = Math.max(1, Math.min(100, Math.trunc(Number(limit || 20))));
+  const history = parseHistoryJson(row?.historyJson);
   return {
-    userId: id,
-    lastSpinAt: entry.lastSpinAt,
-    totalSpins: entry.totalSpins,
-    history: entry.history.slice(0, take),
+    userId: String(userId || ''),
+    lastSpinAt: row?.lastSpinAt ? new Date(row.lastSpinAt).toISOString() : null,
+    totalSpins: Number(row?.totalSpins || 0),
+    history: history.slice(0, take),
   };
 }
 
-function canSpinWheel(userId, cooldownMs, nowMs = Date.now()) {
+async function getUserWheelState(userId, limit = 20) {
+  const id = normalizeUserId(userId);
+  if (!id) return null;
+  const row = await prisma.luckyWheelState.findUnique({
+    where: { userId: id },
+  });
+  return toStateView(id, row, limit);
+}
+
+async function canSpinWheel(userId, cooldownMs, nowMs = Date.now()) {
   const id = normalizeUserId(userId);
   if (!id) return { ok: false, reason: 'invalid-user-id', remainingMs: 0 };
 
@@ -104,12 +89,16 @@ function canSpinWheel(userId, cooldownMs, nowMs = Date.now()) {
     return { ok: true, remainingMs: 0, lastSpinAt: null, nextSpinAt: null };
   }
 
-  const entry = ensureUserState(id, false);
-  if (!entry?.lastSpinAt) {
+  const row = await prisma.luckyWheelState.findUnique({
+    where: { userId: id },
+    select: { lastSpinAt: true },
+  });
+
+  if (!row?.lastSpinAt) {
     return { ok: true, remainingMs: 0, lastSpinAt: null, nextSpinAt: null };
   }
 
-  const lastSpinMs = new Date(entry.lastSpinAt).getTime();
+  const lastSpinMs = new Date(row.lastSpinAt).getTime();
   if (Number.isNaN(lastSpinMs)) {
     return { ok: true, remainingMs: 0, lastSpinAt: null, nextSpinAt: null };
   }
@@ -119,7 +108,7 @@ function canSpinWheel(userId, cooldownMs, nowMs = Date.now()) {
     return {
       ok: true,
       remainingMs: 0,
-      lastSpinAt: entry.lastSpinAt,
+      lastSpinAt: new Date(row.lastSpinAt).toISOString(),
       nextSpinAt: new Date(lastSpinMs + cooldown).toISOString(),
     };
   }
@@ -129,55 +118,99 @@ function canSpinWheel(userId, cooldownMs, nowMs = Date.now()) {
     ok: false,
     reason: 'cooldown',
     remainingMs,
-    lastSpinAt: entry.lastSpinAt,
+    lastSpinAt: new Date(row.lastSpinAt).toISOString(),
     nextSpinAt: new Date(lastSpinMs + cooldown).toISOString(),
   };
 }
 
-function recordWheelSpin(userId, rewardEntry) {
+async function recordWheelSpin(userId, rewardEntry) {
   const id = normalizeUserId(userId);
   if (!id) return { ok: false, reason: 'invalid-user-id' };
 
   const reward = normalizeRewardEntry(rewardEntry);
   if (!reward) return { ok: false, reason: 'invalid-reward-entry' };
 
-  const entry = ensureUserState(id, true);
-  entry.lastSpinAt = reward.at;
-  entry.totalSpins = Math.max(0, Number(entry.totalSpins || 0)) + 1;
-  entry.history.unshift(reward);
-  if (entry.history.length > MAX_HISTORY_PER_USER) {
-    entry.history.length = MAX_HISTORY_PER_USER;
-  }
-  scheduleSave();
+  const next = await prisma.$transaction(async (tx) => {
+    const existing = await tx.luckyWheelState.findUnique({
+      where: { userId: id },
+    });
+
+    const history = parseHistoryJson(existing?.historyJson);
+    history.unshift(reward);
+    if (history.length > MAX_HISTORY_PER_USER) {
+      history.length = MAX_HISTORY_PER_USER;
+    }
+
+    return tx.luckyWheelState.upsert({
+      where: { userId: id },
+      update: {
+        lastSpinAt: new Date(reward.at),
+        totalSpins: Number(existing?.totalSpins || 0) + 1,
+        historyJson: toHistoryJson(history),
+      },
+      create: {
+        userId: id,
+        lastSpinAt: new Date(reward.at),
+        totalSpins: 1,
+        historyJson: toHistoryJson(history),
+      },
+    });
+  });
 
   return {
     ok: true,
     data: {
       userId: id,
-      lastSpinAt: entry.lastSpinAt,
-      totalSpins: entry.totalSpins,
+      lastSpinAt: next.lastSpinAt ? new Date(next.lastSpinAt).toISOString() : null,
+      totalSpins: Number(next.totalSpins || 0),
       reward,
     },
   };
 }
 
-function loadPersistedState() {
-  const persisted = loadJson(STORE_FILENAME, null);
-  if (!persisted || typeof persisted !== 'object') return;
-  const users = persisted.users && typeof persisted.users === 'object'
-    ? persisted.users
-    : {};
-  for (const [userId, raw] of Object.entries(users)) {
-    const id = normalizeUserId(userId);
-    if (!id) continue;
-    wheelState.users[id] = normalizeUserState(raw);
-  }
+async function listLuckyWheelStates(limit = 1000) {
+  const rows = await prisma.luckyWheelState.findMany({
+    orderBy: { updatedAt: 'desc' },
+    take: Math.max(1, Number(limit || 1000)),
+  });
+  return rows.map((row) => ({
+    userId: row.userId,
+    lastSpinAt: row.lastSpinAt ? new Date(row.lastSpinAt).toISOString() : null,
+    totalSpins: Number(row.totalSpins || 0),
+    history: parseHistoryJson(row.historyJson),
+    createdAt: row.createdAt ? new Date(row.createdAt).toISOString() : null,
+    updatedAt: row.updatedAt ? new Date(row.updatedAt).toISOString() : null,
+  }));
 }
 
-loadPersistedState();
+async function replaceLuckyWheelStates(nextRows = []) {
+  await prisma.$transaction(async (tx) => {
+    await tx.luckyWheelState.deleteMany();
+    for (const row of Array.isArray(nextRows) ? nextRows : []) {
+      if (!row || typeof row !== 'object') continue;
+      const userId = normalizeUserId(row.userId);
+      if (!userId) continue;
+      const history = Array.isArray(row.history)
+        ? row.history.map((entry) => normalizeRewardEntry(entry)).filter(Boolean)
+        : [];
+      await tx.luckyWheelState.create({
+        data: {
+          userId,
+          lastSpinAt: row.lastSpinAt ? new Date(row.lastSpinAt) : null,
+          totalSpins: Math.max(0, Number(row.totalSpins || 0)),
+          historyJson: toHistoryJson(history),
+          createdAt: row.createdAt ? new Date(row.createdAt) : new Date(),
+          updatedAt: row.updatedAt ? new Date(row.updatedAt) : new Date(),
+        },
+      });
+    }
+  });
+}
 
 module.exports = {
   getUserWheelState,
   canSpinWheel,
   recordWheelSpin,
+  listLuckyWheelStates,
+  replaceLuckyWheelStates,
 };

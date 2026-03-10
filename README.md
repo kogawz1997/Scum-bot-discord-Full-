@@ -42,6 +42,9 @@ flowchart LR
   D --> I[RCON Delivery Queue]
 ```
 
+รายละเอียดเชิงลึกของ runtime split/health checks:
+- [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)
+
 ---
 
 ## Quick Start
@@ -80,6 +83,34 @@ copy .env.example .env
 - `SCUM_LOG_PATH`
 - `SCUM_WEBHOOK_SECRET`
 - `DATABASE_URL` (เช่น `file:./prisma/dev.db`)
+
+### ตั้งค่า Auto Spawn จากไฟล์ Wiki/Manifest (ใหม่)
+
+ระบบส่งของรองรับการ map คำสั่งเสกของอัตโนมัติจาก 2 แหล่ง:
+
+- `scum_weapons_from_wiki.json` (อาวุธ + spawn command example)
+- `scum_item_category_manifest.json` (ทุกหมวด + spawn format กลาง)
+
+- ถ้ามี `itemCommands` ตรงกับ `itemId` หรือ `gameItemId` ระบบจะใช้ค่านั้นก่อน
+- ถ้าไม่เจอ ระบบจะ fallback ไปใช้ `spawn_command_example` จากไฟล์อาวุธ wiki
+- ถ้าไม่เจออีก ระบบจะ fallback ไปใช้ template กลางจาก manifest (`#SpawnItem <Item_ID>`)
+- ระบบจะแมส `gameItemId/spawn_id` กับ icon จาก `scum_items-main` อัตโนมัติ (ใช้ได้ทั้ง Discord และเว็บ)
+- ถ้าต้องการบังคับใช้ไฟล์ไอคอนที่มีในเครื่อง:
+  - ตั้ง `SCUM_ITEMS_IGNORE_INDEX_URL=true`
+  - ตั้ง `SCUM_ITEMS_BASE_URL` เป็น URL static ของไฟล์จริง เช่น `http://127.0.0.1:3200/assets/scum-items/` หรือโดเมน production ของคุณ
+  - ระบบรองรับ route static ไอคอน:
+    - Admin web: `/assets/scum-items/<filename>` และ `/admin/assets/scum-items/<filename>`
+    - Player portal standalone: `/assets/scum-items/<filename>` และ `/player/assets/scum-items/<filename>`
+
+ปรับพฤติกรรมได้ที่ config:
+
+- `delivery.auto.wikiWeaponCommandFallbackEnabled` (`true`/`false`)
+- `delivery.auto.itemManifestCommandFallbackEnabled` (`true`/`false`)
+
+ตรวจรายการจากไฟล์ผ่าน Admin API:
+
+- `GET /admin/api/items/weapons-catalog?q=&limit=200`
+- `GET /admin/api/items/manifest-catalog?q=&category=&limit=300`
 
 ### 3) ลงทะเบียน slash commands
 
@@ -143,6 +174,51 @@ pm2 status
 pm2 logs scum-bot
 ```
 
+### โหมด Docker (production-ready)
+
+มีไฟล์พร้อมใช้:
+
+- [Dockerfile](./Dockerfile)
+- [deploy/docker-compose.production.yml](./deploy/docker-compose.production.yml)
+
+รัน:
+
+```bash
+docker compose -f deploy/docker-compose.production.yml up -d --build
+docker compose -f deploy/docker-compose.production.yml ps
+```
+
+หยุด:
+
+```bash
+docker compose -f deploy/docker-compose.production.yml down
+```
+
+Windows helper:
+
+```bat
+deploy\docker-up.cmd
+deploy\docker-down.cmd
+```
+
+### โหมด systemd (Linux)
+
+ไฟล์ unit ตัวอย่าง:
+
+- [scum-bot.service](./deploy/systemd/scum-bot.service)
+- [scum-worker.service](./deploy/systemd/scum-worker.service)
+- [scum-watcher.service](./deploy/systemd/scum-watcher.service)
+- [scum-web-portal.service](./deploy/systemd/scum-web-portal.service)
+
+ติดตั้งอย่างย่อ:
+
+```bash
+sudo cp deploy/systemd/*.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now scum-bot scum-worker scum-watcher scum-web-portal
+sudo systemctl status scum-bot
+```
+
 ---
 
 ## การทดสอบ
@@ -165,11 +241,10 @@ npm test
 เช็กความพร้อมก่อนปล่อยขึ้นจริง:
 
 ```bash
-npm run check
-npm run security:check
-npm run doctor
-npm run doctor:web-standalone
-npm run doctor:web-standalone:prod
+npm run readiness:full
+npm run readiness:prod
+# ถ้าต้องการรวม npm audit ด้วย
+npm run readiness:prod:audit
 ```
 
 ---
@@ -200,9 +275,10 @@ npm run doctor:web-standalone:prod
 - `delivery queue` (`DeliveryQueueJob`)
 - `delivery dead-letter` (`DeliveryDeadLetter`)
 
-ยังค้างสำหรับ migration เพิ่มเติม:
+สถานะ production baseline:
 
-- ปิด fallback ใน production หลัง migration ครบ (`PERSIST_REQUIRE_DB=true`)
+- บังคับ fail-fast แล้ว: `NODE_ENV=production` ต้องมี `PERSIST_REQUIRE_DB=true`
+- หากฐานข้อมูลใช้งานไม่ได้ ระบบจะไม่ fallback และจะหยุด start ทันที
 
 หมายเหตุ: ตอนนี้ `link/bounty/stats/cart/redeem/vip/scum/event/ticket/weaponStats/welcomePack/moderation/giveaway/topPanel/deliveryAudit` ใช้รูปแบบ `in-memory cache + Prisma write-through + startup hydration` เพื่อไม่ให้ API เดิมพัง
 
@@ -234,6 +310,9 @@ npm run doctor:web-standalone:prod
 
 - หมุน secret ทั้งชุดก่อน deploy
   - `DISCORD_TOKEN`, `SCUM_WEBHOOK_SECRET`, `ADMIN_WEB_PASSWORD`, `ADMIN_WEB_TOKEN`, `RCON_PASSWORD`
+  - (อัตโนมัติ) `npm run security:rotate:prod`
+  - ใส่ token จริงขณะหมุนได้ด้วย:
+    - `node scripts/rotate-production-secrets.js --write --discord-token <token> --portal-discord-secret <secret>`
 - ตั้งค่า production security env
   - `NODE_ENV=production`
   - `ADMIN_WEB_SECURE_COOKIE=true`
@@ -241,13 +320,44 @@ npm run doctor:web-standalone:prod
   - `ADMIN_WEB_ALLOW_TOKEN_QUERY=false`
   - `ADMIN_WEB_ENFORCE_ORIGIN_CHECK=true`
 - ถ้าแยก process ตาม Phase 3:
-  - Bot: `BOT_ENABLE_ADMIN_WEB=false`, `BOT_ENABLE_RENTBIKE_SERVICE=false`, `BOT_ENABLE_DELIVERY_WORKER=false`
+  - Bot: `BOT_ENABLE_ADMIN_WEB=true`, `BOT_ENABLE_RENTBIKE_SERVICE=false`, `BOT_ENABLE_DELIVERY_WORKER=false`
   - Worker: `WORKER_ENABLE_RENTBIKE=true`, `WORKER_ENABLE_DELIVERY=true`
 - วาง Admin Web หลัง HTTPS reverse proxy
 - รันก่อนปล่อยจริง:
-  - `npm run check`
-  - `npm run security:check`
-  - `npm audit --omit=dev`
+  - `npm run readiness:prod`
+  - `npm run smoke:postdeploy`
+  - (ตัวเลือกเสริม) `npm run readiness:prod:audit`
+
+สคริปต์ใหม่ที่ใช้บ่อย:
+
+- `npm run readiness:full`
+  - ตรวจ lint/test/security/doctor สำหรับ environment ปัจจุบัน
+- `npm run readiness:prod`
+  - เพิ่ม production doctor ของเว็บ standalone เข้าไปด้วย
+- `npm run smoke:postdeploy`
+  - ตรวจ endpoint สำคัญหลัง deploy (healthz, login pages, redirects, auth gate)
+
+Windows helper (รันต่อเนื่อง readiness + smoke):
+
+```bat
+deploy\run-production-checks.cmd
+```
+
+คู่มือ deploy แบบ step-by-step (PM2 + reverse proxy + backup/restore):
+- [docs/DEPLOYMENT_STORY.md](./docs/DEPLOYMENT_STORY.md)
+- [docs/CUSTOMER_ONBOARDING.md](./docs/CUSTOMER_ONBOARDING.md)
+
+ตัวอย่าง reverse proxy config:
+- [deploy/nginx.player-admin.example.conf](./deploy/nginx.player-admin.example.conf)
+
+One-click production (Windows + PM2):
+
+```bat
+npm run deploy:oneclick:win
+```
+
+หมายเหตุ:
+- ถ้า `DISCORD_TOKEN` หรือ `WEB_PORTAL_DISCORD_CLIENT_SECRET` ยังเป็น placeholder ระบบจะหยุดที่ `security:check` เพื่อกัน deploy ผิดค่า
 
 ---
 
@@ -305,6 +415,8 @@ npm run doctor:web-standalone:prod
 - สถานะโครงการ + roadmap + changelog: [PROJECT_HQ.md](./PROJECT_HQ.md)
 - Incident runbook: [docs/INCIDENT_RESPONSE.md](./docs/INCIDENT_RESPONSE.md)
 - Data migration plan: [docs/DATA_LAYER_MIGRATION.md](./docs/DATA_LAYER_MIGRATION.md)
+- Deployment story: [docs/DEPLOYMENT_STORY.md](./docs/DEPLOYMENT_STORY.md)
+- Repo presentation checklist: [docs/REPO_PRESENTATION.md](./docs/REPO_PRESENTATION.md)
 
 ---
 

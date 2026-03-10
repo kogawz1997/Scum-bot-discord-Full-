@@ -1,0 +1,206 @@
+'use strict';
+
+const DEFAULT_TIMEOUT_MS = 10000;
+
+function parseArgs(argv) {
+  const out = {};
+  for (let i = 0; i < argv.length; i += 1) {
+    const token = argv[i];
+    if (!token.startsWith('--')) continue;
+    const [key, directValue] = token.split('=');
+    const normalizedKey = key.slice(2);
+    if (directValue != null) {
+      out[normalizedKey] = directValue;
+      continue;
+    }
+    const next = argv[i + 1];
+    if (next && !next.startsWith('--')) {
+      out[normalizedKey] = next;
+      i += 1;
+    } else {
+      out[normalizedKey] = 'true';
+    }
+  }
+  return out;
+}
+
+function trimTrailingSlash(value) {
+  return String(value || '').replace(/\/+$/, '');
+}
+
+function asInt(value, fallback, min, max) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, Math.trunc(parsed)));
+}
+
+function buildUrl(base, pathname) {
+  const normalizedBase = trimTrailingSlash(base);
+  const normalizedPath = String(pathname || '').startsWith('/')
+    ? String(pathname)
+    : `/${String(pathname || '')}`;
+  return `${normalizedBase}${normalizedPath}`;
+}
+
+async function fetchWithTimeout(url, timeoutMs) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      method: 'GET',
+      redirect: 'manual',
+      signal: controller.signal,
+      headers: {
+        Accept: 'application/json, text/html;q=0.9,*/*;q=0.8',
+        'User-Agent': 'scum-post-deploy-smoke/1.0',
+      },
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function assertStatus(res, expected, label) {
+  if (!expected.includes(res.status)) {
+    throw new Error(`${label} expected status ${expected.join('/')} but got ${res.status}`);
+  }
+}
+
+async function assertJsonOk(url, timeoutMs, label) {
+  const res = await fetchWithTimeout(url, timeoutMs);
+  assertStatus(res, [200], label);
+  const json = await res.json().catch(() => null);
+  if (!json || json.ok !== true) {
+    throw new Error(`${label} expected JSON { ok: true }`);
+  }
+}
+
+function printCheckOk(label, detail) {
+  console.log(`[smoke] OK: ${label}${detail ? ` (${detail})` : ''}`);
+}
+
+function buildOptionalHealthUrl({
+  directUrl,
+  host,
+  port,
+}) {
+  if (directUrl) {
+    return trimTrailingSlash(String(directUrl));
+  }
+  const parsedPort = Number(port);
+  if (!Number.isFinite(parsedPort) || parsedPort <= 0) {
+    return null;
+  }
+  const safeHost = String(host || '127.0.0.1').trim() || '127.0.0.1';
+  return `http://${safeHost}:${Math.trunc(parsedPort)}`;
+}
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  if (args.help || args.h) {
+    console.log('Usage: node scripts/post-deploy-smoke.js [--admin-base URL] [--player-base URL] [--timeout-ms N] [--bot-health-url URL] [--worker-health-url URL] [--watcher-health-url URL]');
+    process.exit(0);
+  }
+
+  const adminBaseInput =
+    args['admin-base']
+    || process.env.SMOKE_ADMIN_BASE_URL
+    || process.env.WEB_PORTAL_LEGACY_ADMIN_URL
+    || `http://${process.env.ADMIN_WEB_HOST || '127.0.0.1'}:${process.env.ADMIN_WEB_PORT || '3200'}/admin`;
+  const playerBaseInput =
+    args['player-base']
+    || process.env.SMOKE_PLAYER_BASE_URL
+    || process.env.WEB_PORTAL_BASE_URL
+    || `http://${process.env.WEB_PORTAL_HOST || '127.0.0.1'}:${process.env.WEB_PORTAL_PORT || '3300'}`;
+  const timeoutMs = asInt(args['timeout-ms'] || process.env.SMOKE_TIMEOUT_MS, DEFAULT_TIMEOUT_MS, 2000, 60000);
+  const botHealthBase = buildOptionalHealthUrl({
+    directUrl: args['bot-health-url'] || process.env.SMOKE_BOT_HEALTH_URL,
+    host: process.env.BOT_HEALTH_HOST || '127.0.0.1',
+    port: process.env.BOT_HEALTH_PORT || 0,
+  });
+  const workerHealthBase = buildOptionalHealthUrl({
+    directUrl: args['worker-health-url'] || process.env.SMOKE_WORKER_HEALTH_URL,
+    host: process.env.WORKER_HEALTH_HOST || '127.0.0.1',
+    port: process.env.WORKER_HEALTH_PORT || 0,
+  });
+  const watcherHealthBase = buildOptionalHealthUrl({
+    directUrl: args['watcher-health-url'] || process.env.SMOKE_WATCHER_HEALTH_URL,
+    host: process.env.SCUM_WATCHER_HEALTH_HOST || '127.0.0.1',
+    port: process.env.SCUM_WATCHER_HEALTH_PORT || 0,
+  });
+
+  const adminParsed = new URL(adminBaseInput);
+  const playerParsed = new URL(playerBaseInput);
+
+  const adminOrigin = `${adminParsed.protocol}//${adminParsed.host}`;
+  const adminPath = trimTrailingSlash(adminParsed.pathname) || '/admin';
+  const adminBase = `${adminOrigin}${adminPath}`;
+  const playerBase = trimTrailingSlash(playerParsed.toString());
+  const expectedLegacyAdmin = trimTrailingSlash(process.env.WEB_PORTAL_LEGACY_ADMIN_URL || adminBase);
+
+  console.log('[smoke] admin base :', adminBase);
+  console.log('[smoke] player base:', playerBase);
+  console.log('[smoke] timeout ms :', timeoutMs);
+  if (botHealthBase) console.log('[smoke] bot health  :', botHealthBase);
+  if (workerHealthBase) console.log('[smoke] worker health:', workerHealthBase);
+  if (watcherHealthBase) console.log('[smoke] watcher health:', watcherHealthBase);
+
+  await assertJsonOk(buildUrl(adminOrigin, '/healthz'), timeoutMs, 'admin healthz');
+  printCheckOk('admin healthz');
+
+  const adminLoginRes = await fetchWithTimeout(buildUrl(adminBase, '/login'), timeoutMs);
+  assertStatus(adminLoginRes, [200], 'admin login page');
+  printCheckOk('admin login page');
+
+  await assertJsonOk(buildUrl(playerBase, '/healthz'), timeoutMs, 'player healthz');
+  printCheckOk('player healthz');
+
+  const playerLoginRes = await fetchWithTimeout(buildUrl(playerBase, '/player/login'), timeoutMs);
+  assertStatus(playerLoginRes, [200], 'player login page');
+  printCheckOk('player login page');
+
+  const playerRootRes = await fetchWithTimeout(buildUrl(playerBase, '/'), timeoutMs);
+  assertStatus(playerRootRes, [301, 302, 307, 308], 'player root redirect');
+  const rootLocation = String(playerRootRes.headers.get('location') || '');
+  if (!rootLocation.includes('/player')) {
+    throw new Error(`player root redirect expected /player but got ${rootLocation || '(empty)'}`);
+  }
+  printCheckOk('player root redirect', rootLocation);
+
+  const legacyRedirectRes = await fetchWithTimeout(buildUrl(playerBase, '/admin'), timeoutMs);
+  assertStatus(legacyRedirectRes, [301, 302, 307, 308], 'legacy admin redirect');
+  const legacyLocation = trimTrailingSlash(String(legacyRedirectRes.headers.get('location') || ''));
+  if (!legacyLocation.toLowerCase().startsWith(expectedLegacyAdmin.toLowerCase())) {
+    throw new Error(
+      `legacy admin redirect expected prefix ${expectedLegacyAdmin} but got ${legacyLocation || '(empty)'}`,
+    );
+  }
+  printCheckOk('legacy admin redirect', legacyLocation);
+
+  const meRes = await fetchWithTimeout(buildUrl(playerBase, '/player/api/me'), timeoutMs);
+  assertStatus(meRes, [401], 'player api me (unauthenticated)');
+  printCheckOk('player api auth gate');
+
+  if (botHealthBase) {
+    await assertJsonOk(buildUrl(botHealthBase, '/healthz'), timeoutMs, 'bot healthz');
+    printCheckOk('bot healthz');
+  }
+  if (workerHealthBase) {
+    await assertJsonOk(buildUrl(workerHealthBase, '/healthz'), timeoutMs, 'worker healthz');
+    printCheckOk('worker healthz');
+  }
+  if (watcherHealthBase) {
+    await assertJsonOk(buildUrl(watcherHealthBase, '/healthz'), timeoutMs, 'watcher healthz');
+    printCheckOk('watcher healthz');
+  }
+
+  console.log('[smoke] PASS');
+}
+
+main().catch((error) => {
+  const cause = error && typeof error === 'object' && error.cause
+    ? ` | cause: ${error.cause.message || String(error.cause)}`
+    : '';
+  console.error('[smoke] FAIL:', `${error.message || error}${cause}`);
+  process.exit(1);
+});

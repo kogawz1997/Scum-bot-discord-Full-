@@ -591,6 +591,38 @@
       background: rgba(6, 16, 36, 0.35);
     }
 
+    .catalog-toolbar {
+      display: grid;
+      gap: 8px;
+    }
+
+    .catalog-source-switch {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .catalog-source-btn {
+      min-height: 34px;
+      padding: 7px 10px;
+      border-radius: 8px;
+      font-size: 12px;
+      line-height: 1;
+    }
+
+    .catalog-source-btn.active-source {
+      background: linear-gradient(135deg, var(--accent-2), var(--accent));
+      color: var(--btn-text);
+      border: 0;
+      box-shadow: 0 8px 16px var(--btn-shadow);
+    }
+
+    .catalog-quick-add {
+      min-height: 36px;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+
     .catalog-list {
       max-height: 220px;
       overflow: auto;
@@ -1052,7 +1084,15 @@
                   <label class="field wide shop-item-only" id="shopGameItemPickerField">
                     <span>เลือกหลายไอเทมในเกม (คลิกเพื่อเพิ่มเข้ารายการ)</span>
                     <div class="catalog-picker">
-                      <input id="shopGameItemSearchInput" type="text" placeholder="ค้นหาไอเทม เช่น Weapon_M16A4">
+                      <div class="catalog-toolbar">
+                        <input id="shopGameItemSearchInput" type="text" placeholder="ค้นหาไอเทมจาก Wiki เช่น Weapon_M16A4">
+                        <div class="catalog-source-switch">
+                          <button id="shopCatalogSourceManifestBtn" class="ghost catalog-source-btn" type="button">Wiki / Manifest</button>
+                          <button id="shopCatalogSourceWeaponsBtn" class="ghost catalog-source-btn" type="button">อาวุธจาก Wiki</button>
+                          <button id="shopCatalogSourceIconsBtn" class="ghost catalog-source-btn" type="button">คลังไอคอนเดิม</button>
+                        </div>
+                        <button id="shopQuickAddBtn" class="ghost catalog-quick-add" type="button">เพิ่มสินค้าเลย (ใช้ข้อมูลที่เลือก)</button>
+                      </div>
                       <div id="shopGameItemList" class="catalog-list"></div>
                       <div id="shopSelectedItem" class="catalog-selected" hidden>
                         <img id="shopSelectedItemIcon" alt="item icon">
@@ -1851,6 +1891,10 @@
     const shopQuantityInput = document.getElementById('shopQuantityInput');
     const shopGameItemSearchInput = document.getElementById('shopGameItemSearchInput');
     const shopGameItemList = document.getElementById('shopGameItemList');
+    const shopCatalogSourceManifestBtn = document.getElementById('shopCatalogSourceManifestBtn');
+    const shopCatalogSourceWeaponsBtn = document.getElementById('shopCatalogSourceWeaponsBtn');
+    const shopCatalogSourceIconsBtn = document.getElementById('shopCatalogSourceIconsBtn');
+    const shopQuickAddBtn = document.getElementById('shopQuickAddBtn');
     const shopGameItemIdInput = document.getElementById('shopGameItemIdInput');
     const shopGameItemIconInput = document.getElementById('shopGameItemIconInput');
     const shopDeliveryItemsList = document.getElementById('shopDeliveryItemsList');
@@ -1890,6 +1934,7 @@
     let realtimeRefreshReason = null;
     let shopCatalogFetchTimer = null;
     let shopCatalogRequestId = 0;
+    let shopCatalogSource = 'manifest';
     let shopDeliveryItems = [];
     let currentMetricsWindowMs = Math.max(
       60 * 1000,
@@ -1905,6 +1950,11 @@
     const THEME_STORAGE_KEY = 'scum_admin_theme';
     const SUPPORTED_THEMES = new Set(['military', 'neon']);
     const ROLE_LEVEL = { mod: 1, admin: 2, owner: 3 };
+    const SHOP_CATALOG_ENDPOINTS = {
+      manifest: '/admin/api/items/manifest-catalog',
+      weapons: '/admin/api/items/weapons-catalog',
+      icons: '/admin/api/items/catalog',
+    };
 
     function normalizeThemeName(value) {
       const raw = String(value || '').trim().toLowerCase();
@@ -2596,6 +2646,70 @@
       return Math.max(1, Math.trunc(Number(value || 1) || 1));
     }
 
+    function getShopCatalogSourceButton(sourceKey) {
+      if (sourceKey === 'manifest') return shopCatalogSourceManifestBtn;
+      if (sourceKey === 'weapons') return shopCatalogSourceWeaponsBtn;
+      if (sourceKey === 'icons') return shopCatalogSourceIconsBtn;
+      return null;
+    }
+
+    function updateShopCatalogSourceUi() {
+      const sourceKeys = ['manifest', 'weapons', 'icons'];
+      sourceKeys.forEach((sourceKey) => {
+        const button = getShopCatalogSourceButton(sourceKey);
+        if (!button) return;
+        button.classList.toggle('active-source', sourceKey === shopCatalogSource);
+      });
+      if (!shopGameItemSearchInput) return;
+      if (shopCatalogSource === 'manifest') {
+        shopGameItemSearchInput.placeholder = 'ค้นหาไอเทมจาก Wiki/Manifest เช่น Weapon_M16A4';
+        return;
+      }
+      if (shopCatalogSource === 'weapons') {
+        shopGameItemSearchInput.placeholder = 'ค้นหาอาวุธจาก Wiki เช่น AK-47 หรือ Weapon_AK47';
+        return;
+      }
+      shopGameItemSearchInput.placeholder = 'ค้นหาไอเทมจากคลังไอคอนเดิม เช่น Weapon_M16A4';
+    }
+
+    function setShopCatalogSource(sourceKey, options = {}) {
+      const { reload = true } = options;
+      if (!SHOP_CATALOG_ENDPOINTS[sourceKey]) {
+        return;
+      }
+      shopCatalogSource = sourceKey;
+      updateShopCatalogSourceUi();
+      if (!reload || !isAuthed) return;
+      scheduleGameItemCatalogFetch(shopGameItemSearchInput?.value || '');
+    }
+
+    function normalizeCatalogItem(item) {
+      if (!item || typeof item !== 'object') return null;
+      const gameItemId = String(
+        item.gameItemId
+          || item.spawnId
+          || item.id
+          || '',
+      ).trim();
+      if (!gameItemId) return null;
+      const name = String(item.name || '').trim();
+      const iconUrl = String(item.iconUrl || '').trim();
+      const category = String(item.category || '').trim();
+      const filename = String(item.filename || '').trim();
+      const commandTemplate = String(item.commandTemplate || '').trim();
+      const subtitleParts = [];
+      if (category) subtitleParts.push(`หมวด: ${category}`);
+      if (filename) subtitleParts.push(`ไฟล์: ${filename}`);
+      if (commandTemplate) subtitleParts.push(commandTemplate);
+      return {
+        id: gameItemId,
+        name: name || gameItemId,
+        iconUrl,
+        subText: subtitleParts.join(' | '),
+        category,
+      };
+    }
+
     function syncShopDeliveryHiddenInputs() {
       if (!shopDeliveryItemsInput || !shopGameItemIdInput || !shopGameItemIconInput) return;
       if (!Array.isArray(shopDeliveryItems) || shopDeliveryItems.length === 0) {
@@ -2694,33 +2808,43 @@
 
     function applySelectedGameItem(item) {
       const id = String(item?.id || '').trim();
+      const name = String(item?.name || '').trim();
       const iconUrl = String(item?.iconUrl || '').trim();
+      const subText = String(item?.subText || '').trim();
       if (!id) return;
 
       shopSelectedItem.hidden = false;
       shopSelectedItemIcon.src = iconUrl || '';
-      shopSelectedItemMain.textContent = id;
-      shopSelectedItemSub.textContent = iconUrl || '';
+      shopSelectedItemMain.textContent = name && name !== id
+        ? `${name} (${id})`
+        : id;
+      shopSelectedItemSub.textContent = subText || iconUrl || '';
       const qty = normalizeBundleQty(shopQuantityInput.value || 1);
       addDeliveryItemToBundle(item, qty);
     }
 
     function renderGameItemList(items) {
       if (!shopGameItemList) return;
-      if (!Array.isArray(items) || items.length === 0) {
+      const normalizedItems = Array.isArray(items)
+        ? items.map((row) => normalizeCatalogItem(row)).filter(Boolean)
+        : [];
+      if (normalizedItems.length === 0) {
         shopGameItemList.innerHTML = '<div style="padding:10px; color:#9eb0d9;">ไม่พบไอเทมที่ค้นหา</div>';
         return;
       }
-      shopGameItemList.innerHTML = items
+      shopGameItemList.innerHTML = normalizedItems
         .map((item, index) => {
           const id = escapeHtml(String(item.id || ''));
+          const name = escapeHtml(String(item.name || id));
           const iconUrl = escapeHtml(String(item.iconUrl || ''));
+          const subText = escapeHtml(String(item.subText || ''));
+          const main = name !== id ? `${name} (${id})` : id;
           return [
             `<button type="button" class="catalog-option" data-catalog-idx="${index}" title="${id}">`,
             `<img src="${iconUrl}" alt="${id}">`,
             '<div>',
-            `<div class="main">${id}</div>`,
-            `<div class="sub">${escapeHtml(String(item.filename || ''))}</div>`,
+            `<div class="main">${main}</div>`,
+            `<div class="sub">${subText || id}</div>`,
             '</div>',
             '</button>',
           ].join('');
@@ -2731,7 +2855,7 @@
       buttons.forEach((button) => {
         button.addEventListener('click', () => {
           const idx = Number(button.dataset.catalogIdx || -1);
-          const item = items[idx];
+          const item = normalizedItems[idx];
           if (!item) return;
           applySelectedGameItem(item);
         });
@@ -2742,8 +2866,12 @@
       if (!isAuthed) return;
       const currentRequestId = ++shopCatalogRequestId;
       const q = String(query || '').trim();
-      const limit = q ? 80 : 40;
-      const url = `/admin/api/items/catalog?q=${encodeURIComponent(q)}&limit=${limit}`;
+      const source = SHOP_CATALOG_ENDPOINTS[shopCatalogSource]
+        ? shopCatalogSource
+        : 'manifest';
+      const limit = q ? 120 : source === 'icons' ? 40 : 120;
+      const endpoint = SHOP_CATALOG_ENDPOINTS[source];
+      const url = `${endpoint}?q=${encodeURIComponent(q)}&limit=${limit}`;
       const res = await api(url, 'GET');
       if (currentRequestId !== shopCatalogRequestId) return;
       renderGameItemList(Array.isArray(res?.data?.items) ? res.data.items : []);
@@ -2755,7 +2883,12 @@
       }
       shopCatalogFetchTimer = setTimeout(() => {
         void fetchGameItemCatalog(query).catch((error) => {
-          shopGameItemList.innerHTML = `<div style="padding:10px; color:#ff9aa8;">โหลดรายการไอเทมไม่สำเร็จ: ${escapeHtml(String(error.message || error))}</div>`;
+          const sourceText = shopCatalogSource === 'manifest'
+            ? 'Wiki/Manifest'
+            : shopCatalogSource === 'weapons'
+              ? 'อาวุธ Wiki'
+              : 'คลังไอคอน';
+          shopGameItemList.innerHTML = `<div style="padding:10px; color:#ff9aa8;">โหลดรายการไอเทม (${sourceText}) ไม่สำเร็จ: ${escapeHtml(String(error.message || error))}</div>`;
         });
       }, 200);
     }
@@ -2765,6 +2898,7 @@
       const isItem = String(shopKindSelect.value || 'item') === 'item';
       shopGameItemPickerField.classList.toggle('hidden', !isItem);
       shopQuantityField.classList.toggle('hidden', !isItem);
+      updateShopCatalogSourceUi();
       shopGameItemSearchInput.disabled = !isItem;
       shopQuantityInput.disabled = !isItem;
       shopGameItemIdInput.disabled = !isItem;
@@ -3063,6 +3197,65 @@
       });
     }
 
+    if (shopCatalogSourceManifestBtn) {
+      shopCatalogSourceManifestBtn.addEventListener('click', () => {
+        setShopCatalogSource('manifest', { reload: true });
+      });
+    }
+
+    if (shopCatalogSourceWeaponsBtn) {
+      shopCatalogSourceWeaponsBtn.addEventListener('click', () => {
+        setShopCatalogSource('weapons', { reload: true });
+      });
+    }
+
+    if (shopCatalogSourceIconsBtn) {
+      shopCatalogSourceIconsBtn.addEventListener('click', () => {
+        setShopCatalogSource('icons', { reload: true });
+      });
+    }
+
+    if (shopQuickAddBtn) {
+      shopQuickAddBtn.addEventListener('click', async () => {
+        if (!isAuthed) {
+          toast('กรุณาเข้าสู่ระบบก่อน');
+          return;
+        }
+        try {
+          await runWithButtonState(shopQuickAddBtn, 'กำลังเพิ่มสินค้า...', async () => {
+            if (String(shopKindSelect?.value || 'item') !== 'item') {
+              shopKindSelect.value = 'item';
+              updateShopKindUi();
+            }
+            if (!Array.isArray(shopDeliveryItems) || shopDeliveryItems.length === 0) {
+              throw new Error('กรุณาเลือกไอเทมจากรายการ Wiki/ไอคอนก่อน');
+            }
+            if (!String(shopAddIdInput?.value || '').trim()) {
+              const selected = String(shopDeliveryItems[0]?.gameItemId || '').trim();
+              const suggested = makeSuggestedItemId(selected);
+              if (suggested) {
+                shopAddIdInput.value = suggested;
+              }
+            }
+            if (!String(shopAddNameInput?.value || '').trim()) {
+              const selected = String(shopDeliveryItems[0]?.gameItemId || '').trim();
+              const qty = normalizeBundleQty(shopDeliveryItems[0]?.quantity || 1);
+              if (selected) {
+                shopAddNameInput.value = `${selected} x${qty}`;
+              }
+            }
+            if (!String(new FormData(shopAddForm).get('price') || '').trim()) {
+              throw new Error('กรุณาใส่ราคาสินค้าก่อนกดเพิ่มสินค้า');
+            }
+            await submitForm(shopAddForm);
+          });
+        } catch (error) {
+          setStatus('บันทึกไม่สำเร็จ', '#ff6b7b');
+          toast(error.message || 'เพิ่มสินค้าไม่สำเร็จ');
+        }
+      });
+    }
+
     if (shopQuantityInput) {
       shopQuantityInput.addEventListener('change', () => {
         if (!String(shopAddNameInput.value || '').trim()) return;
@@ -3230,6 +3423,7 @@
     activateTab('economy');
     applyTabFilter('');
     updateLiveToggleUi();
+    setShopCatalogSource('manifest', { reload: false });
     updateShopKindUi();
     setAuthState(false);
     checkSession();

@@ -1,0 +1,131 @@
+name: scum-platform
+
+services:
+  migrate:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    env_file:
+      - ../.env
+    command: ["npx", "prisma", "migrate", "deploy"]
+    restart: "no"
+
+  bot:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    env_file:
+      - ../.env
+    command: ["node", "src/bot.js"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      BOT_HEALTH_HOST: 0.0.0.0
+      BOT_HEALTH_PORT: 3210
+      BOT_ENABLE_ADMIN_WEB: "true"
+      BOT_ENABLE_SCUM_WEBHOOK: "true"
+      BOT_ENABLE_RENTBIKE_SERVICE: "false"
+      BOT_ENABLE_DELIVERY_WORKER: "false"
+      PERSIST_REQUIRE_DB: "true"
+    ports:
+      - "3200:3200"
+      - "3100:3100"
+      - "3210:3210"
+    volumes:
+      - ../prisma:/app/prisma
+      - ../data:/app/data
+      - ../logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3210/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    env_file:
+      - ../.env
+    command: ["node", "src/worker.js"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      WORKER_HEALTH_HOST: 0.0.0.0
+      WORKER_HEALTH_PORT: 3211
+      WORKER_ENABLE_RENTBIKE: "true"
+      WORKER_ENABLE_DELIVERY: "true"
+      PERSIST_REQUIRE_DB: "true"
+    ports:
+      - "3211:3211"
+    volumes:
+      - ../prisma:/app/prisma
+      - ../data:/app/data
+      - ../logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3211/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  watcher:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    env_file:
+      - ../.env
+    command: ["node", "scum-log-watcher.js"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      SCUM_WATCHER_HEALTH_HOST: 0.0.0.0
+      SCUM_WATCHER_HEALTH_PORT: 3212
+    ports:
+      - "3212:3212"
+    volumes:
+      - ../prisma:/app/prisma
+      - ../data:/app/data
+      - ../logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3212/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    env_file:
+      - ../.env
+      - ../apps/web-portal-standalone/.env
+    command: ["node", "apps/web-portal-standalone/server.js"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      WEB_PORTAL_HOST: 0.0.0.0
+      WEB_PORTAL_PORT: 3300
+      WEB_PORTAL_MODE: player
+    ports:
+      - "3300:3300"
+    volumes:
+      - ../prisma:/app/prisma
+      - ../data:/app/data
+      - ../logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3300/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5

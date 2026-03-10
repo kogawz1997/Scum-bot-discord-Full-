@@ -9,6 +9,7 @@ const {
   getRentBikeRuntime,
 } = require('./services/rentBikeService');
 const { assertWorkerEnv } = require('./utils/env');
+const { startRuntimeHealthServer } = require('./services/runtimeHealthServer');
 
 function envFlag(name, fallback) {
   const raw = String(process.env[name] || '').trim().toLowerCase();
@@ -21,6 +22,13 @@ const START_DELIVERY = envFlag('WORKER_ENABLE_DELIVERY', true);
 const HEARTBEAT_MS = Math.max(
   10_000,
   Number(process.env.WORKER_HEARTBEAT_MS || 60_000),
+);
+const WORKER_HEALTH_HOST = String(
+  process.env.WORKER_HEALTH_HOST || '127.0.0.1',
+).trim() || '127.0.0.1';
+const WORKER_HEALTH_PORT = Math.max(
+  0,
+  Math.trunc(Number(process.env.WORKER_HEALTH_PORT || 0)),
 );
 
 async function startWorker() {
@@ -49,6 +57,27 @@ async function startWorker() {
     `[worker] rentBike=${START_RENT_BIKE ? 'on' : 'off'} delivery=${START_DELIVERY ? 'on' : 'off'}`,
   );
 
+  const healthServer = startRuntimeHealthServer({
+    name: 'worker',
+    host: WORKER_HEALTH_HOST,
+    port: WORKER_HEALTH_PORT,
+    getPayload: () => {
+      const rent = getRentBikeRuntime();
+      const delivery = getDeliveryMetricsSnapshot();
+      return {
+        now: new Date().toISOString(),
+        uptimeSec: Math.round(process.uptime()),
+        rentBikeEnabled: START_RENT_BIKE,
+        deliveryEnabled: START_DELIVERY,
+        rentQueueLength: rent.queueLength,
+        maintenance: rent.maintenance,
+        queueLength: delivery.queueLength,
+        failRate: delivery.failRate,
+        attempts: delivery.attempts,
+      };
+    },
+  });
+
   const timer = setInterval(() => {
     const rent = getRentBikeRuntime();
     const delivery = getDeliveryMetricsSnapshot();
@@ -59,6 +88,13 @@ async function startWorker() {
   if (typeof timer.unref === 'function') {
     timer.unref();
   }
+
+  process.once('SIGINT', () => {
+    if (healthServer) healthServer.close();
+  });
+  process.once('SIGTERM', () => {
+    if (healthServer) healthServer.close();
+  });
 }
 
 startWorker().catch((error) => {

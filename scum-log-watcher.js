@@ -26,6 +26,7 @@ require('dotenv').config();
 const fs = require('node:fs');
 const path = require('node:path');
 const { assertWatcherEnv } = require('./src/utils/env');
+const { startRuntimeHealthServer } = require('./src/services/runtimeHealthServer');
 
 const LOG_PATH = process.env.SCUM_LOG_PATH;
 const WEBHOOK_URL =
@@ -99,6 +100,10 @@ const WATCHER_QUEUE_ALERT_THRESHOLD = parseIntegerEnv(
   Math.max(20, Math.floor(EVENT_QUEUE_MAX * 0.75)),
   10,
 );
+const WATCHER_HEALTH_HOST = String(
+  process.env.SCUM_WATCHER_HEALTH_HOST || '127.0.0.1',
+).trim() || '127.0.0.1';
+const WATCHER_HEALTH_PORT = parseIntegerEnv('SCUM_WATCHER_HEALTH_PORT', 0, 0);
 
 const RESTART_PATTERNS = [
   /Log file closed/i,
@@ -271,6 +276,36 @@ function parseHitZone(sourceText) {
   return null;
 }
 
+function parseSector(sourceText) {
+  const text = String(sourceText || '');
+  if (!text) return null;
+
+  const patterns = [
+    /\bsector\s*[:=]?\s*(?<sector>[A-Z]{1,2}\d{1,2})\b/i,
+    /\bgrid\s*[:=]?\s*(?<sector>[A-Z]{1,2}\d{1,2})\b/i,
+  ];
+  for (const pattern of patterns) {
+    const matched = text.match(pattern);
+    const value = String(matched?.groups?.sector || '')
+      .replace(/\s+/g, '')
+      .trim()
+      .toUpperCase();
+    if (/^[A-Z]{1,2}\d{1,2}$/.test(value)) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function parseMapImageUrl(sourceText) {
+  const text = String(sourceText || '');
+  if (!text) return null;
+  const matched = text.match(
+    /(https?:\/\/[^\s"'<>]+?\.(?:png|jpe?g|webp|gif)(?:\?[^\s"'<>]*)?)/i,
+  );
+  return matched ? String(matched[1]) : null;
+}
+
 function toKillEvent(groups, weapon, distance, sourceText) {
   return {
     type: 'kill',
@@ -281,6 +316,8 @@ function toKillEvent(groups, weapon, distance, sourceText) {
     weapon: weapon ? cleanName(weapon) : null,
     distance: parseDistance(distance),
     hitZone: parseHitZone(sourceText),
+    sector: parseSector(sourceText),
+    mapImageUrl: parseMapImageUrl(sourceText),
   };
 }
 
@@ -358,7 +395,7 @@ function eventKey(event, sourceLine) {
     return `leave:${event.steamId || event.playerName}`;
   if (event.type === 'restart') return `restart:${event.message || ''}`;
   if (event.type === 'kill') {
-    return `kill:${event.killerSteamId}:${event.victimSteamId}:${event.weapon || ''}:${event.distance ?? ''}:${event.hitZone || ''}`;
+    return `kill:${event.killerSteamId}:${event.victimSteamId}:${event.weapon || ''}:${event.distance ?? ''}:${event.hitZone || ''}:${event.sector || ''}`;
   }
   return null;
 }
@@ -583,6 +620,13 @@ function startWatcher() {
     throw new Error('SCUM_LOG_PATH is required');
   }
 
+  const healthServer = startRuntimeHealthServer({
+    name: 'watcher',
+    host: WATCHER_HEALTH_HOST,
+    port: WATCHER_HEALTH_PORT,
+    getPayload: () => getWatcherMetricsSnapshot(),
+  });
+
   const stop = tailFile(LOG_PATH, (line) => {
     const event = parseLine(line);
     if (!event) return;
@@ -593,6 +637,9 @@ function startWatcher() {
   const shutdown = () => {
     console.log('stopping SCUM log watcher...');
     stop();
+    if (healthServer) {
+      healthServer.close();
+    }
     process.exit(0);
   };
 

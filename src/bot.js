@@ -31,6 +31,7 @@ const {
   enqueuePurchaseDelivery,
 } = require('./services/rconDelivery');
 const { startAdminWebServer } = require('./adminWebServer');
+const { startRuntimeHealthServer } = require('./services/runtimeHealthServer');
 const { queueLeaderboardRefreshForGuild } = require('./services/leaderboardPanels');
 const { adminLiveBus } = require('./services/adminLiveBus');
 const { assertBotEnv } = require('./utils/env');
@@ -77,6 +78,13 @@ const START_ADMIN_WEB = envFlag('BOT_ENABLE_ADMIN_WEB', true);
 const START_RENT_BIKE_SERVICE = envFlag('BOT_ENABLE_RENTBIKE_SERVICE', true);
 const START_DELIVERY_WORKER = envFlag('BOT_ENABLE_DELIVERY_WORKER', true);
 const START_OPS_ALERT_ROUTE = envFlag('BOT_ENABLE_OPS_ALERT_ROUTE', true);
+const BOT_HEALTH_HOST = String(
+  process.env.BOT_HEALTH_HOST || '127.0.0.1',
+).trim() || '127.0.0.1';
+const BOT_HEALTH_PORT = Math.max(
+  0,
+  Math.trunc(Number(process.env.BOT_HEALTH_PORT || 0)),
+);
 
 const client = new Client({
   intents: [
@@ -85,6 +93,25 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
   ],
+});
+
+const botHealthServer = startRuntimeHealthServer({
+  name: 'bot',
+  host: BOT_HEALTH_HOST,
+  port: BOT_HEALTH_PORT,
+  getPayload: () => ({
+    now: new Date().toISOString(),
+    uptimeSec: Math.round(process.uptime()),
+    discordReady: Boolean(client?.isReady && client.isReady()),
+    features: {
+      scumWebhook: START_SCUM_WEBHOOK,
+      restartScheduler: START_RESTART_SCHEDULER,
+      adminWeb: START_ADMIN_WEB,
+      rentBikeService: START_RENT_BIKE_SERVICE,
+      deliveryWorker: START_DELIVERY_WORKER,
+      opsAlertRoute: START_OPS_ALERT_ROUTE,
+    },
+  }),
 });
 
 client.commands = new Collection();
@@ -958,6 +985,18 @@ client.on(Events.GuildMemberAdd, async (member) => {
 if (require.main === module) {
   client.login(token);
 }
+
+process.once('SIGINT', () => {
+  if (botHealthServer) {
+    botHealthServer.close();
+  }
+});
+
+process.once('SIGTERM', () => {
+  if (botHealthServer) {
+    botHealthServer.close();
+  }
+});
 
 module.exports = {
   client,

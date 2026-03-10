@@ -8,7 +8,7 @@
 - ปิด JSON/KV fallback ใน production หลังย้ายครบ
 - ทำให้ backup/restore/test มีมาตรฐานเดียวกัน
 
-## สถานะล่าสุด (2026-03-08)
+## สถานะล่าสุด (2026-03-09)
 
 - เสร็จแล้ว: migration checklist + rollback plan
 - เสร็จแล้ว: เพิ่ม `PERSIST_REQUIRE_DB` fail-fast ใน runtime persistence
@@ -19,7 +19,11 @@
   - `config-overrides` -> `BotConfig`
   - `delivery queue` -> `DeliveryQueueJob`
   - `delivery dead-letter` -> `DeliveryDeadLetter`
-- คงค้าง: เปิด `PERSIST_REQUIRE_DB=true` ใน production และทำ smoke test หลัง deploy
+- เสร็จแล้ว: ย้าย `luckyWheelStore` -> `LuckyWheelState`
+- เสร็จแล้ว: ย้าย `partyChatStore` -> `PartyChatMessage`
+- เสร็จแล้ว: ย้าย rent bike persistence -> `DailyRent`, `RentalVehicle` (Prisma model operations)
+- เสร็จแล้ว: production guard บังคับ `PERSIST_REQUIRE_DB=true` และ fail-fast ใน `_persist`
+- เสร็จแล้ว: one-click deploy รัน readiness + smoke หลัง deploy อัตโนมัติ
 
 ## Scope ปัจจุบัน
 

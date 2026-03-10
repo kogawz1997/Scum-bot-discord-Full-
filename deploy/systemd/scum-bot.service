@@ -1,0 +1,20 @@
+[Unit]
+Description=SCUM Platform Bot
+After=network.target
+
+[Service]
+Type=simple
+User=scum
+WorkingDirectory=/opt/scum-platform
+Environment=NODE_ENV=production
+EnvironmentFile=/opt/scum-platform/.env
+ExecStart=/usr/bin/node src/bot.js
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

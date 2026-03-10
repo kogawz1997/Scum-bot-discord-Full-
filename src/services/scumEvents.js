@@ -1,19 +1,43 @@
-const { EmbedBuilder } = require('discord.js');
+﻿const { EmbedBuilder } = require('discord.js');
 const { channels, killFeed: killFeedConfig = {} } = require('../config');
 const { updateStatus } = require('../store/scumStore');
 const { listBounties, claimBounty } = require('../store/bountyStore');
 const { creditCoins } = require('./coinService');
-const { getLinkBySteamId, updateInGameNameBySteamId } = require('../store/linkStore');
+const {
+  getLinkBySteamId,
+  updateInGameNameBySteamId,
+} = require('../store/linkStore');
 const { addKill, addDeath } = require('../store/statsStore');
 const { recordWeaponKill } = require('../store/weaponStatsStore');
 const { publishAdminLiveUpdate } = require('./adminLiveBus');
 const { queueLeaderboardRefreshForGuild } = require('./leaderboardPanels');
 
 const killStreak = new Map();
-const UNKNOWN_WEAPON_LABEL =
-  String(killFeedConfig.unknownWeaponLabel || '').trim() || 'อาวุธไม่ทราบชนิด';
-const DEFAULT_WEAPON_IMAGE =
-  String(killFeedConfig.defaultWeaponImage || '').trim() || null;
+
+function looksLikeMojibake(value) {
+  return /(?:Ã|Â|à¸|âœ|ðŸ)/.test(String(value || ''));
+}
+
+function sanitizeLabel(value, fallback) {
+  const text = String(value || '').trim();
+  if (!text || looksLikeMojibake(text)) return fallback;
+  return text;
+}
+
+function normalizeHttpUrl(value) {
+  const text = String(value || '').trim();
+  if (!text) return null;
+  if (!/^https?:\/\//i.test(text)) return null;
+  return text;
+}
+
+const UNKNOWN_WEAPON_LABEL = sanitizeLabel(
+  killFeedConfig.unknownWeaponLabel,
+  'อาวุธไม่ทราบชนิด',
+);
+const DEFAULT_WEAPON_IMAGE = normalizeHttpUrl(killFeedConfig.defaultWeaponImage);
+const MAP_IMAGE_TEMPLATE = String(killFeedConfig.mapImageTemplate || '').trim();
+const DEFAULT_MAP_IMAGE = normalizeHttpUrl(killFeedConfig.defaultMapImage);
 
 function normalizeWeaponKey(value) {
   return String(value || '')
@@ -38,6 +62,16 @@ function cleanWeaponDisplay(value) {
     .trim();
 }
 
+function normalizeSector(value) {
+  const compact = String(value || '')
+    .replace(/\s+/g, '')
+    .trim()
+    .toUpperCase();
+  if (!compact) return null;
+  if (!/^[A-Z]{1,2}\d{1,2}$/.test(compact)) return null;
+  return compact;
+}
+
 const weaponAliasLookup = new Map(
   Object.entries(killFeedConfig.weaponAliases || {}).map(([raw, canonical]) => [
     normalizeWeaponKey(raw),
@@ -56,6 +90,13 @@ const weaponDisplayLookup = new Map(
   Object.keys(killFeedConfig.weaponImages || {}).map((weaponName) => [
     normalizeWeaponKey(weaponName),
     String(weaponName || '').trim(),
+  ]),
+);
+
+const sectorMapLookup = new Map(
+  Object.entries(killFeedConfig.sectorMapImages || {}).map(([sector, url]) => [
+    normalizeSector(sector),
+    normalizeHttpUrl(url),
   ]),
 );
 
@@ -79,6 +120,23 @@ function getWeaponImageUrl(rawWeaponOrCanonical) {
   return weaponImageLookup.get(key) || DEFAULT_WEAPON_IMAGE;
 }
 
+function resolveMapImageUrl(sector, explicitUrl) {
+  const direct = normalizeHttpUrl(explicitUrl);
+  if (direct) return direct;
+
+  const normalizedSector = normalizeSector(sector);
+  if (normalizedSector) {
+    const mapped = sectorMapLookup.get(normalizedSector);
+    if (mapped) return mapped;
+    if (MAP_IMAGE_TEMPLATE) {
+      return MAP_IMAGE_TEMPLATE
+        .replaceAll('{sector}', encodeURIComponent(normalizedSector))
+        .replaceAll('{SECTOR}', encodeURIComponent(normalizedSector));
+    }
+  }
+  return DEFAULT_MAP_IMAGE;
+}
+
 function normalizeHitZone(value) {
   const text = String(value || '').trim().toLowerCase();
   if (text === 'head' || text === 'headshot') return 'head';
@@ -87,27 +145,38 @@ function normalizeHitZone(value) {
 }
 
 function hitZoneLabel(value) {
-  const z = normalizeHitZone(value);
-  if (z === 'head') return 'หัว';
-  if (z === 'body') return 'ลำตัว';
+  const normalized = normalizeHitZone(value);
+  if (normalized === 'head') return 'หัว';
+  if (normalized === 'body') return 'ลำตัว';
   return 'ไม่ทราบ';
+}
+
+function formatDistance(distance) {
+  if (distance == null || distance === '') return '-';
+  const n = Number(distance);
+  if (!Number.isFinite(n)) return '-';
+  return `${n}m`;
 }
 
 function findNamedChannel(guild, name) {
   if (!guild) return null;
   return guild.channels.cache.find(
-    (c) => c.name === name && c.isTextBased && c.isTextBased(),
+    (channel) =>
+      channel.name === name && channel.isTextBased && channel.isTextBased(),
   );
 }
 
 async function sendStatusOnline(guild, payload) {
   const channel = findNamedChannel(guild, channels.statusOnline);
   updateStatus(payload);
+
   const { onlinePlayers, maxPlayers, pingMs, uptimeMinutes } = payload;
   const lines = [];
   lines.push(`ผู้เล่นออนไลน์: **${onlinePlayers}/${maxPlayers}**`);
-  if (pingMs != null) lines.push(`ping: **${pingMs} ms**`);
-  if (uptimeMinutes != null) lines.push(`uptime: **${Math.floor(uptimeMinutes)} นาที**`);
+  if (pingMs != null) lines.push(`Ping: **${pingMs} ms**`);
+  if (uptimeMinutes != null) {
+    lines.push(`Uptime: **${Math.floor(uptimeMinutes)} นาที**`);
+  }
   if (channel) {
     await channel.send(lines.join('\n'));
   }
@@ -128,7 +197,7 @@ async function sendPlayerJoinLeave(guild, event) {
   }
   const text =
     type === 'join'
-      ? `✅ **${playerName}** เข้าสู่เซิร์ฟเวอร์`
+      ? `✅ **${playerName}** เข้าเซิร์ฟเวอร์`
       : `🚪 **${playerName}** ออกจากเซิร์ฟเวอร์`;
   if (channel) {
     await channel.send(text);
@@ -143,72 +212,63 @@ async function sendPlayerJoinLeave(guild, event) {
 async function sendKillFeed(guild, event) {
   const channel = findNamedChannel(guild, channels.killFeed);
 
-  const {
-    killer,
-    killerSteamId,
-    victim,
-    victimSteamId,
-    weapon,
-    distance,
-    hitZone,
-  } = event;
-  const normalizedWeapon = normalizeWeaponName(weapon);
+  const killerName = String(event.killer || 'Unknown').trim() || 'Unknown';
+  const victimName = String(event.victim || 'Unknown').trim() || 'Unknown';
+  const killerSteamId = String(event.killerSteamId || '').trim();
+  const victimSteamId = String(event.victimSteamId || '').trim();
+  const normalizedWeapon = normalizeWeaponName(event.weapon);
   const weaponImageUrl = getWeaponImageUrl(normalizedWeapon);
-  const resolvedHitZone = normalizeHitZone(hitZone);
+  const resolvedHitZone = normalizeHitZone(event.hitZone);
+  const resolvedSector = normalizeSector(event.sector);
+  const mapImageUrl = resolveMapImageUrl(resolvedSector, event.mapImageUrl);
 
-  if (killerSteamId && killer) {
-    updateInGameNameBySteamId(killerSteamId, killer);
+  if (killerSteamId && killerName) {
+    updateInGameNameBySteamId(killerSteamId, killerName);
   }
-  if (victimSteamId && victim) {
-    updateInGameNameBySteamId(victimSteamId, victim);
-  }
-
-  const killerNowStreak = (killStreak.get(killer) || 0) + 1;
-  const victimBeforeStreak = killStreak.get(victim) || 0;
-  killStreak.set(killer, killerNowStreak);
-  killStreak.set(victim, 0);
-
-  if (weapon) {
-    recordWeaponKill({ weapon: normalizedWeapon, distance, killer });
+  if (victimSteamId && victimName) {
+    updateInGameNameBySteamId(victimSteamId, victimName);
   }
 
-  const lines = [];
+  const killerNowStreak = (killStreak.get(killerName) || 0) + 1;
+  const victimBeforeStreak = killStreak.get(victimName) || 0;
+  killStreak.set(killerName, killerNowStreak);
+  killStreak.set(victimName, 0);
+
+  if (event.weapon) {
+    recordWeaponKill({
+      weapon: normalizedWeapon,
+      distance: event.distance,
+      killer: killerName,
+    });
+  }
+
+  const notes = [`☠️ **${victimName}**`];
   if (killerNowStreak >= 3) {
-    lines.push(`🔥 สตรีคคิล: **${killerNowStreak}** (กำลังเดือด!)`);
+    notes.push(`🔥 สตรีคคิล: **${killerNowStreak}**`);
   }
   if (victimBeforeStreak >= 3) {
-    lines.push(`🧊 ${killer} หยุดสตรีคของ ${victim} ที่ **${victimBeforeStreak}** ได้สำเร็จ`);
+    notes.push(`🧊 หยุดสตรีคของ ${victimName} ที่ **${victimBeforeStreak}**`);
   }
 
   const embed = new EmbedBuilder()
-    .setColor(0x60a5fa)
-    .setTitle(`☠️ ${killer}  ➜  ${victim}`)
+    .setColor(0xd97706)
+    .setTitle(`🏅 ${killerName}`)
+    .setDescription(notes.join('\n'))
     .addFields(
-      { name: 'อาวุธ', value: normalizedWeapon, inline: true },
-      {
-        name: 'ระยะ',
-        value: distance != null ? `${distance} m` : '-',
-        inline: true,
-      },
-      {
-        name: 'จุดโดนยิง',
-        value: hitZoneLabel(resolvedHitZone),
-        inline: true,
-      },
-      {
-        name: 'สตรีคคิล',
-        value: `${killerNowStreak}`,
-        inline: true,
-      },
+      { name: 'Weapon', value: `*${normalizedWeapon}*`, inline: true },
+      { name: 'Distance', value: formatDistance(event.distance), inline: true },
+      { name: 'Sector', value: resolvedSector || '-', inline: true },
+      { name: 'Hit Zone', value: hitZoneLabel(resolvedHitZone), inline: true },
+      { name: 'Kill Streak', value: String(killerNowStreak), inline: true },
     )
-    .setFooter({ text: 'ฟีดคิล SCUM (เรียลไทม์)' })
+    .setFooter({ text: 'SCUM Kill Feed (Realtime)' })
     .setTimestamp();
 
-  if (lines.length > 0) {
-    embed.setDescription(lines.join('\n'));
-  }
   if (weaponImageUrl) {
     embed.setThumbnail(weaponImageUrl);
+  }
+  if (mapImageUrl) {
+    embed.setImage(mapImageUrl);
   }
 
   if (channel) {
@@ -219,55 +279,66 @@ async function sendKillFeed(guild, event) {
   const victimLink = victimSteamId ? getLinkBySteamId(victimSteamId) : null;
   if (killerLink?.userId) addKill(killerLink.userId, 1);
   if (victimLink?.userId) addDeath(victimLink.userId, 1);
+
   publishAdminLiveUpdate('scum-kill', {
     guildId: guild.id,
-    killer,
-    victim,
+    killer: killerName,
+    victim: victimName,
     weapon: normalizedWeapon,
     weaponImage: weaponImageUrl,
-    distance: distance != null ? Number(distance) : null,
+    distance: event.distance != null ? Number(event.distance) : null,
     hitZone: resolvedHitZone,
+    sector: resolvedSector,
+    mapImageUrl,
   });
   queueLeaderboardRefreshForGuild(guild.client, guild.id, 'scum-kill');
 
-  const activeBounties = listBounties().filter((b) => b.status === 'active');
-  const match = activeBounties.find(
-    (b) => b.targetName.toLowerCase() === String(victim).toLowerCase(),
+  const activeBounties = listBounties().filter((row) => row.status === 'active');
+  const matchedBounty = activeBounties.find(
+    (row) => row.targetName.toLowerCase() === victimName.toLowerCase(),
   );
 
-  if (match) {
-    const res = claimBounty(match.id, killer);
-    if (res.ok) {
-      const bountyChannel = findNamedChannel(
-        guild,
-        channels.bountyBoard || 'bounty-board',
-      );
-      const amount = match.amount;
-      const killerDiscordId = killerLink?.userId || null;
+  if (!matchedBounty) return;
 
-      if (killerDiscordId) {
-        await creditCoins({
-          userId: killerDiscordId,
-          amount,
-          reason: 'bounty_claim',
-          actor: 'system:scum-events',
-          meta: {
-            bountyId: match.id,
-            targetName: victim,
-            killerName: killer,
-          },
-        });
-      }
+  const claimed = claimBounty(matchedBounty.id, killerName);
+  if (!claimed.ok) return;
 
-      if (bountyChannel) {
-        await bountyChannel.send(
-          killerDiscordId
-            ? `🎯 ค่าหัวสำเร็จ! <@${killerDiscordId}> ฆ่าเป้าหมาย **${victim}**\nค่าหัว: **${amount.toLocaleString()} เหรียญ** (โอนเหรียญให้อัตโนมัติแล้ว ✅)`
-            : `🎯 ค่าหัวสำเร็จ! **${killer}** ฆ่าเป้าหมาย **${victim}**\nค่าหัว: **${amount.toLocaleString()} เหรียญ**\nยังไม่สามารถโอนอัตโนมัติได้ (ยังไม่ลิงก์ SteamID) ให้ผู้สังหารใช้ \`/linksteam set\` แล้วทีมงานค่อยโอนเหรียญ`,
-        );
-      }
-    }
+  const bountyChannel = findNamedChannel(
+    guild,
+    channels.bountyBoard || 'bounty-board',
+  );
+  const amount = matchedBounty.amount;
+  const killerDiscordId = killerLink?.userId || null;
+
+  if (killerDiscordId) {
+    await creditCoins({
+      userId: killerDiscordId,
+      amount,
+      reason: 'bounty_claim',
+      actor: 'system:scum-events',
+      meta: {
+        bountyId: matchedBounty.id,
+        targetName: victimName,
+        killerName,
+      },
+    });
   }
+
+  if (!bountyChannel) return;
+
+  if (killerDiscordId) {
+    await bountyChannel.send(
+      `🎯 ค่าหัวสำเร็จ! <@${killerDiscordId}> ฆ่าเป้าหมาย **${victimName}**\n`
+      + `ค่าหัว: **${amount.toLocaleString()} เหรียญ** (โอนเหรียญอัตโนมัติแล้ว ✅)`,
+    );
+    return;
+  }
+
+  await bountyChannel.send(
+    `🎯 ค่าหัวสำเร็จ! **${killerName}** ฆ่าเป้าหมาย **${victimName}**\n`
+    + `ค่าหัว: **${amount.toLocaleString()} เหรียญ**\n`
+    + 'ยังโอนอัตโนมัติไม่ได้ (ยังไม่ลิงก์ SteamID) ให้ผู้สังหารใช้ `/linksteam set` แล้วทีมงานค่อยโอนเหรียญ',
+  );
 }
 
 async function sendRestartAlert(guild, message) {

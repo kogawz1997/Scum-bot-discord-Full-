@@ -34,6 +34,8 @@ test('parseLine handles kill events with weapon, distance and hit zone', () => {
     weapon: 'AK-47',
     distance: 123,
     hitZone: 'head',
+    sector: null,
+    mapImageUrl: null,
   });
 });
 
@@ -49,6 +51,8 @@ test('parseLine handles kill events with "using" syntax and fallback syntax', ()
     weapon: 'M9',
     distance: 15,
     hitZone: 'body',
+    sector: null,
+    mapImageUrl: null,
   });
 
   const fallbackLine =
@@ -62,6 +66,26 @@ test('parseLine handles kill events with "using" syntax and fallback syntax', ()
     weapon: null,
     distance: null,
     hitZone: null,
+    sector: null,
+    mapImageUrl: null,
+  });
+});
+
+test('parseLine extracts sector and map image when present in kill line', () => {
+  const line =
+    "LogSCUM: '777:VictimD(1)' was killed by '888:KillerD(1)' with 'M1911' from 19m sector B2 https://cdn.example.com/map-b2.jpg";
+
+  assert.deepEqual(parseLine(line), {
+    type: 'kill',
+    killer: 'KillerD',
+    killerSteamId: '888',
+    victim: 'VictimD',
+    victimSteamId: '777',
+    weapon: 'M1911',
+    distance: 19,
+    hitZone: null,
+    sector: 'B2',
+    mapImageUrl: 'https://cdn.example.com/map-b2.jpg',
   });
 });
 

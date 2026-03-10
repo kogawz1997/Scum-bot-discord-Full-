@@ -11,7 +11,9 @@ const {
   getShopItemById,
 } = require('../store/memoryStore');
 const { publishAdminLiveUpdate } = require('./adminLiveBus');
-const { resolveItemIconUrl } = require('./itemIconService');
+const { resolveItemIconUrl, normalizeItemIconKey } = require('./itemIconService');
+const { resolveWikiWeaponCommandTemplate } = require('./wikiWeaponCatalog');
+const { resolveManifestItemCommandTemplate } = require('./wikiItemManifestCatalog');
 
 const jobs = new Map(); // purchaseCode -> job
 const deadLetters = new Map(); // purchaseCode -> failed final delivery context
@@ -86,6 +88,10 @@ function getSettings() {
     itemCommands: auto.itemCommands && typeof auto.itemCommands === 'object'
       ? auto.itemCommands
       : {},
+    wikiWeaponCommandFallbackEnabled:
+      auto.wikiWeaponCommandFallbackEnabled !== false,
+    itemManifestCommandFallbackEnabled:
+      auto.itemManifestCommandFallbackEnabled !== false,
   };
 }
 
@@ -113,10 +119,84 @@ function normalizeCommands(rawValue) {
   return [];
 }
 
-function resolveItemCommands(itemId) {
+function findCommandOverride(commandMap, rawKey) {
+  if (!commandMap || typeof commandMap !== 'object') return null;
+  const target = String(rawKey || '').trim();
+  if (!target) return null;
+
+  if (Object.prototype.hasOwnProperty.call(commandMap, target)) {
+    return commandMap[target];
+  }
+
+  const lowerTarget = target.toLowerCase();
+  if (
+    lowerTarget !== target
+    && Object.prototype.hasOwnProperty.call(commandMap, lowerTarget)
+  ) {
+    return commandMap[lowerTarget];
+  }
+
+  const normalizedTarget = normalizeItemIconKey(target);
+  if (!normalizedTarget) return null;
+  const normalizedWithoutClassSuffix = normalizedTarget.replace(/_c\d*$/i, '');
+  const normalizedWithoutBp = normalizedTarget.replace(/^bp_+/, '');
+  const normalizedCandidates = new Set([
+    normalizedTarget,
+    normalizedWithoutClassSuffix,
+    normalizedWithoutBp,
+  ]);
+
+  for (const [rawMapKey, value] of Object.entries(commandMap)) {
+    const normalizedMapKey = normalizeItemIconKey(rawMapKey);
+    if (!normalizedMapKey) continue;
+    const normalizedMapKeyWithoutClassSuffix = normalizedMapKey.replace(
+      /_c\d*$/i,
+      '',
+    );
+    const normalizedMapKeyWithoutBp = normalizedMapKey.replace(/^bp_+/, '');
+    if (
+      normalizedCandidates.has(normalizedMapKey)
+      || normalizedCandidates.has(normalizedMapKeyWithoutClassSuffix)
+      || normalizedCandidates.has(normalizedMapKeyWithoutBp)
+    ) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function resolveItemCommands(itemId, gameItemId = null) {
   const settings = getSettings();
-  const raw = settings.itemCommands[String(itemId)] || settings.itemCommands[String(itemId).toLowerCase()];
-  return normalizeCommands(raw);
+  const byItemId = findCommandOverride(settings.itemCommands, itemId);
+  const normalizedByItemId = normalizeCommands(byItemId);
+  if (normalizedByItemId.length > 0) {
+    return normalizedByItemId;
+  }
+
+  const byGameItemId = findCommandOverride(settings.itemCommands, gameItemId);
+  const normalizedByGameItemId = normalizeCommands(byGameItemId);
+  if (normalizedByGameItemId.length > 0) {
+    return normalizedByGameItemId;
+  }
+
+  if (settings.wikiWeaponCommandFallbackEnabled) {
+    const wikiTemplate = resolveWikiWeaponCommandTemplate(gameItemId);
+    const normalizedWikiTemplate = normalizeCommands(wikiTemplate);
+    if (normalizedWikiTemplate.length > 0) {
+      return normalizedWikiTemplate;
+    }
+  }
+
+  if (settings.itemManifestCommandFallbackEnabled) {
+    const manifestTemplate = resolveManifestItemCommandTemplate(gameItemId);
+    const normalizedManifestTemplate = normalizeCommands(manifestTemplate);
+    if (normalizedManifestTemplate.length > 0) {
+      return normalizedManifestTemplate;
+    }
+  }
+
+  return [];
 }
 
 function commandSupportsBundleItems(commands) {
@@ -1011,7 +1091,10 @@ async function processJob(job) {
       quantity: 1,
       iconUrl: null,
     };
-    const commands = resolveItemCommands(purchase.itemId);
+    const commands = resolveItemCommands(
+      purchase.itemId,
+      firstDeliveryItem.gameItemId,
+    );
     if (commands.length === 0) {
       queueAudit(
         'warn',
@@ -1252,7 +1335,7 @@ async function enqueuePurchaseDelivery(purchase, context = {}) {
     return { queued: false, reason: 'delivery-disabled' };
   }
 
-  const commands = resolveItemCommands(purchase.itemId);
+  const commands = resolveItemCommands(purchase.itemId, gameItemId);
   if (commands.length === 0) {
     addDeliveryAudit({
       level: 'info',

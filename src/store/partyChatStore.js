@@ -1,14 +1,8 @@
 const crypto = require('node:crypto');
-const { loadJson, saveJsonDebounced } = require('./_persist');
+const { prisma } = require('../prisma');
 
-const STORE_FILENAME = 'party-chat.json';
-const MAX_GROUPS = 300;
 const MAX_MESSAGES_PER_GROUP = 300;
 const MAX_MESSAGE_LENGTH = 280;
-
-const partyChatState = {
-  groups: {},
-};
 
 function normalizePartyKey(value) {
   const key = String(value || '')
@@ -16,8 +10,7 @@ function normalizePartyKey(value) {
     .toLowerCase()
     .replace(/[^a-z0-9:_-]/g, '');
   if (!key) return null;
-  if (key.length > 80) return key.slice(0, 80);
-  return key;
+  return key.length > 80 ? key.slice(0, 80) : key;
 }
 
 function normalizeMessageText(value) {
@@ -26,15 +19,13 @@ function normalizeMessageText(value) {
     .replace(/\r/g, '')
     .trim();
   if (!text) return null;
-  if (text.length > MAX_MESSAGE_LENGTH) {
-    return text.slice(0, MAX_MESSAGE_LENGTH);
-  }
-  return text;
+  return text.length > MAX_MESSAGE_LENGTH
+    ? text.slice(0, MAX_MESSAGE_LENGTH)
+    : text;
 }
 
 function normalizeMessageEntry(raw) {
   if (!raw || typeof raw !== 'object') return null;
-  const id = String(raw.id || '').trim() || `msg_${Date.now()}`;
   const partyKey = normalizePartyKey(raw.partyKey);
   const userId = String(raw.userId || '').trim();
   const displayName = String(raw.displayName || '').trim() || userId || 'Unknown';
@@ -44,7 +35,7 @@ function normalizeMessageEntry(raw) {
     : new Date().toISOString();
   if (!partyKey || !userId || !message) return null;
   return {
-    id,
+    id: String(raw.id || '').trim() || `msg_${Date.now()}`,
     partyKey,
     userId,
     displayName,
@@ -53,42 +44,52 @@ function normalizeMessageEntry(raw) {
   };
 }
 
-function ensureGroup(partyKey, createIfMissing = true) {
-  const key = normalizePartyKey(partyKey);
-  if (!key) return null;
-  const existing = partyChatState.groups[key];
-  if (existing && Array.isArray(existing.messages)) return existing;
-  if (!createIfMissing) return null;
-  const next = { messages: [] };
-  partyChatState.groups[key] = next;
-  return next;
-}
-
-function trimGroups() {
-  const entries = Object.entries(partyChatState.groups);
-  if (entries.length <= MAX_GROUPS) return;
-  entries.sort((a, b) => {
-    const aLast = a[1]?.messages?.[a[1].messages.length - 1]?.createdAt || '';
-    const bLast = b[1]?.messages?.[b[1].messages.length - 1]?.createdAt || '';
-    return aLast.localeCompare(bLast);
+function toMessageView(row) {
+  if (!row) return null;
+  const message = normalizeMessageEntry({
+    id: row.id,
+    partyKey: row.partyKey,
+    userId: row.userId,
+    displayName: row.displayName,
+    message: row.message,
+    createdAt: row.createdAt,
   });
-  while (entries.length > MAX_GROUPS) {
-    const removed = entries.shift();
-    if (removed) delete partyChatState.groups[removed[0]];
-  }
+  return message ? { ...message } : null;
 }
 
-const scheduleSave = saveJsonDebounced(STORE_FILENAME, () => partyChatState);
+async function listPartyMessages(partyKey, limit = 80) {
+  const key = normalizePartyKey(partyKey);
+  if (!key) return [];
 
-function listPartyMessages(partyKey, limit = 80) {
-  const group = ensureGroup(partyKey, false);
-  if (!group) return [];
   const max = Math.max(1, Math.min(200, Math.trunc(Number(limit || 80))));
-  const rows = Array.isArray(group.messages) ? group.messages : [];
-  return rows.slice(Math.max(0, rows.length - max)).map((row) => ({ ...row }));
+  const rows = await prisma.partyChatMessage.findMany({
+    where: { partyKey: key },
+    orderBy: { createdAt: 'desc' },
+    take: max,
+  });
+
+  return rows
+    .slice()
+    .reverse()
+    .map((row) => toMessageView(row))
+    .filter(Boolean);
 }
 
-function addPartyMessage(partyKey, payload = {}) {
+async function trimPartyMessages(partyKey) {
+  const rows = await prisma.partyChatMessage.findMany({
+    where: { partyKey },
+    orderBy: { createdAt: 'desc' },
+    skip: MAX_MESSAGES_PER_GROUP,
+    select: { id: true },
+  });
+  if (rows.length === 0) return;
+  const ids = rows.map((row) => row.id);
+  await prisma.partyChatMessage.deleteMany({
+    where: { id: { in: ids } },
+  });
+}
+
+async function addPartyMessage(partyKey, payload = {}) {
   const key = normalizePartyKey(partyKey);
   if (!key) return { ok: false, reason: 'invalid-party-key' };
 
@@ -103,58 +104,67 @@ function addPartyMessage(partyKey, payload = {}) {
     message: payload.message,
     createdAt: new Date().toISOString(),
   });
+
   if (!row) return { ok: false, reason: 'invalid-message' };
 
-  const group = ensureGroup(key, true);
-  group.messages.push(row);
-  if (group.messages.length > MAX_MESSAGES_PER_GROUP) {
-    group.messages = group.messages.slice(
-      group.messages.length - MAX_MESSAGES_PER_GROUP,
-    );
-  }
-  trimGroups();
-  scheduleSave();
-  return { ok: true, data: { ...row } };
+  const created = await prisma.partyChatMessage.create({
+    data: {
+      id: row.id,
+      partyKey: row.partyKey,
+      userId: row.userId,
+      displayName: row.displayName,
+      message: row.message,
+      createdAt: new Date(row.createdAt),
+    },
+  });
+
+  await trimPartyMessages(key);
+
+  return { ok: true, data: toMessageView(created) };
 }
 
-function clearPartyMessages(partyKey) {
+async function clearPartyMessages(partyKey) {
   const key = normalizePartyKey(partyKey);
   if (!key) return false;
-  const existing = ensureGroup(key, false);
-  if (!existing) return false;
-  delete partyChatState.groups[key];
-  scheduleSave();
-  return true;
+  const result = await prisma.partyChatMessage.deleteMany({
+    where: { partyKey: key },
+  });
+  return result.count > 0;
 }
 
-function loadPersistedState() {
-  const persisted = loadJson(STORE_FILENAME, null);
-  if (!persisted || typeof persisted !== 'object') return;
-  const groups = persisted.groups && typeof persisted.groups === 'object'
-    ? persisted.groups
-    : {};
-  for (const [partyKey, value] of Object.entries(groups)) {
-    const key = normalizePartyKey(partyKey);
-    if (!key) continue;
-    const messages = Array.isArray(value?.messages)
-      ? value.messages
-          .map((row) => normalizeMessageEntry({ ...row, partyKey: key }))
-          .filter(Boolean)
-          .slice(-MAX_MESSAGES_PER_GROUP)
-      : [];
-    if (messages.length > 0) {
-      partyChatState.groups[key] = { messages };
+async function listAllPartyMessages(limit = 5000) {
+  const rows = await prisma.partyChatMessage.findMany({
+    orderBy: { createdAt: 'desc' },
+    take: Math.max(1, Number(limit || 5000)),
+  });
+  return rows.map((row) => toMessageView(row)).filter(Boolean);
+}
+
+async function replacePartyMessages(nextRows = []) {
+  await prisma.$transaction(async (tx) => {
+    await tx.partyChatMessage.deleteMany();
+    for (const row of Array.isArray(nextRows) ? nextRows : []) {
+      const normalized = normalizeMessageEntry(row);
+      if (!normalized) continue;
+      await tx.partyChatMessage.create({
+        data: {
+          id: normalized.id,
+          partyKey: normalized.partyKey,
+          userId: normalized.userId,
+          displayName: normalized.displayName,
+          message: normalized.message,
+          createdAt: new Date(normalized.createdAt),
+        },
+      });
     }
-  }
-  trimGroups();
+  });
 }
-
-loadPersistedState();
 
 module.exports = {
   normalizePartyKey,
   listPartyMessages,
   addPartyMessage,
   clearPartyMessages,
+  listAllPartyMessages,
+  replacePartyMessages,
 };
-

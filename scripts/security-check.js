@@ -1,5 +1,22 @@
-﻿require('dotenv').config();
+const fs = require('node:fs');
+const path = require('node:path');
+const dotenv = require('dotenv');
 const { spawnSync } = require('node:child_process');
+
+const ROOT_DIR = process.cwd();
+const ROOT_ENV_PATH = path.join(ROOT_DIR, '.env');
+const PORTAL_ENV_PATH = path.join(
+  ROOT_DIR,
+  'apps',
+  'web-portal-standalone',
+  '.env',
+);
+
+const hasPortalEnvFile = fs.existsSync(PORTAL_ENV_PATH);
+if (hasPortalEnvFile) {
+  dotenv.config({ path: PORTAL_ENV_PATH });
+}
+dotenv.config({ path: ROOT_ENV_PATH });
 
 function isTruthy(value) {
   const text = String(value || '').trim().toLowerCase();
@@ -14,6 +31,8 @@ function isLikelyPlaceholder(value) {
     'example',
     'changeme',
     'replace',
+    'rotate_in_',
+    'rotate_me',
     'token_here',
     'password_here',
     'put_a_',
@@ -35,7 +54,9 @@ function checkMinLength(name, value, minLength, errors, warnings) {
     return;
   }
   if (text.length < minLength) {
-    warnings.push(`${name} should be at least ${minLength} chars (current=${text.length})`);
+    warnings.push(
+      `${name} should be at least ${minLength} chars (current=${text.length})`,
+    );
   }
 }
 
@@ -46,9 +67,35 @@ function checkDiscordToken(value, errors, warnings) {
     return;
   }
 
-  const discordTokenPattern = /^[A-Za-z0-9_\-.]{20,}\.[A-Za-z0-9_\-.]{6,}\.[A-Za-z0-9_\-.]{20,}$/;
+  const discordTokenPattern =
+    /^[A-Za-z0-9_\-.]{20,}\.[A-Za-z0-9_\-.]{6,}\.[A-Za-z0-9_\-.]{20,}$/;
   if (!discordTokenPattern.test(token)) {
     warnings.push('DISCORD_TOKEN format looks unusual; verify token is correct');
+  }
+}
+
+function checkPortalOAuth(env, errors) {
+  const mode =
+    String(env.WEB_PORTAL_MODE || '').trim().toLowerCase() || 'player';
+  if (mode !== 'player') return;
+
+  const portalClientId = String(
+    env.WEB_PORTAL_DISCORD_CLIENT_ID ||
+      env.ADMIN_WEB_SSO_DISCORD_CLIENT_ID ||
+      env.DISCORD_CLIENT_ID ||
+      '',
+  ).trim();
+  const portalClientSecret = String(
+    env.WEB_PORTAL_DISCORD_CLIENT_SECRET ||
+      env.ADMIN_WEB_SSO_DISCORD_CLIENT_SECRET ||
+      '',
+  ).trim();
+
+  if (!portalClientId || isLikelyPlaceholder(portalClientId)) {
+    errors.push('WEB_PORTAL_DISCORD_CLIENT_ID is missing or placeholder');
+  }
+  if (!portalClientSecret || isLikelyPlaceholder(portalClientSecret)) {
+    errors.push('WEB_PORTAL_DISCORD_CLIENT_SECRET is missing or placeholder');
   }
 }
 
@@ -83,16 +130,24 @@ function parseAdminUsersJson(raw, warnings, errors) {
     }
     const username = String(row.username || '').trim();
     const password = String(row.password || '').trim();
-    const role = String(row.role || '').trim().toLowerCase();
+    const role = String(row.role || '')
+      .trim()
+      .toLowerCase();
     if (!username || !password) {
-      errors.push('ADMIN_WEB_USERS_JSON rows must contain username and password');
+      errors.push(
+        'ADMIN_WEB_USERS_JSON rows must contain username and password',
+      );
       continue;
     }
     if (password.length < 10) {
-      warnings.push(`ADMIN_WEB_USERS_JSON user ${username} has short password (<10)`);
+      warnings.push(
+        `ADMIN_WEB_USERS_JSON user ${username} has short password (<10)`,
+      );
     }
     if (role && !['owner', 'admin', 'mod'].includes(role)) {
-      warnings.push(`ADMIN_WEB_USERS_JSON user ${username} has unknown role (${role})`);
+      warnings.push(
+        `ADMIN_WEB_USERS_JSON user ${username} has unknown role (${role})`,
+      );
     }
   }
 }
@@ -101,18 +156,38 @@ function run() {
   const env = process.env;
   const errors = [];
   const warnings = [];
-  const isProduction = String(env.NODE_ENV || '').trim().toLowerCase() === 'production';
+  const isProduction =
+    String(env.NODE_ENV || '').trim().toLowerCase() === 'production';
   const persistRequireDb = isTruthy(env.PERSIST_REQUIRE_DB);
 
   checkDiscordToken(env.DISCORD_TOKEN, errors, warnings);
 
-  checkMinLength('SCUM_WEBHOOK_SECRET', env.SCUM_WEBHOOK_SECRET, 24, errors, warnings);
-  checkMinLength('ADMIN_WEB_PASSWORD', env.ADMIN_WEB_PASSWORD, 12, errors, warnings);
+  checkMinLength(
+    'SCUM_WEBHOOK_SECRET',
+    env.SCUM_WEBHOOK_SECRET,
+    24,
+    errors,
+    warnings,
+  );
+  checkMinLength(
+    'ADMIN_WEB_PASSWORD',
+    env.ADMIN_WEB_PASSWORD,
+    12,
+    errors,
+    warnings,
+  );
   checkMinLength('ADMIN_WEB_TOKEN', env.ADMIN_WEB_TOKEN, 24, errors, warnings);
 
   parseAdminUsersJson(env.ADMIN_WEB_USERS_JSON, warnings, errors);
 
-  if (String(env.ADMIN_WEB_ALLOW_TOKEN_QUERY || '').trim().toLowerCase() !== 'false') {
+  if (hasPortalEnvFile || String(env.WEB_PORTAL_MODE || '').trim() !== '') {
+    checkPortalOAuth(env, errors);
+  }
+
+  if (
+    String(env.ADMIN_WEB_ALLOW_TOKEN_QUERY || '').trim().toLowerCase() !==
+    'false'
+  ) {
     warnings.push('ADMIN_WEB_ALLOW_TOKEN_QUERY should be false in production');
   }
 
@@ -130,12 +205,20 @@ function run() {
     warnings.push('ADMIN_WEB_SECURE_COOKIE should be true when ADMIN_WEB_HOST is non-local');
   }
 
-  if (isTruthy(env.ADMIN_WEB_SECURE_COOKIE) && !isTruthy(env.ADMIN_WEB_HSTS_ENABLED)) {
-    warnings.push('ADMIN_WEB_HSTS_ENABLED should be true when using secure cookies behind HTTPS');
+  if (
+    isTruthy(env.ADMIN_WEB_SECURE_COOKIE) &&
+    !isTruthy(env.ADMIN_WEB_HSTS_ENABLED)
+  ) {
+    warnings.push(
+      'ADMIN_WEB_HSTS_ENABLED should be true when using secure cookies behind HTTPS',
+    );
   }
 
   const rconExecTemplate = String(env.RCON_EXEC_TEMPLATE || '').trim();
-  if (rconExecTemplate.includes('{password}') && !String(env.RCON_PASSWORD || '').trim()) {
+  if (
+    rconExecTemplate.includes('{password}') &&
+    !String(env.RCON_PASSWORD || '').trim()
+  ) {
     warnings.push('RCON_PASSWORD is empty while RCON_EXEC_TEMPLATE uses {password}');
   }
 
@@ -166,12 +249,12 @@ function run() {
       errors.push('NODE_ENV=production requires ADMIN_WEB_HSTS_ENABLED=true');
     }
     if (!allowedOrigins || allowedOrigins.includes('http://')) {
-      errors.push('NODE_ENV=production requires strict HTTPS ADMIN_WEB_ALLOWED_ORIGINS');
+      errors.push(
+        'NODE_ENV=production requires strict HTTPS ADMIN_WEB_ALLOWED_ORIGINS',
+      );
     }
     if (!persistRequireDb) {
-      warnings.push(
-        'NODE_ENV=production should set PERSIST_REQUIRE_DB=true after data migration is complete',
-      );
+      errors.push('NODE_ENV=production requires PERSIST_REQUIRE_DB=true');
     }
   }
 

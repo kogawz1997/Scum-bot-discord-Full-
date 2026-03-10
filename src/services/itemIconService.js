@@ -29,6 +29,12 @@ function withTrailingSlash(value) {
   return base.endsWith('/') ? base : `${base}/`;
 }
 
+function envBool(name, fallback = false) {
+  const raw = String(process.env[name] || '').trim().toLowerCase();
+  if (!raw) return fallback;
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+}
+
 function pushVariant(variants, value) {
   const normalized = normalizeKey(value);
   if (!normalized) return;
@@ -90,8 +96,9 @@ function addToLookup(lookup, key, url) {
   }
 }
 
-function loadFromIndexFile(indexPath, fallbackBaseUrl) {
+function loadFromIndexFile(indexPath, fallbackBaseUrl, options = {}) {
   if (!fs.existsSync(indexPath)) return null;
+  const preferFilePathUrl = options.preferFilePathUrl === true;
   let parsed = null;
   try {
     const raw = fs.readFileSync(indexPath, 'utf8');
@@ -111,8 +118,11 @@ function loadFromIndexFile(indexPath, fallbackBaseUrl) {
   for (const item of items) {
     const filename = String(item?.filename || '').trim();
     const name = String(item?.name || '').trim();
-    const url =
-      String(item?.url || '').trim() || (filename ? `${baseFromFile}${filename}` : '');
+    const urlFromFile = filename ? `${baseFromFile}${filename}` : '';
+    const urlFromIndex = String(item?.url || '').trim();
+    const url = preferFilePathUrl
+      ? (urlFromFile || urlFromIndex)
+      : (urlFromIndex || urlFromFile);
     if (!url) continue;
 
     addToLookup(lookup, normalizeKey(filename), url);
@@ -192,8 +202,11 @@ function ensureLoaded() {
     String(process.env.SCUM_ITEMS_INDEX_PATH || '').trim() || DEFAULT_INDEX_PATH;
   const configuredDirPath =
     String(process.env.SCUM_ITEMS_DIR_PATH || '').trim() || DEFAULT_ITEMS_DIR;
+  const preferFilePathUrl = envBool('SCUM_ITEMS_IGNORE_INDEX_URL', true);
 
-  const byIndex = loadFromIndexFile(configuredIndexPath, configuredBase);
+  const byIndex = loadFromIndexFile(configuredIndexPath, configuredBase, {
+    preferFilePathUrl,
+  });
   if (byIndex) {
     cached = byIndex;
     return cached;
@@ -254,7 +267,7 @@ function listItemIconCatalog(query = '', limit = 200) {
   if (all.length === 0) return [];
 
   const q = String(query || '').trim().toLowerCase();
-  const max = Math.max(1, Math.min(1000, Number(limit || 200)));
+  const max = Math.max(1, Math.min(10000, Number(limit || 200)));
   const picked = q
     ? all.filter((item) => {
         const hay = `${item.id || ''} ${item.name || ''} ${item.filename || ''}`.toLowerCase();

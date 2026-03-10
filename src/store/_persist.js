@@ -48,6 +48,14 @@ function resolveDbPath() {
 
 const DB_PATH = resolveDbPath();
 const REQUIRE_DB = isTruthy(process.env.PERSIST_REQUIRE_DB);
+const IS_PRODUCTION =
+  String(process.env.NODE_ENV || '').trim().toLowerCase() === 'production';
+
+if (IS_PRODUCTION && !REQUIRE_DB) {
+  throw new Error(
+    '[persist] NODE_ENV=production requires PERSIST_REQUIRE_DB=true',
+  );
+}
 
 function runSql(sql) {
   return execFileSync('sqlite3', [DB_PATH], {

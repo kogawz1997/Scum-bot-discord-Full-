@@ -1,0 +1,16 @@
+.git
+.github
+.vs
+node_modules
+npm-debug.log*
+tmp-*.txt
+*.log
+data
+logs
+prisma/dev.db
+prisma/prisma/dev.db
+apps/web-portal-standalone/.env
+.env
+.env.*
+!/.env.example
+!apps/web-portal-standalone/.env.example

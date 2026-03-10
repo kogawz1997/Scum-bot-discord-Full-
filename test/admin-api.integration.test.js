@@ -163,6 +163,18 @@ test('admin API auth + validation integration flow', async (t) => {
   assert.equal(deadLetterList.data.ok, true);
   assert.ok(Array.isArray(deadLetterList.data.data));
 
+  const manifestCatalog = await request(
+    '/admin/api/items/manifest-catalog?q=ak&category=weapons&limit=20',
+    'GET',
+    null,
+    cookie,
+  );
+  assert.equal(manifestCatalog.res.status, 200);
+  assert.equal(manifestCatalog.data.ok, true);
+  assert.ok(Array.isArray(manifestCatalog.data.data.items));
+  assert.equal(typeof manifestCatalog.data.data.meta.total, 'number');
+  assert.equal(typeof manifestCatalog.data.data.meta.commandTemplate, 'string');
+
   const purchaseStatuses = await request('/admin/api/purchase/statuses', 'GET', null, cookie);
   assert.equal(purchaseStatuses.res.status, 200);
   assert.equal(purchaseStatuses.data.ok, true);

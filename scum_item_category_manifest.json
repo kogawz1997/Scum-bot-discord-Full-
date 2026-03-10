@@ -1,0 +1,61 @@
+{
+  "source_page": "https://scum.fandom.com/wiki/Item_IDs",
+  "spawn_command_format": "#SpawnItem <Item_ID>",
+  "categories": [
+    {
+      "category": "weapons",
+      "title": "Weapon IDs",
+      "url": "https://scum.fandom.com/wiki/Item_IDs/Weapons"
+    },
+    {
+      "category": "fishing",
+      "title": "Fishing IDs",
+      "url": "https://scum.fandom.com/wiki/Item_IDs/Fishing"
+    },
+    {
+      "category": "gear",
+      "title": "Gear IDs",
+      "url": "https://scum.fandom.com/wiki/Item_IDs/Gear"
+    },
+    {
+      "category": "food",
+      "title": "Food IDs",
+      "url": "https://scum.fandom.com/wiki/Item_IDs/Food"
+    },
+    {
+      "category": "medical",
+      "title": "Medical IDs",
+      "url": "https://scum.fandom.com/wiki/Item_IDs/Medical"
+    },
+    {
+      "category": "components",
+      "title": "Component IDs",
+      "url": "https://scum.fandom.com/wiki/Item_IDs/Components"
+    },
+    {
+      "category": "blueprints",
+      "title": "Blueprint IDs",
+      "url": "https://scum.fandom.com/wiki/Item_IDs/Blueprints"
+    },
+    {
+      "category": "tools",
+      "title": "Tool IDs",
+      "url": "https://scum.fandom.com/wiki/Item_IDs/Tools"
+    },
+    {
+      "category": "misc",
+      "title": "Misc IDs",
+      "url": "https://scum.fandom.com/wiki/Item_IDs/Misc"
+    },
+    {
+      "category": "vehicles",
+      "title": "Vehicles IDs",
+      "url": "https://scum.fandom.com/wiki/Vehicle_IDs"
+    },
+    {
+      "category": "full_list_wip",
+      "title": "Full List (WIP)",
+      "url": "https://scum.fandom.com/wiki/Item_IDs/Full_List"
+    }
+  ]
+}

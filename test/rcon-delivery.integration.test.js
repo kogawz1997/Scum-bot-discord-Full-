@@ -13,6 +13,18 @@ const depPaths = {
   memoryStore: path.join(rootDir, 'src', 'store', 'memoryStore.js'),
   adminLiveBus: path.join(rootDir, 'src', 'services', 'adminLiveBus.js'),
   itemIconService: path.join(rootDir, 'src', 'services', 'itemIconService.js'),
+  wikiWeaponCatalog: path.join(
+    rootDir,
+    'src',
+    'services',
+    'wikiWeaponCatalog.js',
+  ),
+  wikiItemManifestCatalog: path.join(
+    rootDir,
+    'src',
+    'services',
+    'wikiItemManifestCatalog.js',
+  ),
 };
 
 function installMock(modulePath, exportsValue) {
@@ -35,6 +47,8 @@ function loadRconDeliveryWithMocks(mocks) {
   installMock(depPaths.memoryStore, mocks.memoryStore);
   installMock(depPaths.adminLiveBus, mocks.adminLiveBus);
   installMock(depPaths.itemIconService, mocks.itemIconService);
+  installMock(depPaths.wikiWeaponCatalog, mocks.wikiWeaponCatalog);
+  installMock(depPaths.wikiItemManifestCatalog, mocks.wikiItemManifestCatalog);
   return require(rconDeliveryPath);
 }
 
@@ -117,6 +131,21 @@ function makeTestContext(overrides = {}) {
     },
     itemIconService: {
       resolveItemIconUrl: () => null,
+      normalizeItemIconKey: (value) =>
+        String(value || '')
+          .replace(/\\/g, '/')
+          .replace(/^.*\//, '')
+          .replace(/\.(webp|png|jpg|jpeg)$/i, '')
+          .replace(/[-\s]+/g, '_')
+          .replace(/_+/g, '_')
+          .replace(/^_+|_+$/g, '')
+          .toLowerCase(),
+    },
+    wikiWeaponCatalog: {
+      resolveWikiWeaponCommandTemplate: () => null,
+    },
+    wikiItemManifestCatalog: {
+      resolveManifestItemCommandTemplate: () => null,
     },
   };
 
@@ -182,6 +211,89 @@ test('purchase -> queue -> auto-delivery success for bundle item', async () => {
     '#SpawnItem 76561198000000001 Weapon_AK47 2',
     '#SpawnItem 76561198000000001 Ammo_762 150',
   ]);
+});
+
+test('fallback to wiki weapon command template when itemCommands is empty', async () => {
+  process.env.RCON_EXEC_TEMPLATE = 'echo {command}';
+  const ctx = makeTestContext();
+
+  ctx.mocks.wikiWeaponCatalog.resolveWikiWeaponCommandTemplate = (gameItemId) =>
+    String(gameItemId || '').toLowerCase() === 'bp_weapon_ak47'
+      ? '#SpawnItem {steamId} {gameItemId} {quantity}'
+      : null;
+
+  ctx.purchases.set('P-150', {
+    code: 'P-150',
+    userId: 'u-1',
+    itemId: 'ak47-shop-item',
+    status: 'pending',
+  });
+  ctx.shopItems.set('ak47-shop-item', {
+    id: 'ak47-shop-item',
+    name: 'AK-47',
+    kind: 'item',
+    deliveryItems: [
+      { gameItemId: 'BP_Weapon_AK47', quantity: 1, iconUrl: null },
+    ],
+  });
+
+  const api = loadRconDeliveryWithMocks(ctx.mocks);
+  const queued = await api.enqueuePurchaseDeliveryByCode('P-150', {
+    guildId: 'g-1',
+  });
+  assert.equal(queued.ok, true);
+  assert.equal(api.listDeliveryQueue().length, 1);
+
+  const processed = await api.processDeliveryQueueNow(5);
+  assert.equal(processed.processed, 1);
+  assert.equal(api.listDeliveryQueue().length, 0);
+  assert.equal(ctx.purchases.get('P-150').status, 'delivered');
+
+  const successAudit = ctx.audits.find((entry) => entry.action === 'success');
+  assert.ok(successAudit, 'expected success audit entry');
+  const commands = successAudit.meta.outputs.map((entry) => entry.command);
+  assert.deepEqual(commands, ['#SpawnItem 76561198000000001 BP_Weapon_AK47 1']);
+});
+
+test('fallback to manifest command template when itemCommands/wiki fallback are empty', async () => {
+  process.env.RCON_EXEC_TEMPLATE = 'echo {command}';
+  const ctx = makeTestContext();
+
+  ctx.purchases.set('P-175', {
+    code: 'P-175',
+    userId: 'u-1',
+    itemId: 'food-water',
+    status: 'pending',
+  });
+  ctx.shopItems.set('food-water', {
+    id: 'food-water',
+    name: 'Water',
+    kind: 'item',
+    deliveryItems: [{ gameItemId: 'Water_05l', quantity: 2, iconUrl: null }],
+  });
+  ctx.mocks.wikiItemManifestCatalog.resolveManifestItemCommandTemplate = (
+    gameItemId,
+  ) =>
+    String(gameItemId || '').toLowerCase() === 'water_05l'
+      ? '#SpawnItem {steamId} {gameItemId} {quantity}'
+      : null;
+
+  const api = loadRconDeliveryWithMocks(ctx.mocks);
+  const queued = await api.enqueuePurchaseDeliveryByCode('P-175', {
+    guildId: 'g-1',
+  });
+  assert.equal(queued.ok, true);
+
+  const processed = await api.processDeliveryQueueNow(5);
+  assert.equal(processed.processed, 1);
+  assert.equal(ctx.purchases.get('P-175').status, 'delivered');
+
+  const successAudit = ctx.audits.find(
+    (entry) => entry.action === 'success' && entry.purchaseCode === 'P-175',
+  );
+  assert.ok(successAudit, 'expected success audit entry');
+  const commands = successAudit.meta.outputs.map((entry) => entry.command);
+  assert.deepEqual(commands, ['#SpawnItem 76561198000000001 Water_05l 2']);
 });
 
 test('bundle without {gameItemId}/{quantity} placeholder fails fast', async () => {
