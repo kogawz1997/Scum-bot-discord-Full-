@@ -1,7 +1,7 @@
-const { channels, restartSchedule, serverInfo } = require('../config');
+﻿const { channels, restartSchedule, serverInfo } = require('../config');
 
 function parseDailyTimes(scheduleLines) {
-  // รับรูปแบบประมาณ: "ทุกวัน 06:00"
+  // รองรับรูปแบบประมาณ: "ทุกวัน 06:00"
   const times = [];
   for (const line of scheduleLines || []) {
     const m = String(line).match(/(\d{1,2}):(\d{2})/);
@@ -25,7 +25,7 @@ function startRestartScheduler(client) {
   setInterval(async () => {
     const now = new Date();
     const todayKey = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
-    // ล้างของเก่า (เก็บแค่วันนี้)
+    // ล้างของเก่า (เก็บเฉพาะวันนี้)
     for (const k of Array.from(sent.values())) {
       if (!String(k).startsWith(todayKey)) sent.delete(k);
     }
@@ -67,4 +67,3 @@ function startRestartScheduler(client) {
 module.exports = {
   startRestartScheduler,
 };
-

@@ -1,4 +1,4 @@
-﻿// à¸„à¹ˆà¸²à¸„à¸­à¸™à¸Ÿà¸´à¸à¸žà¸·à¹‰à¸™à¸à¸²à¸™à¸‚à¸­à¸‡à¸šà¸­à¸—à¹€à¸‹à¸´à¸£à¹Œà¸Ÿ SCUM
+﻿// ค่าคอนฟิกพื้นฐานของบอทเซิร์ฟ SCUM
 
 const { loadJson, saveJsonDebounced } = require('./store/_persist');
 const { prisma } = require('./prisma');
@@ -97,9 +97,37 @@ function mergePatchInPlace(target, patch) {
   return target;
 }
 
+function looksLikeMojibake(value) {
+  return /(?:Ã|Â|à¸|âœ|ðŸ)/.test(String(value || ''));
+}
+
+function sanitizeMojibakeInPlace(current, defaults) {
+  if (typeof current === 'string' && typeof defaults === 'string') {
+    return looksLikeMojibake(current) ? defaults : current;
+  }
+
+  if (Array.isArray(current) && Array.isArray(defaults)) {
+    for (let i = 0; i < current.length; i += 1) {
+      if (i >= defaults.length) continue;
+      current[i] = sanitizeMojibakeInPlace(current[i], defaults[i]);
+    }
+    return current;
+  }
+
+  if (isPlainObject(current) && isPlainObject(defaults)) {
+    for (const [key, value] of Object.entries(current)) {
+      if (!(key in defaults)) continue;
+      current[key] = sanitizeMojibakeInPlace(value, defaults[key]);
+    }
+    return current;
+  }
+
+  return current;
+}
+
 const defaultConfig = {
   economy: {
-    currencySymbol: 'ðŸ’°',
+    currencySymbol: '💰',
     dailyReward: 250,
     weeklyReward: 1500,
     dailyCooldownMs: 24 * 60 * 60 * 1000,
@@ -124,51 +152,51 @@ const defaultConfig = {
     ],
   },
   shop: {
-    // à¸£à¸²à¸¢à¸à¸²à¸£à¹€à¸£à¸´à¹ˆà¸¡à¸•à¹‰à¸™ (à¸ªà¸²à¸¡à¸²à¸£à¸–à¹à¸à¹‰à¹„à¸”à¹‰à¹€à¸­à¸‡)
+    // รายการเริ่มต้น (สามารถแก้ได้เอง)
     initialItems: [
       {
         id: 'vip-7d',
-        name: 'VIP 7 à¸§à¸±à¸™',
+        name: 'VIP 7 วัน',
         price: 5000,
-        description: 'VIP 7 à¸§à¸±à¸™ + à¹€à¸‚à¹‰à¸²à¸«à¹‰à¸­à¸‡ VIP + à¸ªà¸µà¸Šà¸·à¹ˆà¸­à¸žà¸´à¹€à¸¨à¸©',
+        description: 'VIP 7 วัน + เข้าห้อง VIP + สีชื่อพิเศษ',
       },
       {
         id: 'vip-30d',
-        name: 'VIP 30 à¸§à¸±à¸™',
+        name: 'VIP 30 วัน',
         price: 15000,
-        description: 'VIP 30 à¸§à¸±à¸™ + à¹€à¸‚à¹‰à¸²à¸«à¹‰à¸­à¸‡ VIP + à¸ªà¸µà¸Šà¸·à¹ˆà¸­à¸žà¸´à¹€à¸¨à¸©',
+        description: 'VIP 30 วัน + เข้าห้อง VIP + สีชื่อพิเศษ',
       },
       {
         id: 'loot-box',
-        name: 'Loot Box (à¹ƒà¸™à¹€à¸à¸¡)',
+        name: 'Loot Box (ในเกม)',
         price: 2000,
-        description: 'à¸à¸¥à¹ˆà¸­à¸‡à¸ªà¸¸à¹ˆà¸¡à¸‚à¸­à¸‡à¹ƒà¸™à¹€à¸à¸¡ (à¸ªà¸•à¸²à¸Ÿà¹€à¸›à¹‡à¸™à¸„à¸™à¹à¸ˆà¸à¹ƒà¸™à¹€à¸à¸¡à¸•à¸²à¸¡ code)',
+        description: 'กล่องสุ่มของในเกม (สตาฟเป็นคนแจกในเกมตาม code)',
       },
     ],
   },
   serverInfo: {
-    name: 'SCUM TH à¹€à¸‹à¸´à¸£à¹Œà¸Ÿà¹€à¸§à¸­à¸£à¹Œ',
+    name: 'SCUM TH เซิร์ฟเวอร์',
     ip: '127.0.0.1',
     port: '12345',
     maxPlayers: 90,
     description:
-      'à¹€à¸‹à¸´à¸£à¹Œà¸Ÿ SCUM PVP/PVE à¹€à¸™à¹‰à¸™ community à¹„à¸—à¸¢ à¹„à¸¡à¹ˆ pay2win\nà¸­à¹ˆà¸²à¸™à¸à¸•à¸´à¸à¸²à¹ƒà¸™ #server-info à¸à¹ˆà¸­à¸™à¹€à¸‚à¹‰à¸²à¹€à¸¥à¹ˆà¸™',
+      'เซิร์ฟ SCUM PVP/PVE เน้น community ไทย ไม่ pay2win\nอ่านกติกาใน #server-info ก่อนเข้าเล่น',
     rulesShort: [
-      'à¸«à¹‰à¸²à¸¡à¹ƒà¸Šà¹‰à¹‚à¸›à¸£à¹à¸à¸£à¸¡à¸Šà¹ˆà¸§à¸¢à¹€à¸¥à¹ˆà¸™ / cheat / macro à¸œà¸´à¸”à¸à¸•à¸´à¸à¸²',
-      'à¸«à¹‰à¸²à¸¡ toxic à¸«à¸™à¸±à¸, à¹€à¸«à¸¢à¸µà¸¢à¸”à¸Šà¸²à¸•à¸´/à¸¨à¸²à¸ªà¸™à¸²/à¹€à¸žà¸¨',
-      'à¸«à¹‰à¸²à¸¡à¸—à¸³à¸¥à¸²à¸¢à¸‚à¸­à¸‡à¹ƒà¸™ safe zone',
+      'ห้ามใช้โปรแกรมช่วยเล่น / cheat / macro ผิดกติกา',
+      'ห้าม toxic หนัก, เหยียดชาติ/ศาสนา/เพศ',
+      'ห้ามทำลายของใน safe zone',
     ],
     website: null,
   },
   restartSchedule: [
-    'à¸—à¸¸à¸à¸§à¸±à¸™ 06:00',
-    'à¸—à¸¸à¸à¸§à¸±à¸™ 12:00',
-    'à¸—à¸¸à¸à¸§à¸±à¸™ 18:00',
-    'à¸—à¸¸à¸à¸§à¸±à¸™ 00:00',
+    'ทุกวัน 06:00',
+    'ทุกวัน 12:00',
+    'ทุกวัน 18:00',
+    'ทุกวัน 00:00',
   ],
   raidTimes: [
-    'à¸ˆà¸±à¸™à¸—à¸£à¹Œ - à¸¨à¸¸à¸à¸£à¹Œ: 18:00 - 23:00',
-    'à¹€à¸ªà¸²à¸£à¹Œ - à¸­à¸²à¸—à¸´à¸•à¸¢à¹Œ: 14:00 - 23:00',
+    'จันทร์ - ศุกร์: 18:00 - 23:00',
+    'เสาร์ - อาทิตย์: 14:00 - 23:00',
   ],
   channels: {
     shopLog: 'shop-log',
@@ -263,24 +291,24 @@ const defaultConfig = {
       intervalMs: 7000,
       muteMinutes: 10,
     },
-    badWordsSoft: ['à¹€à¸«à¸µà¹‰à¸¢', 'à¸ªà¸±à¸ª', 'à¸„à¸§à¸²à¸¢'],
-    badWordsHard: ['nigger', 'à¸„à¸§à¸¢à¹à¸¡à¹ˆ', 'à¹„à¸›à¸•à¸²à¸¢'],
+    badWordsSoft: ['เหี้ย', 'สัส', 'ควาย'],
+    badWordsHard: ['nigger', 'ควยแม่', 'ไปตาย'],
     hardTimeoutMinutes: 30,
   },
   vip: {
     plans: [
       {
         id: 'vip-7d',
-        name: 'VIP 7 à¸§à¸±à¸™',
-        description: 'VIP 7 à¸§à¸±à¸™, à¸«à¹‰à¸­à¸‡ VIP, à¸ªà¸µà¸Šà¸·à¹ˆà¸­à¸žà¸´à¹€à¸¨à¸©, à¹‚à¸šà¸™à¸±à¸ª daily à¹€à¸¥à¹‡à¸à¸™à¹‰à¸­à¸¢',
+        name: 'VIP 7 วัน',
+        description: 'VIP 7 วัน, ห้อง VIP, สีชื่อพิเศษ, โบนัส daily เล็กน้อย',
         priceCoins: 5000,
         durationDays: 7,
       },
       {
         id: 'vip-30d',
-        name: 'VIP 30 à¸§à¸±à¸™',
+        name: 'VIP 30 วัน',
         description:
-          'VIP 30 à¸§à¸±à¸™, à¸«à¹‰à¸­à¸‡ VIP, à¸ªà¸µà¸Šà¸·à¹ˆà¸­à¸žà¸´à¹€à¸¨à¸©, à¹‚à¸šà¸™à¸±à¸ª daily à¹€à¸¥à¹‡à¸à¸™à¹‰à¸­à¸¢',
+          'VIP 30 วัน, ห้อง VIP, สีชื่อพิเศษ, โบนัส daily เล็กน้อย',
         priceCoins: 15000,
         durationDays: 30,
       },
@@ -339,6 +367,7 @@ const legacyConfigSnapshot = loadJson(PERSIST_FILENAME, null);
 if (isPlainObject(legacyConfigSnapshot)) {
   mergePatchInPlace(runtimeConfig, legacyConfigSnapshot);
 }
+sanitizeMojibakeInPlace(runtimeConfig, defaultConfig);
 
 const scheduleConfigSave = saveJsonDebounced(
   PERSIST_FILENAME,
@@ -406,8 +435,10 @@ async function hydrateConfigFromPrisma() {
 
     const merged = deepClone(defaultConfig);
     mergePatchInPlace(merged, parsed);
+    sanitizeMojibakeInPlace(merged, defaultConfig);
     replaceValueInPlace(runtimeConfig, merged);
     scheduleConfigSave();
+    persistConfigToPrisma(getConfigSnapshot());
   } catch (error) {
     console.error('[config] failed to hydrate from prisma:', error.message);
   }
@@ -434,6 +465,7 @@ function updateConfigPatch(patch) {
   }
   mutationVersion += 1;
   mergePatchInPlace(runtimeConfig, patch);
+  sanitizeMojibakeInPlace(runtimeConfig, defaultConfig);
   const snapshot = getConfigSnapshot();
   scheduleConfigSave();
   persistConfigToPrisma(snapshot);
@@ -447,6 +479,7 @@ function setFullConfig(nextConfig) {
   mutationVersion += 1;
   const merged = deepClone(defaultConfig);
   mergePatchInPlace(merged, nextConfig);
+  sanitizeMojibakeInPlace(merged, defaultConfig);
   replaceValueInPlace(runtimeConfig, merged);
   const snapshot = getConfigSnapshot();
   scheduleConfigSave();
