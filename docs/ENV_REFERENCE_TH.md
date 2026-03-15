@@ -5,12 +5,14 @@
 อัปเดตล่าสุด: **2026-03-13**
 
 ไฟล์ที่เกี่ยวข้อง
+
 - root local: [../.env.example](../.env.example)
 - root production: [../.env.production.example](../.env.production.example)
 - player portal local: [../apps/web-portal-standalone/.env.example](../apps/web-portal-standalone/.env.example)
 - player portal production: [../apps/web-portal-standalone/.env.production.example](../apps/web-portal-standalone/.env.production.example)
 
 หลักการใช้งาน
+
 - `.env.example` ใช้เป็น template สำหรับเครื่องพัฒนา/เครื่อง local
 - `.env.production.example` ใช้เป็น baseline สำหรับเครื่อง production
 - ไฟล์ `.env` จริงควรคัดลอกจาก example ที่ตรงกับสภาพแวดล้อม แล้วแก้เฉพาะค่าที่ต้องใช้จริง
@@ -23,6 +25,7 @@
 ## 1. Root `.env` / `.env.example` / `.env.production.example`
 
 ไฟล์กลุ่มนี้ใช้กับ runtime หลักของระบบ:
+
 - Discord bot
 - worker
 - watcher
@@ -50,12 +53,14 @@
 - `SCUM_WEBHOOK_MAX_BODY_BYTES`
   - จำกัดขนาด body ของ webhook request
 - `SCUM_WEBHOOK_REQUEST_TIMEOUT_MS`
+
   - timeout ฝั่ง webhook server
 
 - `SCUM_LOG_PATH`
   - path ไปไฟล์ `SCUM.log`
   - Windows ต้อง escape backslash เช่น `D:\\SCUMServer\\SCUM.log`
 - `SCUM_WEBHOOK_URL`
+
   - URL ที่ watcher ใช้ยิง event เข้า bot
 
 - `SCUM_WATCH_INTERVAL_MS`
@@ -73,6 +78,7 @@
 - `SCUM_EVENT_QUEUE_MAX`
   - ความยาว queue สูงสุดของ watcher
 - `SCUM_DEAD_LETTER_LOG_PATH`
+
   - path log ของ dead-letter ฝั่ง watcher
 
 - `SCUM_WEBHOOK_ERROR_ALERT_WINDOW_MS`
@@ -112,6 +118,7 @@
 - `ADMIN_WEB_PASSWORD`
   - รหัสผ่าน bootstrap
 - `ADMIN_WEB_USERS_JSON`
+
   - bootstrap ผู้ใช้หลายคนแบบ JSON
 
 - `ADMIN_WEB_SESSION_TTL_HOURS`
@@ -141,6 +148,7 @@
 - `ADMIN_WEB_ENFORCE_ORIGIN_CHECK`
   - เปิด origin check กัน CSRF
 - `ADMIN_WEB_ALLOWED_ORIGINS`
+
   - origins ที่อนุญาตให้ยิง admin web
 
 - `ADMIN_WEB_LOGIN_WINDOW_MS`
@@ -154,6 +162,7 @@
 - `ADMIN_WEB_LOGIN_SPIKE_IP_THRESHOLD`
   - จำนวนต่อ IP ที่ถือว่า spike
 - `ADMIN_WEB_LOGIN_SPIKE_ALERT_COOLDOWN_MS`
+
   - cooldown ของ alert
 
 - `ADMIN_DASHBOARD_CARDS_CACHE_WINDOW_MS`
@@ -198,9 +207,10 @@
 
 - `DELIVERY_EXECUTION_MODE`
   - `rcon` หรือ `agent`
-  - environment นี้พิสูจน์แล้วว่า `agent` ใช้งานได้จริง
+  - environment นี้เคยผ่านการทดสอบ `agent` เมื่อมี Windows session และ SCUM client พร้อม
 
 #### RCon
+
 - `RCON_HOST`
   - host ของ RCon/BattlEye
 - `RCON_PORT`
@@ -213,6 +223,7 @@
   - command template ของตัวส่ง RCon
 
 #### Console Agent
+
 - `SCUM_CONSOLE_AGENT_BASE_URL`
   - base URL ที่ worker ใช้คุยกับ local console agent
 - `SCUM_CONSOLE_AGENT_HOST`
@@ -230,6 +241,7 @@
   - อนุญาต command ที่ไม่ขึ้นต้นด้วย `#` หรือไม่
 
 #### Delivery hooks / timing
+
 - `DELIVERY_AGENT_PRE_COMMANDS_JSON`
   - คำสั่งก่อน spawn เช่น teleport
 - `DELIVERY_AGENT_POST_COMMANDS_JSON`
@@ -248,6 +260,7 @@
   - จุดวาร์ปกลับหลังส่งของ
 
 #### Agent backend เพิ่มเติม
+
 - `SCUM_CONSOLE_AGENT_EXEC_TEMPLATE`
   - template ที่ agent ใช้เรียก bridge ภายนอก
 - `SCUM_CONSOLE_AGENT_AUTOSTART`
@@ -262,6 +275,7 @@
   - wait time หลังเขียน command เข้า process
 
 #### Delivery watchdog / metrics
+
 - `DELIVERY_METRICS_WINDOW_MS`
   - metrics window
 - `DELIVERY_FAIL_RATE_ALERT_THRESHOLD`
@@ -280,6 +294,7 @@
 ### 1.8 Runtime Split
 
 #### Bot process
+
 - `BOT_ENABLE_SCUM_WEBHOOK`
   - เปิด webhook server ฝั่ง bot
 - `BOT_ENABLE_RESTART_SCHEDULER`
@@ -299,6 +314,7 @@
   - port ของ bot health endpoint
 
 #### Worker process
+
 - `WORKER_ENABLE_RENTBIKE`
   - เปิด rent bike queue ใน worker
 - `WORKER_ENABLE_DELIVERY`
@@ -311,6 +327,7 @@
   - port ของ worker health endpoint
 
 #### Watcher health
+
 - `SCUM_WATCHER_HEALTH_HOST`
   - host ของ watcher health endpoint
 - `SCUM_WATCHER_HEALTH_PORT`
@@ -401,6 +418,7 @@
 ## 3. Production baseline ที่ควรใช้จริง
 
 ### Root
+
 - `NODE_ENV=production`
 - `PERSIST_REQUIRE_DB=true`
 - `PERSIST_LEGACY_SNAPSHOTS=false`
@@ -409,11 +427,13 @@
 - `WORKER_HEALTH_PORT` และ `BOT_HEALTH_PORT` ต้องไม่ชนกัน
 
 ### Portal
+
 - `WEB_PORTAL_SECURE_COOKIE=true`
 - `WEB_PORTAL_BASE_URL` ต้องเป็น `https://...`
 - `WEB_PORTAL_DISCORD_REDIRECT_PATH=/auth/discord/callback`
 
 ### Admin SSO
+
 - `ADMIN_WEB_SSO_DISCORD_REDIRECT_URI` ต้องลงท้ายด้วย
   - `/admin/auth/discord/callback`
 
@@ -422,6 +442,7 @@
 ## 4. หมายเหตุสำคัญเรื่อง callback path
 
 ปัจจุบันระบบรองรับ 2 path นี้:
+
 - player portal: `/auth/discord/callback`
 - admin SSO: `/admin/auth/discord/callback`
 

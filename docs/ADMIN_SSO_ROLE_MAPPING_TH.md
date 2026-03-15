@@ -28,10 +28,12 @@ npm run admin:sso:roles -- --owner "Owner Role" --admin "Admin Role" --mod "Mode
 ```
 
 คำสั่งจะใช้:
+
 - `DISCORD_TOKEN`
 - `ADMIN_WEB_SSO_DISCORD_GUILD_ID` หรือ `DISCORD_GUILD_ID`
 
 ผลลัพธ์จะมีทั้ง:
+
 - รายชื่อ roles ใน guild
 - env lines สำหรับนำไปใส่ใน `.env`
 

@@ -7,6 +7,7 @@ const audits = [];
 let mutationVersion = 0;
 let dbWriteQueue = Promise.resolve();
 let initPromise = null;
+let isHydrating = false;
 
 function normalizeAudit(entry) {
   if (!entry || typeof entry !== 'object') return null;
@@ -34,6 +35,9 @@ function normalizeAudit(entry) {
 function queueDbWrite(work, label) {
   dbWriteQueue = dbWriteQueue
     .then(async () => {
+      if (initPromise && !isHydrating) {
+        await initPromise;
+      }
       await work();
     })
     .catch((error) => {
@@ -62,6 +66,7 @@ async function trimOldAuditRows() {
 
 async function hydrateFromPrisma() {
   const startVersion = mutationVersion;
+  isHydrating = true;
   try {
     const rows = await prisma.deliveryAudit.findMany({
       orderBy: { createdAt: 'asc' },
@@ -154,6 +159,8 @@ async function hydrateFromPrisma() {
     }
   } catch (error) {
     console.error('[deliveryAuditStore] failed to hydrate from prisma:', error.message);
+  } finally {
+    isHydrating = false;
   }
 }
 

@@ -6,6 +6,7 @@ const punishments = new Map(); // userId -> [entries]
 let mutationVersion = 0;
 let dbWriteQueue = Promise.resolve();
 let initPromise = null;
+let isHydrating = false;
 
 function normalizeDate(value, fallback = new Date()) {
   if (!value) return fallback;
@@ -28,6 +29,9 @@ function normalizeEntry(entry = {}) {
 function queueDbWrite(work, label) {
   dbWriteQueue = dbWriteQueue
     .then(async () => {
+      if (initPromise && !isHydrating) {
+        await initPromise;
+      }
       await work();
     })
     .catch((error) => {
@@ -38,6 +42,7 @@ function queueDbWrite(work, label) {
 
 async function hydrateFromPrisma() {
   const startVersion = mutationVersion;
+  isHydrating = true;
   try {
     const rows = await prisma.punishment.findMany({
       orderBy: [{ createdAt: 'asc' }],
@@ -91,6 +96,8 @@ async function hydrateFromPrisma() {
     }
   } catch (error) {
     console.error('[moderationStore] failed to hydrate from prisma:', error.message);
+  } finally {
+    isHydrating = false;
   }
 }
 

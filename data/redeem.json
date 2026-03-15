@@ -1,0 +1,14 @@
+{
+  "codes": [
+    [
+      "WELCOME1000",
+      {
+        "type": "coins",
+        "amount": 1000,
+        "itemId": null,
+        "usedBy": null,
+        "usedAt": null
+      }
+    ]
+  ]
+}

@@ -1,0 +1,493 @@
+ได้ ผมจัดให้เป็น **checklist ลงมือแก้ทีละไฟล์/ทีละโฟลเดอร์** แบบเอาไปไล่ปิดงานได้เลย ไม่ใช่เอกสารที่อ่านแล้วรู้สึกเหมือนโดนส่งไปทำพิธีกรรมไอทีโบราณ 🛠️
+
+จาก repo ตอนนี้ จุดตั้งต้นที่ยืนยันได้คือระบบถูกแยก runtime เป็น `bot`, `worker`, `watcher`, `admin web`, `player portal`, และ `console-agent`; README ระบุว่า runtime เครื่องนี้ cut over ไป PostgreSQL แล้ว; แต่ `docs/ARCHITECTURE.md` ยังอธิบาย `Discord bot` ว่า bootstrap ทั้ง admin web และ SCUM webhook อยู่ใน `src/bot.js`; ส่วน `package.json` ยังใช้ชื่อ package ว่า `"discord"` และคำสั่ง `lint` ยังเป็นแค่ syntax + text encoding checks เท่านั้น. Repo ยังมี test จำนวนมากครอบทั้ง admin, RBAC, runtime lock, console agent, delivery, webhook, portal และ security checks อยู่แล้ว ซึ่งเป็นฐานที่ดีมากสำหรับการ refactor แบบไม่หลับตาเสี่ยงดวง. ([GitHub][1])
+
+# แผนปิดงานแบบจบในรอบเดียว
+
+## Phase 1: แก้ของที่เสี่ยงและทำให้ repo ดูเป็นระบบก่อน
+
+### 1) `.gitignore`
+
+**ต้องทำ**
+
+* เพิ่มรายการเหล่านี้
+
+  * `.env.*`
+  * `*.env.local`
+  * `*.bak`
+  * `*.backup`
+  * `secrets/`
+  * `artifacts/`
+  * `tmp/`
+  * `*.local.json`
+* แยก comment ให้ชัดเป็นหมวด `env`, `artifacts`, `runtime`, `db`, `logs`
+
+**เหตุผล**
+ไฟล์ `.gitignore` ปัจจุบันดูเป็นชุด ignore ทั่วไปที่ไม่ครอบคลุม pattern ฝั่ง env/secrets/runtime artifacts แบบที่โปรเจกต์นี้ใช้จริง ขณะที่ README เองอ้างอิง artifacts ใน `artifacts/ci/*` และระบบมี env examples หลายชุดชัดเจน. ([GitHub][1])
+
+---
+
+### 2) `package.json`
+
+**ต้องทำ**
+
+* เปลี่ยน `"name": "discord"` เป็นชื่อที่ตรงระบบจริง เช่น `scum-th-platform`
+* เปลี่ยน description จาก bot-centric ให้เป็น platform/control-plane-centric
+* เพิ่ม scripts:
+
+  * `format`
+  * `format:check`
+  * `lint:eslint`
+  * `typecheck` หรือ `check:jsdoc`
+  * `test:policy`
+* เปลี่ยน `lint` ให้รัน ESLint + formatter check ไม่ใช่แค่ syntax/encoding
+* แยก script หมวด
+
+  * runtime
+  * database
+  * security
+  * deploy
+  * validation
+
+**เหตุผล**
+README บอกชัดว่าตัวระบบคือ “SCUM TH Platform” และเป็น control plane หลาย runtime แต่ `package.json` ยังตั้งชื่อเป็น `"discord"` พร้อม description แบบ “SCUM Discord server bot” และ lint ยังเป็นเพียง `check-js-syntax` กับ `check-text-encoding`. ([GitHub][1])
+
+---
+
+### 3) เพิ่มไฟล์ใหม่ใน root
+
+สร้างไฟล์เหล่านี้ให้ครบ:
+
+* `SECURITY.md`
+* `CONTRIBUTING.md`
+* `CODEOWNERS`
+* `docs/CONFIG_MATRIX.md`
+* `docs/RUNTIME_TOPOLOGY.md`
+* `docs/REFactor_PLAN.md`
+
+**เหตุผล**
+หน้า repo แสดง `Security 0`, ยังไม่มี release publish, และ README พึ่งเอกสารประกอบจำนวนมากอยู่แล้ว ดังนั้นการเติม governance docs จะช่วยให้ repo ดู production-ready ขึ้นทันที. ([GitHub][1])
+
+---
+
+## Phase 2: จัดโครงสร้าง entrypoint ใหม่
+
+### 4) `src/bot.js`
+
+**ต้องทำ**
+
+* ลดหน้าที่ไฟล์นี้ให้เหลือแค่ boot `Discord bot`
+* ย้าย logic ออกเป็นไฟล์ใหม่:
+
+  * `src/bootstrap/discordRuntime.js`
+  * `src/bootstrap/adminWebMount.js`
+  * `src/bootstrap/scumWebhookMount.js`
+  * `src/bootstrap/gracefulShutdown.js`
+  * `src/bootstrap/runtimeContainer.js`
+* ห้ามให้ `bot.js` มี business logic ตรง ๆ
+* ให้ `bot.js` ทำแค่:
+
+  1. load env
+  2. create container
+  3. boot discord runtime
+  4. mount optional services
+  5. register shutdown hooks
+
+**เหตุผล**
+`docs/ARCHITECTURE.md` ระบุชัดว่า `src/bot.js` ตอนนี้แบกทั้ง Discord gateway, command routing, admin web bootstrap และ SCUM webhook receiver อยู่ในไฟล์เดียว. แบบนี้ดูแลง่ายแค่ในฝันของคนที่ไม่ได้ต้อง debug ตอนตีหนึ่ง. ([GitHub][2])
+
+---
+
+### 5) `src/worker.js`
+
+**ต้องทำ**
+
+* แยก worker responsibilities เป็น service bootstrap ย่อย:
+
+  * `src/bootstrap/workerQueueRuntime.js`
+  * `src/bootstrap/backgroundJobsRuntime.js`
+  * `src/bootstrap/deliveryRuntime.js`
+* บังคับ startup lock ตั้งแต่ต้นไฟล์
+* เพิ่ม structured startup log:
+
+  * execution mode
+  * backend
+  * tenant mode
+  * DB provider
+  * active role ownership
+
+**เหตุผล**
+สถาปัตยกรรมระบุว่า worker ดูทั้ง delivery queue, rent bike runtime และ background jobs ดังนั้นควรแยก runtime ย่อยให้ชัดเพื่อกัน worker กลายเป็น `bot.js ภาคสอง`. ([GitHub][2])
+
+---
+
+### 6) `src/adminWebServer.js`
+
+**ต้องทำ**
+
+* แยก module เป็น
+
+  * `src/admin/api/`
+  * `src/admin/auth/`
+  * `src/admin/rbac/`
+  * `src/admin/audit/`
+  * `src/admin/config/`
+  * `src/admin/observability/`
+  * `src/admin/backupRestore/`
+* ทำ `config registry` กลาง ว่า setting ไหน editable จาก web ได้
+* ทุก endpoint ที่แก้ config ต้องเขียน audit diff เสมอ
+* แยก auth policy กับ permission policy ออกจาก route handler
+
+**เหตุผล**
+architecture doc ระบุว่า admin web มีทั้ง API, auth, RBAC, backup/restore, observability, delivery tools, tenant config รวมอยู่ในตัวเดียว ถ้าไม่แตกตอนนี้ ภายหลังจะกลายเป็นจานรวมมิตรที่แตะตรงไหนก็หก. ([GitHub][2])
+
+---
+
+## Phase 3: ทำ config และ topology ให้เชื่อถือได้
+
+### 7) สร้างโฟลเดอร์ใหม่ `src/config/`
+
+**เพิ่มไฟล์**
+
+* `src/config/schema.js`
+* `src/config/loadEnv.js`
+* `src/config/featureFlags.js`
+* `src/config/runtimeProfile.js`
+* `src/config/adminEditableConfig.js`
+
+**ต้องทำ**
+
+* validate env ตั้งแต่ startup
+* แยก required env ตาม runtime:
+
+  * bot
+  * worker
+  * watcher
+  * admin web
+  * portal
+  * agent
+* ทำ helper กลางสำหรับ parse boolean/int/url/list
+* ผูกกับ `docs/CONFIG_MATRIX.md`
+
+**เหตุผล**
+README มี env สำคัญหลายหมวดทั้ง database, delivery, admin web และยังอ้างถึง `docs/ENV_REFERENCE_TH.md` สำหรับตัวแปรเต็ม ดังนั้น config สมควรถูกยกขึ้นเป็นระบบชัด ๆ ไม่ใช่กระจาย parse กันคนละมุมของจักรวาล. ([GitHub][1])
+
+---
+
+### 8) `scripts/doctor-topology.js`, `scripts/doctor.js`, `scripts/readiness-gate.js`, `scripts/preflight-prod.js`
+
+**ต้องทำ**
+
+* รวมผลตรวจ topology ให้รายงาน:
+
+  * มี bot กี่ตัว
+  * มี worker ซ้ำไหม
+  * watcher online ไหม
+  * agent reachable ไหม
+  * database provider อะไร
+  * portal/admin split ถูกต้องไหม
+* ทำ output เป็น JSON schema เดียวกันทุก script
+* เพิ่ม code `exit 2` สำหรับ degraded, `exit 1` สำหรับ failed
+
+**เหตุผล**
+README ระบุว่ามี health endpoints, topology checks, readiness, smoke, PM2 manifests และ package scripts ก็มี doctor/readiness/preflight/smoke ครบอยู่แล้ว ดังนั้นสิ่งที่ต้องทำคือทำให้ผลตรวจ “คุยภาษาเดียวกัน” ทั้งระบบ. ([GitHub][1])
+
+---
+
+## Phase 4: จัดระเบียบ database ให้จบ
+
+### 9) `prisma/` และ docs ที่เกี่ยว DB
+
+**ต้องทำ**
+
+* ประกาศมาตรฐานว่า
+
+  * `production = PostgreSQL`
+  * `local dev/import/compat = SQLite` ถ้าจำเป็น
+* เพิ่มเอกสาร:
+
+  * `docs/DATABASE_STRATEGY.md`
+  * `docs/POSTGRESQL_CUTOVER_CHECKLIST.md`
+* แยก prisma workflow:
+
+  * generate
+  * migrate
+  * deploy
+  * restore verify
+* เพิ่ม restore drill script
+
+**ต้องแก้เอกสาร**
+
+* sync `docs/ARCHITECTURE.md` ให้ตรงกับ README เรื่อง PostgreSQL cutover
+* ลดความกำกวมเรื่อง SQLite
+
+**เหตุผล**
+README ระบุว่า runtime cut over มาใช้ PostgreSQL แล้วและมี helper/cutover commands ชัดเจน แต่ `docs/ARCHITECTURE.md` ยังพูดด้วยโครง narrative ที่ผูกกับ runtime เดิมอยู่ ทำให้เอกสารไม่คมเท่าที่ควร. ([GitHub][1])
+
+---
+
+## Phase 5: แยกพื้นที่ admin กับ player ให้เด็ดขาด
+
+### 10) `apps/web-portal-standalone/`
+
+**ต้องทำ**
+
+* แยก code ภายในเป็น
+
+  * `routes/player/`
+  * `auth/player/`
+  * `sessions/`
+  * `wallet/`
+  * `profile/`
+  * `redeem/`
+* ถ้ามี session store แบบ in-memory ให้เตรียมย้ายไป shared/session persistence
+* ใส่ CSRF, cookie policy, trusted proxy policy, canonical redirect policy ให้เป็น utility กลาง
+* แยก player session ออกจาก admin session โดยชัดเจน
+
+**เหตุผล**
+README ระบุว่า player portal แยก runtime จาก admin แล้ว และไฟล์ `apps/web-portal-standalone/server.js` มี session cleanup, oauth state cleanup, base origin และ forwarded proto/canonical redirect logic อยู่ในตัว แปลว่าภายในยังมีของหลายชั้นที่ควรแตกโมดูลต่อ. ([GitHub][1])
+
+---
+
+## Phase 6: ทำ delivery pipeline ให้ตรวจสอบย้อนหลังได้จริง
+
+### 11) `src/services/rconDelivery.js`
+
+**ต้องทำ**
+
+* แยก state machine ของ order ให้ชัด:
+
+  * queued
+  * dispatched
+  * backend_ack
+  * game_verified
+  * user_visible
+  * failed
+* บังคับให้ทุก order เก็บ:
+
+  * `executionMode`
+  * `backend`
+  * `commandPath`
+  * `retryCount`
+  * `evidenceBundleId`
+* แยก backend adapter:
+
+  * `src/services/delivery/backends/rcon.js`
+  * `src/services/delivery/backends/agent.js`
+* ทำ policy object สำหรับ retry / failover
+
+**เหตุผล**
+architecture doc ระบุว่า delivery runtime ทำ preflight, timeline, step log, audit, evidence bundle, circuit breaker และ failover policy อยู่แล้ว ดังนั้นสิ่งที่ต้องปรับคือทำโครงสร้างให้ชัดและตรวจสอบย้อนหลังง่ายขึ้น. ([GitHub][2])
+
+---
+
+### 12) `src/store/deliveryAuditStore.js` และ `src/store/deliveryEvidenceStore.js`
+
+**ต้องทำ**
+
+* นิยาม schema กลางของ evidence
+* แยก audit log กับ evidence payload ให้คนละหน้าที่
+* ใส่ `tenantId`, `orderId`, `actorType`, `backend`, `verificationLevel`
+* เพิ่ม retention policy
+
+**เหตุผล**
+ไฟล์สองตัวนี้ถูก architecture doc ระบุเป็นส่วนหลักของ delivery path อยู่แล้ว จึงควรถูกยกเป็น data contract ชัด ๆ ไม่ใช่เก็บแค่พอใช้งาน. ([GitHub][2])
+
+---
+
+## Phase 7: ทำ agent mode ให้ไม่เป็นระเบิดเวลา
+
+### 13) `src/scum-console-agent.js` และ `src/services/scumConsoleAgent.js`
+
+**ต้องทำ**
+
+* แยก health state:
+
+  * session ready
+  * client ready
+  * focus/channel ready
+  * token valid
+  * last command success
+* เพิ่ม degraded mode response
+* เพิ่ม “unsafe command suppression” ถ้า state ไม่ครบ
+* บันทึก compatibility matrix ตาม version เกม/agent
+* เพิ่ม timeout + correlation id ทุกคำสั่ง
+
+**เหตุผล**
+README ระบุว่าระบบรองรับ `RCON or Console Agent` และ package.json มี `start:scum-agent` กับ `scum:agent:exec` แยกอยู่แล้ว ขณะที่ architecture doc บอกว่า agent mode อยู่ใน delivery path แบบจริงจัง เพราะงั้นต้องทำให้มัน observable และ fail-safe มากขึ้น. ([GitHub][1])
+
+---
+
+## Phase 8: อัปเกรด quality gate ให้สมกับขนาดโปรเจกต์
+
+### 14) `.github/workflows/ci.yml`
+
+**ต้องทำ**
+
+* เพิ่ม step:
+
+  * `npm run format:check`
+  * `npm run lint:eslint`
+  * `npm run test:policy`
+  * `npm run secret:scan`
+* แยก artifacts:
+
+  * lint
+  * policy tests
+  * topology
+  * readiness
+  * smoke
+* fail build ถ้า formatting หรือ secret scan ไม่ผ่าน
+
+**เหตุผล**
+README ยืนยันว่ารอบตรวจล่าสุดใช้ `npm run lint`, `npm test`, `doctor`, `security:check`, `readiness:prod`, `smoke:postdeploy` และ package.json ก็มีคำสั่งเหล่านี้จริง แต่ lint ยังเบาไปสำหรับ codebase ขนาดนี้. ([GitHub][1])
+
+---
+
+### 15) เพิ่มไฟล์ใหม่ `.eslintrc.cjs` และ `.prettierrc`
+
+**ต้องทำ**
+
+* บังคับ
+
+  * import order
+  * no unused vars
+  * max complexity
+  * max lines per file
+  * consistent return
+* ใช้ prettier จัด format ทั้ง repo
+* ตั้ง pre-commit hooks ผ่าน `.githooks`
+
+**เหตุผล**
+repo มี `.githooks` และ `.editorconfig` อยู่แล้ว จึงต่อยอด quality enforcement ได้ไม่ยาก และ package.json ยังไม่มี formatter/linter ระดับจริงจังในตอนนี้. ([GitHub][1])
+
+---
+
+## Phase 9: ใช้ test suite เดิมให้คุ้ม แล้วเติม policy tests
+
+### 16) โฟลเดอร์ `test/`
+
+**สิ่งที่มีอยู่แล้ว**
+มี test ครอบ admin API, audit presets, dashboard, RBAC, SSO role mapping, cart/store, config persistence, Discord interaction, doctor, event services, delivery, runtime lock, runtime supervisor, console agent, webhook, security check, platform service, player account, portal player mode, wallet ledger และอีกหลายตัว. ([GitHub][3])
+
+**ต้องเพิ่ม**
+
+* `tenant-isolation.integration.test.js`
+* `cross-tenant-leak.e2e.test.js`
+* `config-registry-permission.test.js`
+* `delivery-evidence-policy.test.js`
+* `agent-degraded-mode.integration.test.js`
+* `postgres-cutover-readiness.test.js`
+* `restore-rehearsal.integration.test.js`
+
+**ต้องจัดหมวด**
+
+* `test/admin/`
+* `test/platform/`
+* `test/delivery/`
+* `test/runtime/`
+* `test/security/`
+* `test/data/`
+* `test/player/`
+
+**เหตุผล**
+ฐาน test ที่มีอยู่แล้วดีมาก แปลว่าตอน refactor ไม่ควรกลัว แต่ควรใช้โอกาสนี้จัดหมวดใหม่และเติม test เชิง policy ที่ยังขาด. ([GitHub][3])
+
+---
+
+## Phase 10: จัดโครง repo ให้คนอื่นอ่านแล้วไม่ถอนหายใจ
+
+### 17) โครงสร้างโฟลเดอร์ที่แนะนำ
+
+ปรับ `src/` ให้ไปทางนี้
+
+```text
+src/
+  bootstrap/
+  config/
+  admin/
+    api/
+    auth/
+    rbac/
+    audit/
+    config/
+    observability/
+  discord/
+    commands/
+    events/
+    interactions/
+  delivery/
+    backends/
+    queue/
+    policies/
+    verification/
+  player/
+  runtime/
+  services/
+  store/
+  shared/
+```
+
+**เหตุผล**
+ตอนนี้ repo มีทั้ง `apps`, `docs`, `prisma`, `scripts`, `src`, `test`, `vendor` อยู่แล้ว และสถาปัตยกรรมจริงก็ไม่ใช่ bot file เดียวอีกต่อไป จึงควรให้โครง `src` สะท้อน platform boundary ให้ชัด. ([GitHub][1])
+
+---
+
+# ลำดับทำงานแบบปิดทีละก้อน
+
+## ชุด A: ทำก่อนสุด
+
+1. แก้ `.gitignore`
+2. เปลี่ยน `package.json` name/description/scripts
+3. เพิ่ม `SECURITY.md`, `CONTRIBUTING.md`, `CODEOWNERS`
+4. sync `docs/ARCHITECTURE.md` กับ README เรื่อง PostgreSQL และ runtime roles
+
+([GitHub][1])
+
+## ชุด B: แตก entrypoints
+
+1. ลด `src/bot.js`
+2. แยก `src/worker.js`
+3. แตก `src/adminWebServer.js`
+4. สร้าง `src/config/`
+
+([GitHub][2])
+
+## ชุด C: เสริม reliability
+
+1. ยกระดับ scripts กลุ่ม doctor/readiness/preflight
+2. แยก delivery backends
+3. ทำ agent degraded mode
+4. เพิ่ม policy tests
+
+([GitHub][1])
+
+## ชุด D: ปรับคุณภาพทั้ง repo
+
+1. เพิ่ม ESLint/Prettier
+2. อัปเดต CI
+3. จัดหมวด test
+4. จัดโครง `src/`
+
+([GitHub][4])
+
+---
+
+# ถ้าจะฟันธงแบบไม่อ้อม
+
+**ไฟล์ที่ควรแตะก่อนที่สุด**
+
+* `.gitignore`
+* `package.json`
+* `docs/ARCHITECTURE.md`
+* `src/bot.js`
+* `src/worker.js`
+* `src/adminWebServer.js`
+* `src/scum-console-agent.js`
+* `src/services/scumConsoleAgent.js`
+* `src/services/rconDelivery.js`
+* `src/store/deliveryAuditStore.js`
+* `src/store/deliveryEvidenceStore.js`
+* `.github/workflows/ci.yml`
+* `apps/web-portal-standalone/server.js`
+* `test/` ทั้งโฟลเดอร์

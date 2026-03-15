@@ -101,7 +101,21 @@ function Get-ScumWindow {
 
   $visibleWindows = Get-Process |
     Where-Object { $_.MainWindowHandle -ne 0 } |
-    Sort-Object StartTime -Descending
+    ForEach-Object {
+      $sortStartTime = [datetime]::MinValue
+      try {
+        $sortStartTime = $_.StartTime
+      } catch {
+        $sortStartTime = [datetime]::MinValue
+      }
+
+      [PSCustomObject]@{
+        Process = $_
+        SortStartTime = $sortStartTime
+      }
+    } |
+    Sort-Object SortStartTime -Descending |
+    ForEach-Object { $_.Process }
 
   $match = $null
 

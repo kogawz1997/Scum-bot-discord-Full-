@@ -122,8 +122,11 @@ function initLinkStore() {
   return initPromise;
 }
 
-function flushLinkStoreWrites() {
-  return dbWriteQueue;
+async function flushLinkStoreWrites() {
+  if (initPromise) {
+    await initPromise.catch(() => null);
+  }
+  await dbWriteQueue;
 }
 
 function getLinkBySteamId(steamId) {

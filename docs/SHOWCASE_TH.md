@@ -1,53 +1,42 @@
 # Demo Notes
 
-เอกสารนี้ไม่ใช่ source of truth หลักของสถานะระบบ
+This file is not the source of truth for system status.
 
-ให้ใช้เอกสารนี้เมื่อจะสาธิตระบบหรืออธิบาย flow เพิ่มเติมเท่านั้น
-ส่วนสถานะที่ควรอ้างจริงให้ดู:
+Use it only for demos, walkthroughs, or review sessions. For status and verification, use:
+
 - [README.md](../README.md)
 - [PROJECT_HQ.md](../PROJECT_HQ.md)
-- [docs/VERIFICATION_STATUS_TH.md](./VERIFICATION_STATUS_TH.md)
-- [docs/EVIDENCE_MAP_TH.md](./EVIDENCE_MAP_TH.md)
+- [VERIFICATION_STATUS_TH.md](./VERIFICATION_STATUS_TH.md)
+- [EVIDENCE_MAP_TH.md](./EVIDENCE_MAP_TH.md)
 
-## 1. สิ่งที่สาธิตได้ตอนนี้
+## What Can Be Shown
 
-- admin dashboard runtime overview
-- delivery timeline / step log
-- preflight / simulator / capability test
-- notification center
-- backup / restore preview
-- player portal login / wallet / purchase history / redeem
+- Admin runtime overview
+- Control panel and raw config split
+- Security events and active session management
+- Backup / restore preview
+- Player portal login, wallet, purchase history, redeem, and Steam link
 
-## 2. ลำดับการสาธิต
+## Suggested Demo Order
 
-1. เปิด admin dashboard เพื่อดู topology และ runtime status
-2. เปิด delivery runtime เพื่อดู queue, dead-letter, verification mode
-3. รัน preflight เพื่อดูว่า worker / agent / target พร้อมหรือไม่
-4. รัน simulator เพื่อดู command plan แบบไม่ยิงจริง
-5. รัน capability test `announce / teleport / spawn`
-6. เปิด order detail เพื่อดู timeline, step log, outputs, evidence
-7. เปิด player portal เพื่อดู wallet, history, redeem, profile
+1. Open the admin dashboard and check runtime status first
+2. Show security events, sessions, and step-up protected actions
+3. Show the control panel and which settings are still env-only
+4. Show restore preview and current guardrails
+5. Open the player portal and show wallet/history/redeem/profile flows
+6. Open CI artifacts or evidence docs next to the UI
 
-## 3. สิ่งที่ควรเปิดคู่กัน
+## Recommended Supporting Evidence
 
 - `artifacts/ci/verification-summary.md`
 - `artifacts/ci/smoke.log`
-- `docs/DELIVERY_CAPABILITY_MATRIX_TH.md`
 - `docs/LIMITATIONS_AND_SLA_TH.md`
 - `docs/MIGRATION_ROLLBACK_POLICY_TH.md`
 
-ควรเปิดหลักฐานควบคู่ไปกับ UI
+## What Not To Overstate
 
-## 4. ข้อจำกัดของการสาธิต
-
-- screenshot dashboard จริงยังไม่ได้ถูก commit ใน repo
-- demo GIF ยังไม่มีใน repo
-- ถ้าจะสาธิต `agent mode` ต้องใช้ Windows session และ SCUM admin client จริง
-- บางความสามารถของ admin web ยังต้องดูจาก env/config และ API route มากกว่าฟอร์มบนหน้าเว็บ
-
-## 5. สิ่งที่ไม่ควรพูดเกินจริง
-
-- อย่าพูดว่า RCON spawn ใช้ได้กับทุกเซิร์ฟเวอร์ ถ้ายังไม่ได้พิสูจน์กับ environment นั้น
-- อย่าพูดว่า restore เป็น one-click rollback เต็มรูปแบบ เพราะยังมี maintenance gate และ manual confirmation
-- อย่าพูดว่า SQLite พร้อม horizontal scale
-- อย่าพูดว่า agent mode เป็น official server API
+- Do not claim full tenant isolation
+- Do not claim every runtime/config setting is editable from the web UI
+- Do not claim `agent` execution works without a real Windows session and SCUM client
+- Do not describe restore as fully automatic rollback
+- Do not describe SQLite as a multi-instance production target

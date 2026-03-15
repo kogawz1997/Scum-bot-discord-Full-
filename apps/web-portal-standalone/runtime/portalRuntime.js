@@ -1,0 +1,176 @@
+'use strict';
+
+/**
+ * Player portal runtime helpers for health payloads and startup validation.
+ * Keep these pure so the standalone server can stay focused on routes.
+ */
+
+function isLoopbackHost(hostname) {
+  const normalized = String(hostname || '').trim().toLowerCase();
+  return normalized === 'localhost' || normalized === '127.0.0.1' || normalized === '::1';
+}
+
+function buildPortalHealthPayload(settings) {
+  return {
+    ok: true,
+    data: {
+      now: new Date().toISOString(),
+      nodeEnv: settings.nodeEnv,
+      mode: settings.mode,
+      uptimeSec: Math.round(process.uptime()),
+      sessions: settings.sessionCount,
+      oauthStates: settings.oauthStateCount,
+      secureCookie: settings.secureCookie,
+      cookieName: settings.cookieName,
+      cookiePath: settings.cookiePath,
+      cookieSameSite: settings.cookieSameSite,
+      enforceOriginCheck: settings.enforceOriginCheck,
+      discordOAuthConfigured: settings.discordOAuthConfigured,
+      playerOpenAccess: settings.playerOpenAccess,
+      requireGuildMember: settings.requireGuildMember,
+      legacyAdminUrl: settings.legacyAdminUrl,
+      landingUrl: '/landing',
+      showcaseUrl: '/showcase',
+      trialUrl: '/trial',
+    },
+  };
+}
+
+function buildPortalStartupValidation(settings) {
+  const errors = [];
+  const warnings = [];
+
+  let base;
+  let legacy;
+
+  try {
+    base = new URL(settings.baseUrl);
+  } catch {
+    errors.push('WEB_PORTAL_BASE_URL is invalid URL');
+  }
+
+  try {
+    legacy = new URL(settings.legacyAdminUrl);
+  } catch {
+    errors.push('WEB_PORTAL_LEGACY_ADMIN_URL is invalid URL');
+  }
+
+  if (!settings.discordClientId) {
+    errors.push('WEB_PORTAL_DISCORD_CLIENT_ID is required');
+  }
+
+  if (!settings.discordClientSecret) {
+    errors.push('WEB_PORTAL_DISCORD_CLIENT_SECRET is required');
+  }
+
+  if (!settings.playerOpenAccess && settings.requireGuildMember && !settings.discordGuildId) {
+    errors.push('WEB_PORTAL_REQUIRE_GUILD_MEMBER=true requires WEB_PORTAL_DISCORD_GUILD_ID');
+  }
+
+  if (settings.mode !== 'player') {
+    warnings.push(`WEB_PORTAL_MODE=${settings.mode} is not supported, forcing player mode`);
+  }
+
+  if (
+    !settings.playerOpenAccess
+    && settings.allowedDiscordIdsCount === 0
+    && !settings.requireGuildMember
+  ) {
+    warnings.push('Access policy is restricted mode but no allowlist/guild guard configured');
+  }
+
+  if (
+    settings.playerOpenAccess
+    && (settings.allowedDiscordIdsCount > 0 || settings.requireGuildMember)
+  ) {
+    warnings.push('WEB_PORTAL_PLAYER_OPEN_ACCESS=true ignores allowlist/guild-member restrictions');
+  }
+
+  if (!settings.enforceOriginCheck) {
+    warnings.push('WEB_PORTAL_ENFORCE_ORIGIN_CHECK=false increases CSRF risk');
+  }
+
+  if (settings.cookieSameSite === 'Strict') {
+    warnings.push('WEB_PORTAL_COOKIE_SAMESITE=Strict may break Discord OAuth redirect flow');
+  }
+
+  if (settings.cookieSameSite === 'None' && !settings.secureCookie) {
+    warnings.push('WEB_PORTAL_COOKIE_SAMESITE=None without secure cookie may be rejected by browsers');
+  }
+
+  if (base && legacy && base.origin === legacy.origin) {
+    warnings.push('WEB_PORTAL_BASE_URL and WEB_PORTAL_LEGACY_ADMIN_URL share the same origin; prefer split origin/subdomain for cleaner cookie and routing isolation');
+  }
+
+  if (settings.sessionTtlMs > 24 * 60 * 60 * 1000) {
+    warnings.push('WEB_PORTAL_SESSION_TTL_HOURS is longer than 24 hours; review whether player sessions should expire sooner');
+  }
+
+  if (base && !isLoopbackHost(base.hostname) && base.protocol !== 'https:') {
+    warnings.push('WEB_PORTAL_BASE_URL is not HTTPS on non-loopback host');
+  }
+
+  if (legacy && !isLoopbackHost(legacy.hostname) && legacy.protocol !== 'https:') {
+    warnings.push('WEB_PORTAL_LEGACY_ADMIN_URL is not HTTPS on non-loopback host');
+  }
+
+  if (settings.isProduction) {
+    if (!settings.secureCookie) {
+      errors.push('WEB_PORTAL_SECURE_COOKIE must be true in production');
+    }
+
+    if (!settings.enforceOriginCheck) {
+      errors.push('WEB_PORTAL_ENFORCE_ORIGIN_CHECK must be true in production');
+    }
+
+    if (base && base.protocol !== 'https:') {
+      errors.push('WEB_PORTAL_BASE_URL must use https in production');
+    }
+  }
+
+  return { errors, warnings };
+}
+
+function printPortalStartupHints(settings, logger = console) {
+  logger.log(`[web-portal-standalone] listening at ${settings.baseUrl}`);
+  logger.log(`[web-portal-standalone] mode: ${settings.mode}`);
+  logger.log(`[web-portal-standalone] legacy admin: ${settings.legacyAdminUrl}`);
+  logger.log(
+    `[web-portal-standalone] landing: ${new URL('/landing', settings.baseUrl).toString()}`,
+  );
+  logger.log(
+    `[web-portal-standalone] showcase: ${new URL('/showcase', settings.baseUrl).toString()}`,
+  );
+  logger.log(
+    `[web-portal-standalone] trial: ${new URL('/trial', settings.baseUrl).toString()}`,
+  );
+  logger.log(
+    `[web-portal-standalone] cookie: name=${settings.cookieName} path=${settings.cookiePath} secure=${settings.secureCookie} sameSite=${settings.cookieSameSite}${settings.cookieDomain ? ` domain=${settings.cookieDomain}` : ''}`,
+  );
+
+  const validation = buildPortalStartupValidation(settings);
+
+  if (validation.warnings.length > 0) {
+    logger.warn('[web-portal-standalone] startup warnings:');
+    for (const warning of validation.warnings) {
+      logger.warn(`- ${warning}`);
+    }
+  }
+
+  if (validation.errors.length > 0) {
+    logger.error('[web-portal-standalone] startup errors:');
+    for (const error of validation.errors) {
+      logger.error(`- ${error}`);
+    }
+    process.exitCode = 1;
+    return false;
+  }
+
+  return true;
+}
+
+module.exports = {
+  buildPortalHealthPayload,
+  buildPortalStartupValidation,
+  printPortalStartupHints,
+};

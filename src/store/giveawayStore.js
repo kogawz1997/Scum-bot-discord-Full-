@@ -5,6 +5,7 @@ const giveaways = new Map(); // messageId -> { prize, winnersCount, endsAt, chan
 let mutationVersion = 0;
 let dbWriteQueue = Promise.resolve();
 let initPromise = null;
+let isHydrating = false;
 
 function normalizeDate(value) {
   const date = new Date(value);
@@ -35,6 +36,9 @@ function normalizeGiveaway(row = {}) {
 function queueDbWrite(work, label) {
   dbWriteQueue = dbWriteQueue
     .then(async () => {
+      if (initPromise && !isHydrating) {
+        await initPromise;
+      }
       await work();
     })
     .catch((error) => {
@@ -45,6 +49,7 @@ function queueDbWrite(work, label) {
 
 async function hydrateFromPrisma() {
   const startVersion = mutationVersion;
+  isHydrating = true;
   try {
     const rows = await prisma.giveaway.findMany({
       include: {
@@ -124,6 +129,8 @@ async function hydrateFromPrisma() {
     }
   } catch (error) {
     console.error('[giveawayStore] failed to hydrate from prisma:', error.message);
+  } finally {
+    isHydrating = false;
   }
 }
 

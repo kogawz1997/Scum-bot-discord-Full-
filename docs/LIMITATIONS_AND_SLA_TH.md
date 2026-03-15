@@ -42,6 +42,6 @@
 ควรสื่อสารให้ชัดว่า:
 
 - ระบบนี้พร้อม production แต่มี dependency ภายนอกที่ต้องดูแล
-- `agent mode` เป็น pragmatic automation ที่พิสูจน์ใช้งานจริงแล้ว แต่ไม่ใช่ official SCUM server API
+- `agent mode` เป็น automation ที่เคยผ่านการทดสอบใน environment ที่เตรียมครบ แต่ไม่ใช่ official SCUM server API
 - monitoring, preflight, failover, timeline และ reconcile ถูกทำมาเพื่อลดความเสี่ยง "พังเงียบ" และช่วย debug production ให้เร็วขึ้น
 - ถ้าจะขยายเป็นหลาย tenant หรือขายต่อ ควรมีแผน migrate ไป DB server และแยก deployment boundary ให้ชัดขึ้น

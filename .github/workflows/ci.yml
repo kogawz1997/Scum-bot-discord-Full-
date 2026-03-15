@@ -25,7 +25,7 @@ jobs:
         run: npm ci
 
       - name: Secret scan
-        run: npm run security:scan-secrets
+        run: npm run secret:scan
 
   quality-matrix:
     needs: secret-hygiene
@@ -56,8 +56,20 @@ jobs:
       - name: Push test schema
         run: npm run db:push
 
-      - name: Lint
-        run: npm run lint
+      - name: Syntax and text checks
+        run: npm run lint:syntax && npm run lint:text
+
+      - name: ESLint
+        run: npm run lint:eslint
+
+      - name: Module doc check
+        run: npm run check:jsdoc
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Policy tests
+        run: npm run test:policy
 
       - name: Test
         run: npm test

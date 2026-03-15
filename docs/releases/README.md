@@ -1,21 +1,13 @@
 # Release Notes
 
-โฟลเดอร์นี้เก็บ release notes ราย version
+This folder contains per-version release notes.
 
-ความต่างจาก [CHANGELOG.md](../../CHANGELOG.md):
+Difference from [CHANGELOG.md](../../CHANGELOG.md):
 
-- `CHANGELOG.md` ใช้เป็นรายการเปลี่ยนแปลงสะสมและผูกกับ release automation
-- release notes ในโฟลเดอร์นี้ใช้สรุปผลกระทบของแต่ละ version สำหรับ operator, reviewer, และผู้ดูแล production
+- `CHANGELOG.md` is the accumulated change record tied to release automation
+- release notes in this folder summarize operator impact, review notes, limits, and deployment conditions for a specific version
 
-รูปแบบที่ใช้ในแต่ละ release note:
+Current entries:
 
-- สรุป
-- การเปลี่ยนหลัก
-- ผลกระทบต่อผู้ดูแลระบบ
-- ข้อจำกัด
-- เงื่อนไขการ deploy
-- หลักฐานที่ควรเปิดคู่กัน
-
-รายการที่มีตอนนี้:
-
+- [TEMPLATE](./TEMPLATE.md)
 - [v1.0.0](./v1.0.0.md)

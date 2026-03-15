@@ -63,7 +63,7 @@ async function handleAdd(interaction) {
   const targetName = interaction.options.getString('target', true);
   const amount = interaction.options.getInteger('amount', true);
 
-  const result = createBountyForUser({
+  const result = await createBountyForUser({
     targetName,
     amount,
     createdBy: interaction.user.id,

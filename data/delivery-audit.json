@@ -1,0 +1,133 @@
+{
+  "audits": [
+    {
+      "id": "audit-a4397f4a-570a-4960-8253-3f085399be82",
+      "createdAt": "2026-03-10T07:05:58.932Z",
+      "level": "error",
+      "action": "failed",
+      "purchaseCode": "Pc41ec32c-a692-41e5-a996-eba61a541b28",
+      "itemId": "item-mk",
+      "userId": "1179730735423299649",
+      "steamId": null,
+      "attempt": 3,
+      "message": "Command failed: node scripts/rcon-send.js --host 127.0.0.1 --port 27015 --password \"TN_QDwOiaJvAT82XfEKjJ62K5XAqBoQ5\" --command \"#SpawnItem 76561199274778326 Weapon_MK18 1\"\nrcon-send: connect ECONNREFUSED 127.0.0.1:27015\n",
+      "meta": {
+        "maxRetries": 3,
+        "failedStatus": "delivery_failed"
+      }
+    },
+    {
+      "id": "audit-5a9816d0-e732-441d-b01e-6270e3c1c1d0",
+      "createdAt": "2026-03-10T07:05:58.869Z",
+      "level": "info",
+      "action": "attempt",
+      "purchaseCode": "Pc41ec32c-a692-41e5-a996-eba61a541b28",
+      "itemId": "item-mk",
+      "userId": "1179730735423299649",
+      "steamId": null,
+      "attempt": 3,
+      "message": "Processing auto-delivery job",
+      "meta": null
+    },
+    {
+      "id": "audit-69ebd550-5858-43de-83fa-fa884575ed09",
+      "createdAt": "2026-03-10T07:05:38.329Z",
+      "level": "warn",
+      "action": "retry",
+      "purchaseCode": "Pc41ec32c-a692-41e5-a996-eba61a541b28",
+      "itemId": "item-mk",
+      "userId": "1179730735423299649",
+      "steamId": null,
+      "attempt": 2,
+      "message": "Command failed: node scripts/rcon-send.js --host 127.0.0.1 --port 27015 --password \"TN_QDwOiaJvAT82XfEKjJ62K5XAqBoQ5\" --command \"#SpawnItem 76561199274778326 Weapon_MK18 1\"\nrcon-send: connect ECONNREFUSED 127.0.0.1:27015\n (retry in 19440ms)",
+      "meta": {
+        "delayMs": 19440,
+        "maxRetries": 3
+      }
+    },
+    {
+      "id": "audit-1a2cb5e3-d06a-4272-af30-de159113ba6e",
+      "createdAt": "2026-03-10T07:05:38.259Z",
+      "level": "info",
+      "action": "attempt",
+      "purchaseCode": "Pc41ec32c-a692-41e5-a996-eba61a541b28",
+      "itemId": "item-mk",
+      "userId": "1179730735423299649",
+      "steamId": null,
+      "attempt": 2,
+      "message": "Processing auto-delivery job",
+      "meta": null
+    },
+    {
+      "id": "audit-e414114a-3de2-4752-95a1-4f0295770008",
+      "createdAt": "2026-03-10T07:05:27.372Z",
+      "level": "warn",
+      "action": "retry",
+      "purchaseCode": "Pc41ec32c-a692-41e5-a996-eba61a541b28",
+      "itemId": "item-mk",
+      "userId": "1179730735423299649",
+      "steamId": null,
+      "attempt": 1,
+      "message": "Command failed: node scripts/rcon-send.js --host 127.0.0.1 --port 27015 --password \"TN_QDwOiaJvAT82XfEKjJ62K5XAqBoQ5\" --command \"#SpawnItem 76561199274778326 Weapon_MK18 1\"\nrcon-send: connect ECONNREFUSED 127.0.0.1:27015\n (retry in 10800ms)",
+      "meta": {
+        "delayMs": 10800,
+        "maxRetries": 3
+      }
+    },
+    {
+      "id": "audit-df4995b4-2bb2-41e7-a808-12513f0f7c05",
+      "createdAt": "2026-03-10T07:05:27.314Z",
+      "level": "info",
+      "action": "attempt",
+      "purchaseCode": "Pc41ec32c-a692-41e5-a996-eba61a541b28",
+      "itemId": "item-mk",
+      "userId": "1179730735423299649",
+      "steamId": null,
+      "attempt": 1,
+      "message": "Processing auto-delivery job",
+      "meta": null
+    },
+    {
+      "id": "audit-4151dbee-7fc3-454c-ae0a-bf20d953e883",
+      "createdAt": "2026-03-10T07:05:21.280Z",
+      "level": "warn",
+      "action": "retry",
+      "purchaseCode": "Pc41ec32c-a692-41e5-a996-eba61a541b28",
+      "itemId": "item-mk",
+      "userId": "1179730735423299649",
+      "steamId": null,
+      "attempt": 0,
+      "message": "Command failed: node scripts/rcon-send.js --host 127.0.0.1 --port 27015 --password \"TN_QDwOiaJvAT82XfEKjJ62K5XAqBoQ5\" --command \"#SpawnItem 76561199274778326 Weapon_MK18 1\"\nrcon-send: connect ECONNREFUSED 127.0.0.1:27015\n (retry in 6000ms)",
+      "meta": {
+        "delayMs": 6000,
+        "maxRetries": 3
+      }
+    },
+    {
+      "id": "audit-0522b6bb-dff3-4655-b2c4-cdc33fdcdbc4",
+      "createdAt": "2026-03-10T07:05:20.560Z",
+      "level": "info",
+      "action": "attempt",
+      "purchaseCode": "Pc41ec32c-a692-41e5-a996-eba61a541b28",
+      "itemId": "item-mk",
+      "userId": "1179730735423299649",
+      "steamId": null,
+      "attempt": 0,
+      "message": "Processing auto-delivery job",
+      "meta": null
+    },
+    {
+      "id": "audit-4d6ea109-a424-4751-8450-5b2e118899af",
+      "createdAt": "2026-03-10T07:05:20.536Z",
+      "level": "info",
+      "action": "queued",
+      "purchaseCode": "Pc41ec32c-a692-41e5-a996-eba61a541b28",
+      "itemId": "item-mk",
+      "userId": "1179730735423299649",
+      "steamId": null,
+      "attempt": 0,
+      "message": "Queued purchase for auto-delivery",
+      "meta": null
+    }
+  ]
+}

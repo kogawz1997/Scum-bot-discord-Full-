@@ -56,7 +56,7 @@ test('playerOps service: redeem + bounty + rentbike input guard', async () => {
     assert.equal(redeemedAgain.ok, false);
     assert.equal(redeemedAgain.reason, 'code-already-used');
 
-    const bountyCreated = createBountyForUser({
+    const bountyCreated = await createBountyForUser({
       createdBy: userId,
       targetName: 'TargetPlayer',
       amount: 777,

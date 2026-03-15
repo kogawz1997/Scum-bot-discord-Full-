@@ -13,7 +13,7 @@
 - `test/`
   ชุด integration และ regression tests
 - `docs/`
-  เอกสารใช้งาน, go-live, limitations, SLA, deployment และ commercial showcase
+  เอกสารใช้งาน, go-live, limitations, SLA, deployment และ demo/review notes
 - `deploy/`
   PM2, nginx example และ helper สำหรับ production runtime
 - `prisma/`

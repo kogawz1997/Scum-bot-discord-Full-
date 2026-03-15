@@ -2,6 +2,12 @@
 
 เอกสารนี้ใช้วางแผนย้าย persistence จาก JSON/KV fallback ไป Prisma แบบปลอดภัยและ rollback ได้
 
+หมายเหตุสำคัญ:
+
+- runtime มาตรฐานปัจจุบันของ repo นี้คือ PostgreSQL
+- SQLite ยังมีไว้สำหรับ local dev, import/cutover source, และ offline tooling
+- เอกสารนี้จึงเน้นการปิด legacy persistence path และทำให้ Prisma เป็น persistence boundary เดียว ไม่ได้หมายความว่า production runtime ยังควรวิ่งบน SQLite
+
 ## เป้าหมาย
 
 - ลดความเสี่ยงข้อมูลไม่สอดคล้องจากหลาย storage mode

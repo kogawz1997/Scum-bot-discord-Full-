@@ -2,18 +2,18 @@
 
 เอกสารนี้ใช้แยกให้ชัดว่า feature ไหนใช้ `RCON`, feature ไหนต้องใช้ `agent mode`, และจุดไหนมี fallback
 
-| Capability | RCON | Agent mode | Failover / Fallback | Evidence |
-| --- | --- | --- | --- | --- |
-| enqueue / queue / retry / dead-letter | yes | yes | ใช้ร่วมกัน | audit + timeline |
-| preflight ก่อน enqueue | partial | required | agent fail => block หรือ failover ตาม policy | audit + preflight report |
-| teleport ไปหาผู้เล่น | no | yes | fallback เป็น RCON ได้เฉพาะ path ที่ไม่ต้อง teleport | timeline + outputs |
-| teleport ไป vehicle target | no | yes | same as above | timeline + outputs |
-| spawn item ปกติ | yes | yes | yes | outputs + latest command summary |
-| multi-item / bundle | yes | yes | yes | outputs + step log |
-| magazine StackCount | yes | yes | yes | preview + outputs |
-| post-spawn verification | partial | yes | verify fail => retry / dead-letter | verify audit + evidence bundle |
-| capability test / simulate | yes | yes | n/a | simulator + preview |
-| command template override | yes | yes | n/a | audit trail |
+| Capability                            | RCON    | Agent mode | Failover / Fallback                                  | Evidence                         |
+| ------------------------------------- | ------- | ---------- | ---------------------------------------------------- | -------------------------------- |
+| enqueue / queue / retry / dead-letter | yes     | yes        | ใช้ร่วมกัน                                           | audit + timeline                 |
+| preflight ก่อน enqueue                | partial | required   | agent fail => block หรือ failover ตาม policy         | audit + preflight report         |
+| teleport ไปหาผู้เล่น                  | no      | yes        | fallback เป็น RCON ได้เฉพาะ path ที่ไม่ต้อง teleport | timeline + outputs               |
+| teleport ไป vehicle target            | no      | yes        | same as above                                        | timeline + outputs               |
+| spawn item ปกติ                       | yes     | yes        | yes                                                  | outputs + latest command summary |
+| multi-item / bundle                   | yes     | yes        | yes                                                  | outputs + step log               |
+| magazine StackCount                   | yes     | yes        | yes                                                  | preview + outputs                |
+| post-spawn verification               | partial | yes        | verify fail => retry / dead-letter                   | verify audit + evidence bundle   |
+| capability test / simulate            | yes     | yes        | n/a                                                  | simulator + preview              |
+| command template override             | yes     | yes        | n/a                                                  | audit trail                      |
 
 ## Metadata ที่ runtime บันทึกต่อ order
 

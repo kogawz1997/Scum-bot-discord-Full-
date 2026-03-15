@@ -107,41 +107,36 @@ function initBountyStore() {
   return initPromise;
 }
 
-function flushBountyStoreWrites() {
-  return dbWriteQueue;
+async function flushBountyStoreWrites() {
+  if (initPromise) {
+    await initPromise.catch(() => null);
+  }
+  await dbWriteQueue;
 }
 
-function createBounty({ targetName, amount, createdBy }) {
+async function createBounty({ targetName, amount, createdBy }) {
+  if (initPromise) {
+    await initPromise.catch(() => null);
+  }
+
   mutationVersion += 1;
-
-  const id = bountyCounter++;
-  const bounty = {
-    id,
-    targetName: String(targetName || ''),
-    amount: Number(amount || 0),
-    createdBy: String(createdBy || ''),
-    status: 'active', // active | claimed | cancelled
-    claimedBy: null,
-  };
-
-  bounties.set(id, bounty);
-
-  queueDbWrite(
-    async () => {
-      await prisma.bounty.create({
-        data: {
-          id,
-          targetName: bounty.targetName,
-          amount: bounty.amount,
-          createdBy: bounty.createdBy,
-          status: bounty.status,
-          claimedBy: null,
-        },
-      });
+  const created = await prisma.bounty.create({
+    data: {
+      targetName: String(targetName || ''),
+      amount: Number(amount || 0),
+      createdBy: String(createdBy || ''),
+      status: 'active',
+      claimedBy: null,
     },
-    'create',
-  );
+  });
 
+  const bounty = normalizeBountyRow(created);
+  if (!bounty) {
+    throw new Error('failed-to-normalize-bounty');
+  }
+
+  bounties.set(bounty.id, bounty);
+  bountyCounter = Math.max(bountyCounter, bounty.id + 1);
   return bounty;
 }
 

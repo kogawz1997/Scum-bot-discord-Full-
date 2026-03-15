@@ -1,37 +1,63 @@
 # Architecture Overview
 
-เอกสารนี้อธิบายสถาปัตยกรรมตามไฟล์ที่มีอยู่จริงใน repo
+This document describes the current architecture from the repository and active runtime model. It is intended to stay aligned with the code, not with historical deployment notes.
 
-ถ้าต้องการสถานะการตรวจล่าสุดให้ดู [VERIFICATION_STATUS_TH.md](./VERIFICATION_STATUS_TH.md)
-ถ้าต้องการหลักฐานราย feature ให้ดู [EVIDENCE_MAP_TH.md](./EVIDENCE_MAP_TH.md)
+For verification status, see [VERIFICATION_STATUS_TH.md](./VERIFICATION_STATUS_TH.md).  
+For feature-by-feature evidence, see [EVIDENCE_MAP_TH.md](./EVIDENCE_MAP_TH.md).
 
-## 1. Runtime Components
+## Runtime Source Of Truth
 
-| Runtime | Entry file | หน้าที่หลัก | หมายเหตุ |
-| --- | --- | --- | --- |
-| Discord bot | `src/bot.js` | Discord gateway, command routing, admin web bootstrap, SCUM webhook receiver | control plane หลัก |
-| Worker | `src/worker.js` | delivery queue worker, rent bike runtime, background jobs | แยกจาก bot ได้ |
-| Watcher | `src/services/scumLogWatcherRuntime.js` | tail `SCUM.log`, parse event, push เข้า webhook | รายงาน degraded ได้เมื่อ log ไม่พร้อม |
-| Console agent | `src/scum-console-agent.js`, `src/services/scumConsoleAgent.js` | execute command bridge ไป SCUM admin client | ใช้เมื่อ delivery ต้องพึ่ง agent mode |
-| Admin web | `src/adminWebServer.js` | admin API, auth, RBAC, backup/restore, observability, delivery tools, tenant config | mount ผ่าน bot runtime |
-| Player portal | `apps/web-portal-standalone/server.js` | player login, wallet, purchase history, shop, redeem, profile | แยก deploy ได้ |
+Current production/runtime standard on this workstation:
 
-## 2. Delivery Path
+- Primary runtime database: PostgreSQL
+- ORM and schema toolchain: Prisma
+- SQLite scope: local dev, import/compatibility paths, and offline tooling only
+
+Do not describe SQLite as the active production runtime for this repository unless the deployment actually runs that path.
+
+## Runtime Components
+
+| Runtime       | Entry file                                                      | Main responsibility                                                          | Notes                                                           |
+| ------------- | --------------------------------------------------------------- | ---------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| Discord bot   | `src/bot.js`                                                    | Discord gateway, command routing, admin web bootstrap, SCUM webhook receiver | Still a large bootstrap entrypoint                              |
+| Worker        | `src/worker.js`                                                 | Delivery queue worker, rent bike runtime, background jobs                    | Split from bot runtime                                          |
+| Watcher       | `src/services/scumLogWatcherRuntime.js`                         | Tail `SCUM.log`, parse events, send them to webhook                          | Can report `disabled` or `degraded` without exiting immediately |
+| Console agent | `src/scum-console-agent.js`, `src/services/scumConsoleAgent.js` | Command bridge to SCUM admin client                                          | Optional runtime depending on execution mode                    |
+| Admin web     | `src/adminWebServer.js`                                         | Admin API, auth, RBAC, backup/restore, observability, control panel          | Mounted from bot runtime                                        |
+| Player portal | `apps/web-portal-standalone/server.js`                          | Player login, wallet, purchase history, redeem, profile, Steam link          | Deployable as a separate runtime                                |
+
+## Runtime Topology
 
 ```mermaid
 flowchart LR
-  A[Purchase / Admin Test] --> B[src/services/rconDelivery.js]
+  A[Discord] --> B[bot]
+  C[Admin browser] --> D[admin web]
+  E[Player browser] --> F[player portal]
+  G[SCUM.log] --> H[watcher]
+  H --> I[/scum-event webhook]
+  I --> B
+  J[worker] --> K[(PostgreSQL)]
+  B --> K
+  D --> K
+  F --> K
+```
+
+## Delivery Path
+
+```mermaid
+flowchart LR
+  A[Purchase / Admin test] --> B[src/services/rconDelivery.js]
   B --> C[(PostgreSQL)]
   B --> D[src/worker.js]
   D --> E{executionMode}
   E -->|rcon| F[RCON backend]
   E -->|agent| G[src/services/scumConsoleAgent.js]
   G --> H[PowerShell bridge]
-  H --> I[SCUM Admin Client]
+  H --> I[SCUM admin client]
   B --> J[delivery audit / timeline / evidence]
 ```
 
-ไฟล์หลักที่เกี่ยวข้อง:
+Key files:
 
 - `src/services/rconDelivery.js`
 - `src/store/deliveryAuditStore.js`
@@ -39,15 +65,15 @@ flowchart LR
 - `src/services/scumConsoleAgent.js`
 - `test/rcon-delivery.integration.test.js`
 
-สิ่งที่ runtime นี้ทำอยู่แล้ว:
+What is implemented in this path:
 
-- ระบุ execution backend ต่อ order
-- บันทึก `executionMode`, `backend`, `commandPath`, `retryCount`
-- ทำ preflight ก่อน enqueue เมื่อใช้ agent mode
-- ทำ timeline, step log, audit, evidence bundle
-- ใช้ circuit breaker และ failover policy ฝั่ง agent
+- explicit execution backend per order
+- persisted `executionMode`, `backend`, `commandPath`, `retryCount`
+- preflight before enqueue in agent mode
+- timeline, step log, audit, and evidence bundle
+- agent circuit breaker and failover policy
 
-## 3. Event Ingestion Path
+## Event Ingestion Path
 
 ```mermaid
 flowchart LR
@@ -58,30 +84,24 @@ flowchart LR
   D --> F[Discord channels]
 ```
 
-ไฟล์หลักที่เกี่ยวข้อง:
+Key files:
 
 - `src/services/scumLogWatcherRuntime.js`
 - `src/scumWebhookServer.js`
 - `test/scum-webhook.integration.test.js`
 
-หมายเหตุ:
-
-- watcher runtime แยกจาก bot
-- ถ้า `SCUM.log` ไม่พร้อม watcher สามารถอยู่ในสถานะ `degraded` ได้แทนการตายทันที
-
-## 4. Admin / Portal Surface
+## Admin And Portal Surface
 
 ```mermaid
 flowchart LR
   A[src/adminWebServer.js] --> B[(PostgreSQL)]
   A --> C[src/services/adminSnapshotService.js]
   A --> D[src/services/adminObservabilityService.js]
-  A --> E[src/services/rconDelivery.js]
-  A --> F[src/services/platformTenantConfigService.js]
-  G[apps/web-portal-standalone/server.js] --> B
+  A --> E[src/services/platformTenantConfigService.js]
+  F[apps/web-portal-standalone/server.js] --> B
 ```
 
-ไฟล์หลักที่เกี่ยวข้อง:
+Key files:
 
 - `src/adminWebServer.js`
 - `src/services/adminSnapshotService.js`
@@ -91,21 +111,27 @@ flowchart LR
 - `apps/web-portal-standalone/server.js`
 - `test/admin-api.integration.test.js`
 
-ขอบเขตปัจจุบัน:
+Current boundary notes:
 
-- admin web ครอบ operational surface ส่วนใหญ่แล้ว
-- player portal แยกจาก admin path แล้ว
-- tenant-scoped admin ถูกจำกัด scope มากขึ้นใน admin/config routes
-- บาง setting ยังต้องแก้ผ่าน env โดยตรง
+- admin web covers a large part of the operational surface, but not every env/config key
+- player portal is split from admin routes
+- tenant scope is enforced across important admin/config paths, but not yet as full database isolation
 
-## 5. Data Layer
+## Data Layer
 
-- runtime ปัจจุบันบนเครื่องนี้ใช้ PostgreSQL
-- Prisma toolchain รองรับ `sqlite`, `postgresql`, `mysql`
-- test runner เลือก isolated schema/database ให้ตาม provider ที่ generate อยู่จริง
-- SQLite ยังมีไว้สำหรับ dev/import/compatibility path
+Production/runtime path:
 
-ไฟล์หลัก:
+- PostgreSQL
+- provider-aware Prisma generate / migrate / push
+- isolated provider-specific test database or schema per test run
+
+Non-production or compatibility paths:
+
+- SQLite for local dev convenience
+- SQLite import/cutover source
+- SQLite offline tooling when runtime database is not required
+
+Key files:
 
 - `src/prisma.js`
 - `src/utils/dbEngine.js`
@@ -113,26 +139,26 @@ flowchart LR
 - `scripts/run-tests-with-provider.js`
 - `scripts/cutover-sqlite-to-postgres.js`
 
-## 6. Tenant Boundary
+## Tenant Boundary
 
-tenant scope ที่ลงไปถึงแล้ว:
+Tenant scope is already present in:
 
-- purchases / commerce rows
+- commerce and purchase rows
 - delivery audit
 - delivery evidence
-- quota / billing / subscription foundation
-- admin user / session scope
+- quota, billing, and subscription foundation
 - tenant config API
+- parts of admin scope
 
-ที่ยังไม่ใช่ full isolation:
+What is not finished yet:
 
 - database-per-tenant
-- RLS หรือ per-tenant schema isolation
-- admin/config coverage ทุก collection ในระบบ
+- RLS or per-tenant schema isolation
+- complete tenant coverage across every admin/config collection
 
-## 7. Health / Readiness Boundaries
+## Health, Readiness, And Smoke Boundaries
 
-health endpoints:
+Health endpoints:
 
 - bot: `http://<BOT_HEALTH_HOST>:<BOT_HEALTH_PORT>/healthz`
 - worker: `http://<WORKER_HEALTH_HOST>:<WORKER_HEALTH_PORT>/healthz`
@@ -141,7 +167,7 @@ health endpoints:
 - admin web: `http://<ADMIN_WEB_HOST>:<ADMIN_WEB_PORT>/healthz`
 - player portal: `http://<WEB_PORTAL_HOST>:<WEB_PORTAL_PORT>/healthz`
 
-สคริปต์ตรวจหลัก:
+Main validation commands:
 
 - `npm run doctor`
 - `npm run doctor:topology:prod`
@@ -150,9 +176,24 @@ health endpoints:
 - `npm run readiness:prod`
 - `npm run smoke:postdeploy`
 
-## 8. Current Constraints
+Current behavior:
 
-- `agent mode` ยังพึ่ง Windows session และ SCUM admin client จริง
-- RCON capability บางคำสั่งยังขึ้นกับเซิร์ฟเวอร์ปลายทาง
-- restore มี guardrails หลายชั้นแล้ว แต่ยังควรทำใน maintenance window
-- screenshot dashboard จริงและ demo GIF ยังไม่มีใน repo
+- `readiness:prod` includes `smoke:postdeploy`
+- required runtimes must be truly ready, not just reachable
+- optional runtimes can be skipped or reported as disabled/degraded without failing the whole run
+
+## Current Constraints
+
+- `agent` execution still depends on Windows session state and a live SCUM client
+- some SCUM command behavior depends on the target server
+- restore should still be treated as a maintenance operation
+- screenshot and GIF evidence are still missing from the repository
+
+## Related Documents
+
+- [README.md](../README.md)
+- [PROJECT_HQ.md](../PROJECT_HQ.md)
+- [CONFIG_MATRIX.md](./CONFIG_MATRIX.md)
+- [MIGRATION_ROLLBACK_POLICY_TH.md](./MIGRATION_ROLLBACK_POLICY_TH.md)
+- [LIMITATIONS_AND_SLA_TH.md](./LIMITATIONS_AND_SLA_TH.md)
+- [adr/](./adr)

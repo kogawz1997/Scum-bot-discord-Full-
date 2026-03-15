@@ -1,0 +1,8 @@
+node_modules/
+data/
+artifacts/
+vendor/
+backups/
+apps/web-portal-standalone/public/
+src/admin/dashboard.html
+package-lock.json

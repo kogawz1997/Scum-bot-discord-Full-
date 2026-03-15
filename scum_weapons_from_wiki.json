@@ -705,44 +705,28 @@
     "category": "shotguns",
     "name": "Improvised Shotgun",
     "spawn_id": "BP_Weapon_Improvised_Shutgun",
-    "ammobox": [
-      "12_Gauge_Birdshot_Ammobox",
-      "12_Gauge_Buckshot_Ammobox",
-      "12_Gauge_Slug_Ammobox"
-    ],
+    "ammobox": ["12_Gauge_Birdshot_Ammobox", "12_Gauge_Buckshot_Ammobox", "12_Gauge_Slug_Ammobox"],
     "spawn_command_example": "#SpawnItem BP_Weapon_Improvised_Shutgun 1"
   },
   {
     "category": "shotguns",
     "name": "M1887",
     "spawn_id": "BP_Weapon_M1887",
-    "ammobox": [
-      "12_Gauge_Birdshot_Ammobox",
-      "12_Gauge_Buckshot_Ammobox",
-      "12_Gauge_Slug_Ammobox"
-    ],
+    "ammobox": ["12_Gauge_Birdshot_Ammobox", "12_Gauge_Buckshot_Ammobox", "12_Gauge_Slug_Ammobox"],
     "spawn_command_example": "#SpawnItem BP_Weapon_M1887 1"
   },
   {
     "category": "shotguns",
     "name": "SDASS 12M",
     "spawn_id": "BPC_Weapon_SDASS",
-    "ammobox": [
-      "12_Gauge_Birdshot_Ammobox",
-      "12_Gauge_Buckshot_Ammobox",
-      "12_Gauge_Slug_Ammobox"
-    ],
+    "ammobox": ["12_Gauge_Birdshot_Ammobox", "12_Gauge_Buckshot_Ammobox", "12_Gauge_Slug_Ammobox"],
     "spawn_command_example": "#SpawnItem BPC_Weapon_SDASS 1"
   },
   {
     "category": "shotguns",
     "name": "TEC01 490",
     "spawn_id": "BP_Weapon_590A11",
-    "ammobox": [
-      "12_Gauge_Birdshot_Ammobox",
-      "12_Gauge_Buckshot_Ammobox",
-      "12_Gauge_Slug_Ammobox"
-    ],
+    "ammobox": ["12_Gauge_Birdshot_Ammobox", "12_Gauge_Buckshot_Ammobox", "12_Gauge_Slug_Ammobox"],
     "spawn_command_example": "#SpawnItem BP_Weapon_590A11 1"
   }
 ]

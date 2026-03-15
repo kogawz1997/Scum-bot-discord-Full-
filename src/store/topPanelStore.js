@@ -12,6 +12,7 @@ const panelsByGuild = new Map(); // guildId -> panel refs
 let mutationVersion = 0;
 let dbWriteQueue = Promise.resolve();
 let initPromise = null;
+let isHydrating = false;
 
 function normalizePanelType(panelType) {
   const raw = String(panelType || '').trim();
@@ -58,6 +59,9 @@ function normalizeState(input) {
 function queueDbWrite(work, label) {
   dbWriteQueue = dbWriteQueue
     .then(async () => {
+      if (initPromise && !isHydrating) {
+        await initPromise;
+      }
       await work();
     })
     .catch((error) => {
@@ -68,6 +72,7 @@ function queueDbWrite(work, label) {
 
 async function hydrateFromPrisma() {
   const startVersion = mutationVersion;
+  isHydrating = true;
   try {
     const rows = await prisma.topPanelMessage.findMany({
       orderBy: [{ guildId: 'asc' }, { panelType: 'asc' }],
@@ -138,6 +143,8 @@ async function hydrateFromPrisma() {
     }
   } catch (error) {
     console.error('[topPanelStore] failed to hydrate from prisma:', error.message);
+  } finally {
+    isHydrating = false;
   }
 }
 

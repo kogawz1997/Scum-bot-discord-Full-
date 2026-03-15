@@ -1,44 +1,51 @@
 # DB Engine Migration Path
 
-ปัจจุบันระบบใช้ Prisma + SQLite เป็น baseline สำหรับ single-node deployment
+สถานะปัจจุบัน:
 
-ถ้าจะโตไปหลายเครื่อง / หลาย worker / multi-tenant จริงจัง ควรวางทางย้ายไป `PostgreSQL` หรือ `MySQL` ตามลำดับนี้
+- runtime มาตรฐานของระบบคือ PostgreSQL
+- Prisma รองรับ `sqlite`, `postgresql`, `mysql`
+- SQLite ยังมีไว้สำหรับ local dev, import/cutover source, และ offline tooling
+
+เอกสารนี้ใช้สำหรับอธิบายเส้นทาง migration ระหว่าง engine โดยไม่ทำให้ narrative ชนกับ runtime ปัจจุบัน
 
 ## เป้าหมาย
 
-- แยก database ออกจาก local disk
-- ลดข้อจำกัดเรื่อง file locking ของ SQLite
-- รองรับหลาย service พร้อมกันได้ดีขึ้น
-- ทำ backup / restore / migration ในระดับ production ได้ปลอดภัยขึ้น
+- ให้ production ใช้ PostgreSQL เป็นมาตรฐานเดียว
+- ให้ dev/import/offline tooling ยังใช้ SQLite ได้เมื่อเหมาะสม
+- ให้การ migrate, restore, และ rollback มีขั้นตอนที่ชัด
 
-## สิ่งที่พร้อมแล้ว
+## สิ่งที่มีแล้ว
 
-- data access หลักวิ่งผ่าน Prisma
-- `DATABASE_URL` เป็นตัวกำหนด connection หลัก
-- มี migration / rollback / restore policy แยกไว้แล้ว
-- มี `db:migrate:deploy:safe` สำหรับ path ปัจจุบันที่เป็น SQLite
+- provider-aware Prisma commands
+- cutover script จาก SQLite ไป PostgreSQL
+- isolated provider-specific test runtime
+- migration / rollback / restore policy แยกในเอกสาร
 
-## สิ่งที่ต้องเปลี่ยนเมื่อย้าย engine
+## การใช้งานตามบริบท
 
-1. เปลี่ยน `datasource db.provider` ใน `prisma/schema.prisma`
-2. ปรับ `DATABASE_URL` ให้เป็น PostgreSQL/MySQL
-3. สร้าง migration baseline ใหม่สำหรับ engine เป้าหมาย
-4. รัน data export/import หรือ dual-write migration ตาม maintenance plan
-5. รัน `doctor`, `security:check`, `readiness:prod`, `smoke:postdeploy`
+### Production
 
-## แนะนำลำดับ
+- ใช้ `DATABASE_PROVIDER=postgresql`
+- ใช้ `DATABASE_URL=postgresql://...`
+- ใช้ `PERSIST_REQUIRE_DB=true`
+- ใช้ `PERSIST_LEGACY_SNAPSHOTS=false`
 
-1. เริ่มจาก PostgreSQL ก่อนถ้าต้องการ transactional workload และ observability ดีกว่า
-2. ใช้ MySQL เมื่อ environment ลูกค้าผูกกับ ecosystem นั้นอยู่แล้ว
-3. อย่าย้าย engine พร้อม release ใหญ่ตัวเดียว ควรแยก maintenance window
+### Development / import / offline tooling
 
-## ข้อจำกัดที่ยังต้องทำต่อ
+- อาจใช้ SQLite ได้
+- ต้องไม่สับสนกับ runtime production
 
-- schema ปัจจุบันยังตั้ง `provider = "sqlite"` แบบตรง ๆ
-- ยังไม่มี automated engine-switch migration ใน repo
-- rollback ข้าม engine ยังต้องใช้ backup/restore plan ระดับ operation
+## ขั้นตอนเมื่อย้าย engine
 
-อ้างอิง:
-- `prisma/schema.prisma`
-- `docs/MIGRATION_ROLLBACK_POLICY_TH.md`
-- `docs/DATA_LAYER_MIGRATION.md`
+1. ยืนยัน provider เป้าหมาย
+2. generate Prisma client ตาม provider
+3. deploy schema/migrations
+4. ย้ายข้อมูลหรือ cut over
+5. รัน `doctor`, `security:check`, `readiness:prod`
+
+## อ้างอิง
+
+- `scripts/prisma-with-provider.js`
+- `scripts/cutover-sqlite-to-postgres.js`
+- [ARCHITECTURE.md](./ARCHITECTURE.md)
+- [MIGRATION_ROLLBACK_POLICY_TH.md](./MIGRATION_ROLLBACK_POLICY_TH.md)

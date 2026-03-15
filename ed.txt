@@ -1,0 +1,23 @@
+Scene: Continue directly from previous scenes.  
+Camera: Fixed angle, medium shot showing both characters in the same framing.
+
+[Character Left - young Thai man, office style]  
+TTS (Thai): "แล้วต้องทำยังไงบ้าง"  
+Facial expression: serious but curious, slightly raising eyebrows, eyes focused.  
+Gestures: one hand palm up in a questioning gesture, or finger pointing slightly toward Character Right’s phone.  
+Body: leans slightly toward Character Right, showing interest.  
+Eye movement: looks briefly at the phone, then at Character Right.  
+Duration: ~4 seconds.
+
+Immediately continue with [Character Right - young Thai man, casual style].  
+TTS (Thai): "เอ็งก็สมัครเข้าไปที่หน้าเว็บได้เลย แล้วเขาจะมีแอดมินคอยดูแลตลอด 24 ชั่วโมง"  
+Facial expression: calm, confident, neutral expression (not laughing, not overly smiling).  
+Gestures:  
+- Hand holding the smartphone: lift and tilt slightly toward both the camera and Character Left.  
+- Other hand: subtle natural gesture, small movement to emphasize explanation.  
+Body: steady posture, leaning slightly toward Character Left.  
+Eye movement: looks at Character Left while speaking, briefly glances at the camera when showing the phone.  
+Phone screen: solid bright green (green screen), clearly visible.  
+Duration: ~5 seconds.
+
+Transition: seamless continuation, no camera cut. The exchange should feel natural, like a real conversation without exaggerated emotions.

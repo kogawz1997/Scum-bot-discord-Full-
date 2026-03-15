@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
 const { pipeline } = require('node:stream/promises');
-const { URL, URLSearchParams } = require('node:url');
+const { URL } = require('node:url');
 
 const { loadMergedEnvFiles } = require('../../src/utils/loadEnvFiles');
 loadMergedEnvFiles({
@@ -90,6 +90,17 @@ const {
 } = require('../../src/store/rentBikeStore');
 const { awardWheelRewardForUser } = require('../../src/services/wheelService');
 const { getPlatformPublicOverview } = require('../../src/services/platformService');
+const { createPortalAuthRuntime } = require('./auth/portalAuthRuntime');
+const {
+  createPlayerCommerceRoutes,
+} = require('./api/playerCommerceRoutes');
+const {
+  createPlayerGeneralRoutes,
+} = require('./api/playerGeneralRoutes');
+const {
+  buildPortalHealthPayload,
+  printPortalStartupHints,
+} = require('./runtime/portalRuntime');
 const config = require('../../src/config');
 
 const NODE_ENV = String(process.env.NODE_ENV || 'development').trim().toLowerCase();
@@ -249,11 +260,6 @@ function parseCsvSet(value) {
     if (text) out.add(text);
   }
   return out;
-}
-
-function isLoopbackHost(hostname) {
-  const h = String(hostname || '').trim().toLowerCase();
-  return h === '127.0.0.1' || h === 'localhost' || h === '::1';
 }
 
 function escapeHtml(value) {
@@ -596,6 +602,47 @@ async function resolveSessionSteamLink(discordId) {
   };
 }
 
+const portalAuthRuntime = createPortalAuthRuntime({
+  sessions,
+  oauthStates,
+  baseUrl: BASE_URL,
+  enforceOriginCheck: ENFORCE_ORIGIN_CHECK,
+  playerOpenAccess: PLAYER_OPEN_ACCESS,
+  requireGuildMember: REQUIRE_GUILD_MEMBER,
+  allowedDiscordIds: ALLOWED_DISCORD_IDS,
+  oauthStateTtlMs: OAUTH_STATE_TTL_MS,
+  sessionTtlMs: SESSION_TTL_MS,
+  sessionCookieName: SESSION_COOKIE_NAME,
+  sessionCookiePath: SESSION_COOKIE_PATH,
+  sessionCookieSameSite: SESSION_COOKIE_SAMESITE,
+  sessionCookieDomain: SESSION_COOKIE_DOMAIN,
+  secureCookie: SECURE_COOKIE,
+  discordApiBase: DISCORD_API_BASE,
+  discordClientId: DISCORD_CLIENT_ID,
+  discordClientSecret: DISCORD_CLIENT_SECRET,
+  discordGuildId: DISCORD_GUILD_ID,
+  discordRedirectPath: DISCORD_REDIRECT_PATH,
+  sendJson,
+  upsertPlayerAccount,
+  buildDiscordAvatarUrl,
+  normalizeText,
+  isDiscordId,
+  logger: console,
+});
+
+const {
+  buildClearSessionCookie,
+  buildSessionCookie,
+  cleanupRuntimeState,
+  createSession,
+  getCanonicalRedirectUrl,
+  getSession,
+  handleDiscordCallback,
+  handleDiscordStart,
+  removeSession,
+  verifyOrigin,
+} = portalAuthRuntime;
+
 function buildNotificationItems(payload = {}) {
   const items = [];
   const purchases = Array.isArray(payload.purchases) ? payload.purchases : [];
@@ -794,165 +841,6 @@ async function tryServeStaticScumIcon(req, res, pathname) {
   }
 }
 
-function parseCookies(req) {
-  const out = {};
-  const raw = String(req.headers.cookie || '');
-  for (const part of raw.split(';')) {
-    const idx = part.indexOf('=');
-    if (idx <= 0) continue;
-    const key = part.slice(0, idx).trim();
-    const value = part.slice(idx + 1).trim();
-    if (!key) continue;
-    out[key] = decodeURIComponent(value);
-  }
-  return out;
-}
-
-function buildSessionCookie(sessionId) {
-  const parts = [
-    `${SESSION_COOKIE_NAME}=${encodeURIComponent(sessionId)}`,
-    'HttpOnly',
-    `Path=${SESSION_COOKIE_PATH}`,
-    `SameSite=${SESSION_COOKIE_SAMESITE}`,
-    `Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`,
-  ];
-  if (SESSION_COOKIE_DOMAIN) parts.push(`Domain=${SESSION_COOKIE_DOMAIN}`);
-  if (SECURE_COOKIE) parts.push('Secure');
-  return parts.join('; ');
-}
-
-function buildClearSessionCookie() {
-  const parts = [
-    `${SESSION_COOKIE_NAME}=`,
-    'HttpOnly',
-    `Path=${SESSION_COOKIE_PATH}`,
-    `SameSite=${SESSION_COOKIE_SAMESITE}`,
-    'Max-Age=0',
-  ];
-  if (SESSION_COOKIE_DOMAIN) parts.push(`Domain=${SESSION_COOKIE_DOMAIN}`);
-  if (SECURE_COOKIE) parts.push('Secure');
-  return parts.join('; ');
-}
-
-function getSession(req) {
-  const cookies = parseCookies(req);
-  const sessionId = String(cookies[SESSION_COOKIE_NAME] || '').trim();
-  if (!sessionId) return null;
-
-  const row = sessions.get(sessionId);
-  if (!row) return null;
-
-  const now = Date.now();
-  if (row.expiresAt <= now) {
-    sessions.delete(sessionId);
-    return null;
-  }
-
-  row.expiresAt = now + SESSION_TTL_MS;
-  return row;
-}
-
-function createSession(payload) {
-  const sessionId = crypto.randomBytes(24).toString('hex');
-  const now = Date.now();
-  sessions.set(sessionId, {
-    ...payload,
-    createdAt: now,
-    expiresAt: now + SESSION_TTL_MS,
-  });
-  return sessionId;
-}
-
-function removeSession(req) {
-  const cookies = parseCookies(req);
-  const sessionId = String(cookies[SESSION_COOKIE_NAME] || '').trim();
-  if (!sessionId) return;
-  sessions.delete(sessionId);
-}
-
-function cleanupRuntimeState() {
-  const now = Date.now();
-
-  for (const [sessionId, row] of sessions.entries()) {
-    if (!row || row.expiresAt <= now) {
-      sessions.delete(sessionId);
-    }
-  }
-
-  for (const [state, row] of oauthStates.entries()) {
-    if (!row || row.expiresAt <= now) {
-      oauthStates.delete(state);
-    }
-  }
-}
-
-function getBaseOrigin() {
-  try {
-    return new URL(BASE_URL).origin;
-  } catch {
-    return null;
-  }
-}
-
-function getForwardedProto(req) {
-  const raw = String(req.headers['x-forwarded-proto'] || '')
-    .split(',')[0]
-    .trim()
-    .toLowerCase();
-  if (!raw) return null;
-  return raw;
-}
-
-function getCanonicalRedirectUrl(req) {
-  let expected;
-  try {
-    expected = new URL(BASE_URL);
-  } catch {
-    return null;
-  }
-
-  const reqHost = String(req.headers.host || '').trim().toLowerCase();
-  const expectedHost = String(expected.host || '').trim().toLowerCase();
-  const forwardedProto = getForwardedProto(req);
-  const reqProto = forwardedProto || (req.socket?.encrypted ? 'https' : 'http');
-  const expectedProto = String(expected.protocol || 'http:').replace(':', '').toLowerCase();
-
-  const hostMismatch = Boolean(reqHost) && reqHost !== expectedHost;
-  const protoMismatch = Boolean(reqProto) && reqProto !== expectedProto;
-  if (!hostMismatch && !protoMismatch) return null;
-
-  try {
-    return new URL(req.url || '/', BASE_URL).toString();
-  } catch {
-    return null;
-  }
-}
-
-function verifyOrigin(req) {
-  if (!ENFORCE_ORIGIN_CHECK) return true;
-
-  const method = String(req.method || 'GET').toUpperCase();
-  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return true;
-
-  const expectedOrigin = getBaseOrigin();
-  if (!expectedOrigin) return false;
-
-  const originHeader = String(req.headers.origin || '').trim();
-  if (originHeader && originHeader !== expectedOrigin) return false;
-
-  const referer = String(req.headers.referer || '').trim();
-  if (referer) {
-    try {
-      const refererOrigin = new URL(referer).origin;
-      if (refererOrigin !== expectedOrigin) return false;
-    } catch {
-      return false;
-    }
-  }
-
-  return true;
-}
-
 async function readRawBody(req, maxBytes) {
   const limit = Math.max(1024, Number(maxBytes || 1024 * 1024));
   return new Promise((resolve, reject) => {
@@ -1099,209 +987,6 @@ function getShowcaseHtml() {
     cachedShowcaseHtmlMtimeMs = mtimeMs;
   }
   return cachedShowcaseHtml;
-}
-
-function startOauthState() {
-  cleanupRuntimeState();
-  const state = crypto.randomBytes(24).toString('hex');
-  oauthStates.set(state, {
-    createdAt: Date.now(),
-    expiresAt: Date.now() + OAUTH_STATE_TTL_MS,
-  });
-  return state;
-}
-
-function getDiscordRedirectUri() {
-  return new URL(DISCORD_REDIRECT_PATH, BASE_URL).toString();
-}
-
-function buildDiscordAuthorizeUrl(state) {
-  const url = new URL(`${DISCORD_API_BASE}/oauth2/authorize`);
-  url.searchParams.set('client_id', DISCORD_CLIENT_ID);
-  url.searchParams.set('redirect_uri', getDiscordRedirectUri());
-  url.searchParams.set('response_type', 'code');
-
-  const scopes = ['identify'];
-  if (!PLAYER_OPEN_ACCESS && REQUIRE_GUILD_MEMBER && DISCORD_GUILD_ID) {
-    scopes.push('guilds.members.read');
-  }
-  url.searchParams.set('scope', scopes.join(' '));
-  url.searchParams.set('state', state);
-  return url.toString();
-}
-
-async function exchangeDiscordCode(code) {
-  const body = new URLSearchParams({
-    client_id: DISCORD_CLIENT_ID,
-    client_secret: DISCORD_CLIENT_SECRET,
-    grant_type: 'authorization_code',
-    code,
-    redirect_uri: getDiscordRedirectUri(),
-  });
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15_000);
-  try {
-    const res = await fetch(`${DISCORD_API_BASE}/oauth2/token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body,
-      signal: controller.signal,
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.access_token) {
-      throw new Error(`Discord token exchange failed (${res.status})`);
-    }
-    return data;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-async function fetchDiscordProfile(accessToken) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15_000);
-  try {
-    const res = await fetch(`${DISCORD_API_BASE}/users/@me`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-      signal: controller.signal,
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.id) {
-      throw new Error('Discord profile fetch failed');
-    }
-    return data;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-async function fetchDiscordGuildMember(accessToken, guildId) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15_000);
-  try {
-    const res = await fetch(
-      `${DISCORD_API_BASE}/users/@me/guilds/${encodeURIComponent(guildId)}/member`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-        signal: controller.signal,
-      },
-    );
-    if (!res.ok) {
-      throw new Error(`Discord guild membership check failed (${res.status})`);
-    }
-    return res.json().catch(() => null);
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-async function handleDiscordStart(_req, res) {
-  if (!DISCORD_CLIENT_ID || !DISCORD_CLIENT_SECRET) {
-    return sendJson(res, 500, {
-      ok: false,
-      error: 'Discord OAuth env is not configured',
-    });
-  }
-
-  const state = startOauthState();
-  res.writeHead(302, { Location: buildDiscordAuthorizeUrl(state) });
-  res.end();
-}
-
-async function handleDiscordCallback(_req, res, urlObj) {
-  try {
-    cleanupRuntimeState();
-
-    const state = normalizeText(urlObj.searchParams.get('state'));
-    const code = normalizeText(urlObj.searchParams.get('code'));
-    const errorText = normalizeText(urlObj.searchParams.get('error'));
-
-    if (errorText) {
-      res.writeHead(302, {
-        Location: '/player/login?error=Discord%20authorization%20denied',
-      });
-      return res.end();
-    }
-
-    if (!state || !oauthStates.has(state)) {
-      res.writeHead(302, {
-        Location: '/player/login?error=Invalid%20OAuth%20state',
-      });
-      return res.end();
-    }
-    oauthStates.delete(state);
-
-    if (!code) {
-      res.writeHead(302, {
-        Location: '/player/login?error=Missing%20OAuth%20code',
-      });
-      return res.end();
-    }
-
-    const token = await exchangeDiscordCode(code);
-    const profile = await fetchDiscordProfile(token.access_token);
-
-    const discordId = normalizeText(profile.id);
-    if (!isDiscordId(discordId)) {
-      throw new Error('Discord profile missing id');
-    }
-
-    if (!PLAYER_OPEN_ACCESS) {
-      if (ALLOWED_DISCORD_IDS.size > 0 && !ALLOWED_DISCORD_IDS.has(discordId)) {
-        res.writeHead(302, {
-          Location: '/player/login?error=Discord%20account%20not%20allowed',
-        });
-        return res.end();
-      }
-
-      if (REQUIRE_GUILD_MEMBER && DISCORD_GUILD_ID) {
-        try {
-          await fetchDiscordGuildMember(token.access_token, DISCORD_GUILD_ID);
-        } catch (error) {
-          console.warn('[web-portal-standalone] guild membership check failed:', error.message);
-          res.writeHead(302, {
-            Location: '/player/login?error=Discord%20guild%20membership%20required',
-          });
-          return res.end();
-        }
-      }
-    }
-
-    const user = [profile.global_name, profile.username]
-      .map((value) => normalizeText(value))
-      .find(Boolean)
-      || discordId;
-
-    const avatarUrl = buildDiscordAvatarUrl(profile);
-    await upsertPlayerAccount({
-      discordId,
-      username: normalizeText(profile.username),
-      displayName: normalizeText(profile.global_name) || user,
-      avatarUrl,
-      isActive: true,
-    });
-
-    const sessionId = createSession({
-      user,
-      role: 'player',
-      discordId,
-      authMethod: 'discord-oauth',
-      avatarUrl,
-    });
-
-    res.writeHead(302, {
-      Location: '/player',
-      'Set-Cookie': buildSessionCookie(sessionId),
-    });
-    res.end();
-  } catch (error) {
-    console.error('[web-portal-standalone] discord callback failed:', error);
-    res.writeHead(302, {
-      Location: '/player/login?error=Discord%20login%20failed',
-    });
-    res.end();
-  }
 }
 
 function filterShopItems(rows, options = {}) {
@@ -1466,6 +1151,96 @@ function sortLeaderboardRows(rows, type) {
   rows.sort((a, b) => b.kills - a.kills);
 }
 
+const handlePlayerCommerceRoute = createPlayerCommerceRoutes({
+  sendJson,
+  readJsonBody,
+  normalizeText,
+  normalizeAmount,
+  normalizeQuantity,
+  normalizePurchaseStatus,
+  asInt,
+  resolveItemIconUrl,
+  buildBundleSummary,
+  getDeliveryStatusText,
+  serializeCartResolved,
+  getResolvedCart,
+  findShopItemByQuery,
+  isGameItemShopKind,
+  resolveSessionSteamLink,
+  purchaseShopItemForUser,
+  checkoutCart,
+  listUserPurchases,
+  listShopItems,
+  listPurchaseStatusHistory,
+  listCartItems,
+  addCartItem,
+  removeCartItem,
+  clearCart,
+  listActiveBountiesForUser,
+  redeemCodeForUser,
+  requestRentBikeForUser,
+  createBountyForUser,
+  normalizeShopKind,
+  filterShopItems,
+});
+
+const handlePlayerGeneralRoute = createPlayerGeneralRoutes({
+  sendJson,
+  readJsonBody,
+  buildClearSessionCookie,
+  normalizeText,
+  normalizeAmount,
+  normalizePurchaseStatus,
+  asInt,
+  config,
+  getStatus,
+  getEconomyConfig,
+  getLuckyWheelConfig,
+  getMapPortalConfig,
+  getPlayerAccount,
+  getPlayerDashboard,
+  resolveSessionSteamLink,
+  removeSession,
+  listTopWallets,
+  listAllStats,
+  getStats,
+  buildPlayerNameLookup,
+  sortLeaderboardRows,
+  resolvePartyContext,
+  listPartyMessages,
+  addPartyMessage,
+  partyChatLastSentAt,
+  partyChatMinIntervalMs: PARTY_CHAT_MIN_INTERVAL_MS,
+  partyChatMaxLength: PARTY_CHAT_MAX_LENGTH,
+  listWalletLedger,
+  getWallet,
+  walletReasonLabel,
+  listCodes,
+  ensureRentBikeTables,
+  getDailyRent,
+  listRentalVehicles,
+  getRentTimezone,
+  getDateKeyInTimezone,
+  getNextMidnightIsoInTimezone,
+  canClaimDaily,
+  canClaimWeekly,
+  buildWheelStatePayload,
+  canSpinWheel,
+  pickLuckyWheelReward,
+  awardWheelRewardForUser,
+  msToCountdownText,
+  buildNotificationItems,
+  getLinkBySteamId,
+  setLink,
+  claimRewardForUser,
+  checkRewardClaimForUser,
+  msToHoursMinutes,
+  msToDaysHours,
+  transferCoins,
+  isDiscordId,
+  listUserPurchases,
+});
+
 async function handlePlayerApi(req, res, urlObj) {
   const pathname = urlObj.pathname;
   const method = String(req.method || 'GET').toUpperCase();
@@ -1482,1316 +1257,30 @@ async function handlePlayerApi(req, res, urlObj) {
     return sendJson(res, 401, { ok: false, error: 'Unauthorized' });
   }
 
-  if (pathname === '/player/api/me' && method === 'GET') {
-    const [account, link] = await Promise.all([
-      getPlayerAccount(session.discordId),
-      resolveSessionSteamLink(session.discordId),
-    ]);
-    return sendJson(res, 200, {
-      ok: true,
-      data: {
-        user: session.user,
-        role: session.role,
-        discordId: session.discordId,
-        authMethod: session.authMethod,
-        avatarUrl: normalizeText(session.avatarUrl)
-          || normalizeText(account?.avatarUrl)
-          || null,
-        accountStatus: account?.isActive === false ? 'inactive' : 'active',
-        steamLinked: Boolean(link?.linked),
-      },
-    });
-  }
-
-  if (pathname === '/player/api/logout' && method === 'POST') {
-    removeSession(req);
-    return sendJson(
+  if (
+    await handlePlayerGeneralRoute({
+      req,
       res,
-      200,
-      { ok: true, data: { loggedOut: true } },
-      { 'Set-Cookie': buildClearSessionCookie() },
-    );
+      urlObj,
+      pathname,
+      method,
+      session,
+    })
+  ) {
+    return;
   }
 
-  if (pathname === '/player/api/server/info' && method === 'GET') {
-    const serverInfo = config.serverInfo || {};
-    const raidTimes = Array.isArray(config.raidTimes) ? config.raidTimes : [];
-    const status = getStatus();
-    const economy = getEconomyConfig();
-    const luckyWheel = getLuckyWheelConfig();
-    const mapPortal = getMapPortalConfig();
-    const rulesShort = Array.isArray(serverInfo.rulesShort)
-      ? serverInfo.rulesShort.map((line) => normalizeText(line)).filter(Boolean)
-      : [];
-    return sendJson(res, 200, {
-      ok: true,
-      data: {
-        economy,
-        serverInfo: {
-          name: normalizeText(serverInfo.name) || 'SCUM Server',
-          description: normalizeText(serverInfo.description),
-          ip: normalizeText(serverInfo.ip),
-          port: normalizeText(serverInfo.port),
-          maxPlayers: normalizeAmount(serverInfo.maxPlayers, 0),
-          rulesShort,
-          website: normalizeText(serverInfo.website),
-        },
-        raidTimes: raidTimes.map((line) => normalizeText(line)).filter(Boolean),
-        tips: luckyWheel.tips,
-        luckyWheel: {
-          enabled: luckyWheel.enabled,
-          cooldownMs: luckyWheel.cooldownMs,
-          rewards: luckyWheel.rewards.map((row) => ({
-            id: row.id,
-            label: row.label,
-            type: row.type,
-            amount: row.amount,
-            weight: row.weight,
-            itemId: row.itemId || null,
-            gameItemId: row.gameItemId || null,
-            quantity: row.quantity || 0,
-            iconUrl: row.iconUrl || null,
-          })),
-        },
-        mapPortal,
-        status,
-      },
-    });
-  }
-
-  if (pathname === '/player/api/online' && method === 'GET') {
-    return sendJson(res, 200, {
-      ok: true,
-      data: getStatus(),
-    });
-  }
-
-  if (pathname === '/player/api/prices' && method === 'GET') {
-    const economy = getEconomyConfig();
-    return sendJson(res, 200, {
-      ok: true,
-      data: {
-        currencySymbol: economy.currencySymbol,
-        dailyReward: economy.dailyReward,
-        weeklyReward: economy.weeklyReward,
-        message:
-          `สกุลเงินหลัก: ${economy.currencySymbol} | ` +
-          `รายวัน: ${economy.dailyReward.toLocaleString()} | ` +
-          `รายสัปดาห์: ${economy.weeklyReward.toLocaleString()}`,
-      },
-    });
-  }
-
-  if (pathname === '/player/api/leaderboard' && method === 'GET') {
-    const typeRaw = normalizeText(urlObj.searchParams.get('type')).toLowerCase();
-    const type = ['economy', 'kills', 'kd', 'playtime'].includes(typeRaw)
-      ? typeRaw
-      : 'kills';
-    const limit = asInt(urlObj.searchParams.get('limit'), 10, 3, 50);
-    const nameMap = await buildPlayerNameLookup();
-
-    if (type === 'economy') {
-      const rows = await listTopWallets(limit);
-      const items = rows.map((row, index) => {
-        const userId = normalizeText(row?.userId);
-        return {
-          rank: index + 1,
-          userId,
-          name: nameMap.get(userId) || userId,
-          balance: normalizeAmount(row?.balance, 0),
-        };
-      });
-      return sendJson(res, 200, {
-        ok: true,
-        data: {
-          type,
-          total: items.length,
-          items,
-        },
-      });
-    }
-
-    const allStats = listAllStats().map((row) => {
-      const kills = normalizeAmount(row?.kills, 0);
-      const deaths = normalizeAmount(row?.deaths, 0);
-      const playtimeMinutes = normalizeAmount(row?.playtimeMinutes, 0);
-      const kd = deaths === 0 ? kills : kills / deaths;
-      return {
-        userId: normalizeText(row?.userId),
-        kills,
-        deaths,
-        playtimeMinutes,
-        kd,
-      };
-    });
-
-    sortLeaderboardRows(allStats, type);
-    const items = allStats.slice(0, limit).map((row, index) => ({
-      rank: index + 1,
-      userId: row.userId,
-      name: nameMap.get(row.userId) || row.userId,
-      kills: row.kills,
-      deaths: row.deaths,
-      kd: Number(row.kd.toFixed(2)),
-      playtimeMinutes: row.playtimeMinutes,
-      playtimeHours: Math.floor(row.playtimeMinutes / 60),
-    }));
-
-    return sendJson(res, 200, {
-      ok: true,
-      data: {
-        type,
-        total: items.length,
-        items,
-      },
-    });
-  }
-
-  if (pathname === '/player/api/stats/me' && method === 'GET') {
-    const stats = getStats(session.discordId);
-    return sendJson(res, 200, {
-      ok: true,
-      data: {
-        userId: session.discordId,
-        kills: normalizeAmount(stats?.kills, 0),
-        deaths: normalizeAmount(stats?.deaths, 0),
-        kd: Number(
-          (
-            (normalizeAmount(stats?.deaths, 0) === 0
-              ? normalizeAmount(stats?.kills, 0)
-              : normalizeAmount(stats?.kills, 0) / normalizeAmount(stats?.deaths, 0))
-          ).toFixed(2),
-        ),
-        playtimeMinutes: normalizeAmount(stats?.playtimeMinutes, 0),
-      },
-    });
-  }
-
-  if (pathname === '/player/api/profile' && method === 'GET') {
-    const [account, link] = await Promise.all([
-      getPlayerAccount(session.discordId),
-      resolveSessionSteamLink(session.discordId),
-    ]);
-    return sendJson(res, 200, {
-      ok: true,
-      data: {
-        discordId: session.discordId,
-        user: session.user,
-        role: session.role || 'player',
-        avatarUrl: normalizeText(session.avatarUrl)
-          || normalizeText(account?.avatarUrl)
-          || null,
-        username: normalizeText(account?.username)
-          || normalizeText(session.user)
-          || null,
-        displayName: normalizeText(account?.displayName)
-          || normalizeText(session.user)
-          || null,
-        accountStatus: account?.isActive === false ? 'inactive' : 'active',
-        createdAt: account?.createdAt || null,
-        updatedAt: account?.updatedAt || null,
-        steamLink: link,
-      },
-    });
-  }
-
-  if (pathname === '/player/api/party' && method === 'GET') {
-    const party = await resolvePartyContext(session.discordId);
-    return sendJson(res, 200, {
-      ok: true,
-      data: party,
-    });
-  }
-
-  if (pathname === '/player/api/party/chat' && method === 'GET') {
-    const limit = asInt(urlObj.searchParams.get('limit'), 80, 1, 200);
-    const party = await resolvePartyContext(session.discordId);
-    const items =
-      party.chatEnabled && party.partyKey
-        ? await listPartyMessages(party.partyKey, limit)
-        : [];
-    return sendJson(res, 200, {
-      ok: true,
-      data: {
-        party,
-        total: items.length,
-        items,
-      },
-    });
-  }
-
-  if (pathname === '/player/api/party/chat/send' && method === 'POST') {
-    const body = await readJsonBody(req);
-    const message = normalizeText(body.message || body.text);
-    if (!message) {
-      return sendJson(res, 400, {
-        ok: false,
-        error: 'missing-message',
-        data: {
-          message: 'กรุณาพิมพ์ข้อความก่อนส่ง',
-        },
-      });
-    }
-    if (message.length > PARTY_CHAT_MAX_LENGTH) {
-      return sendJson(res, 400, {
-        ok: false,
-        error: 'message-too-long',
-        data: {
-          maxLength: PARTY_CHAT_MAX_LENGTH,
-          message: `ข้อความยาวเกินไป (สูงสุด ${PARTY_CHAT_MAX_LENGTH} ตัวอักษร)`,
-        },
-      });
-    }
-
-    const party = await resolvePartyContext(session.discordId);
-    if (!party.chatEnabled || !party.partyKey) {
-      return sendJson(res, 400, {
-        ok: false,
-        error: 'party-chat-unavailable',
-        data: {
-          message: 'ยังไม่พบปาร์ตี้ของคุณในระบบ (ต้องมี squad ก่อน)',
-        },
-      });
-    }
-
-    const nowMs = Date.now();
-    const previousMs = partyChatLastSentAt.get(session.discordId) || 0;
-    if (nowMs - previousMs < PARTY_CHAT_MIN_INTERVAL_MS) {
-      return sendJson(res, 429, {
-        ok: false,
-        error: 'party-chat-rate-limit',
-        data: {
-          retryAfterMs: PARTY_CHAT_MIN_INTERVAL_MS - (nowMs - previousMs),
-          message: 'ส่งข้อความเร็วเกินไป กรุณารอสักครู่',
-        },
-      });
-    }
-
-    const me = party.members.find((row) => row.discordId === session.discordId);
-    const displayName =
-      normalizeText(me?.displayName) || normalizeText(session.user) || session.discordId;
-    const addResult = await addPartyMessage(party.partyKey, {
-      userId: session.discordId,
-      displayName,
-      message,
-    });
-    if (!addResult?.ok) {
-      return sendJson(res, 400, {
-        ok: false,
-        error: addResult?.reason || 'party-chat-send-failed',
-      });
-    }
-    partyChatLastSentAt.set(session.discordId, nowMs);
-
-    return sendJson(res, 200, {
-      ok: true,
-      data: {
-        party,
-        item: addResult.data,
-      },
-    });
-  }
-
-  if (pathname === '/player/api/wallet/ledger' && method === 'GET') {
-    const limit = asInt(urlObj.searchParams.get('limit'), 50, 1, 500);
-    const wallet = await getWallet(session.discordId);
-    const rows = await listWalletLedger(session.discordId, limit);
-    const items = rows.map((row) => ({
-      id: row.id,
-      delta: normalizeAmount(row.delta, 0) * (Number(row.delta || 0) < 0 ? -1 : 1),
-      balanceBefore: normalizeAmount(row.balanceBefore, 0),
-      balanceAfter: normalizeAmount(row.balanceAfter, 0),
-      reason: normalizeText(row.reason),
-      reasonLabel: walletReasonLabel(row.reason),
-      reference: normalizeText(row.reference) || null,
-      actor: normalizeText(row.actor) || null,
-      meta: row.meta || null,
-      createdAt: row.createdAt || null,
-    }));
-    return sendJson(res, 200, {
-      ok: true,
-      data: {
-        wallet: {
-          userId: session.discordId,
-          balance: normalizeAmount(wallet.balance, 0),
-        },
-        total: items.length,
-        items,
-      },
-    });
-  }
-
-  if (pathname === '/player/api/redeem/history' && method === 'GET') {
-    const limit = asInt(urlObj.searchParams.get('limit'), 50, 1, 500);
-    const rows = listCodes()
-      .filter((row) => normalizeText(row.usedBy) === session.discordId)
-      .sort((a, b) => {
-        const at = a?.usedAt ? new Date(a.usedAt).getTime() : 0;
-        const bt = b?.usedAt ? new Date(b.usedAt).getTime() : 0;
-        return bt - at;
-      })
-      .slice(0, limit)
-      .map((row) => ({
-        code: row.code,
-        type: row.type,
-        amount: row.amount == null ? null : normalizeAmount(row.amount, 0),
-        itemId: normalizeText(row.itemId) || null,
-        usedBy: normalizeText(row.usedBy) || null,
-        usedAt: row.usedAt || null,
-      }));
-    return sendJson(res, 200, {
-      ok: true,
-      data: {
-        total: rows.length,
-        items: rows,
-      },
-    });
-  }
-
-  if (pathname === '/player/api/rentbike/status' && method === 'GET') {
-    const link = await resolveSessionSteamLink(session.discordId);
-    if (!link.linked || !link.steamId) {
-      return sendJson(res, 200, {
-        ok: true,
-        data: {
-          linked: false,
-          steamId: null,
-          current: null,
-          history: [],
-          todayQuotaUsed: false,
-          nextResetAt: getNextMidnightIsoInTimezone(getRentTimezone()),
-        },
-      });
-    }
-
-    await ensureRentBikeTables();
-    const timezone = getRentTimezone();
-    const dateKey = getDateKeyInTimezone(timezone);
-    const [dailyRent, rentals] = await Promise.all([
-      getDailyRent(link.steamId, dateKey),
-      listRentalVehicles(400),
-    ]);
-    const history = rentals
-      .filter((row) => normalizeText(row.userKey) === link.steamId)
-      .sort((a, b) => {
-        const at = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const bt = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
-        return bt - at;
-      });
-    const current = history.find((row) =>
-      ['pending', 'delivering', 'delivered'].includes(
-        normalizeText(row.status).toLowerCase(),
-      ),
-    ) || null;
-    return sendJson(res, 200, {
-      ok: true,
-      data: {
-        linked: true,
-        steamId: link.steamId,
-        todayQuotaUsed: Boolean(dailyRent?.used),
-        nextResetAt: getNextMidnightIsoInTimezone(timezone),
-        current,
-        history: history.slice(0, 50),
-      },
-    });
-  }
-
-  if (pathname === '/player/api/missions' && method === 'GET') {
-    const [dailyCheck, weeklyCheck, rentLink] = await Promise.all([
-      canClaimDaily(session.discordId),
-      canClaimWeekly(session.discordId),
-      resolveSessionSteamLink(session.discordId),
-    ]);
-    const timezone = getRentTimezone();
-    const dateKey = getDateKeyInTimezone(timezone);
-    let rentDaily = null;
-    if (rentLink?.steamId) {
-      await ensureRentBikeTables();
-      rentDaily = await getDailyRent(rentLink.steamId, dateKey);
-    }
-
-    return sendJson(res, 200, {
-      ok: true,
-      data: {
-        missions: [
-          {
-            id: 'daily-claim',
-            title: 'ภารกิจรายวัน: รับเหรียญ',
-            category: 'daily',
-            completed: !dailyCheck?.ok,
-            claimable: Boolean(dailyCheck?.ok),
-            remainingMs: dailyCheck?.ok ? 0 : normalizeAmount(dailyCheck?.remainingMs, 0),
-            remainingText: dailyCheck?.ok ? 'พร้อมรับ' : msToHoursMinutes(dailyCheck?.remainingMs),
-          },
-          {
-            id: 'weekly-claim',
-            title: 'ภารกิจรายสัปดาห์: รับเหรียญ',
-            category: 'weekly',
-            completed: !weeklyCheck?.ok,
-            claimable: Boolean(weeklyCheck?.ok),
-            remainingMs: weeklyCheck?.ok ? 0 : normalizeAmount(weeklyCheck?.remainingMs, 0),
-            remainingText: weeklyCheck?.ok ? 'พร้อมรับ' : msToDaysHours(weeklyCheck?.remainingMs),
-          },
-          {
-            id: 'rentbike-daily',
-            title: 'สิทธิ์เช่ามอไซรายวัน',
-            category: 'vehicle',
-            completed: Boolean(rentDaily?.used),
-            claimable: rentLink?.steamId ? !Boolean(rentDaily?.used) : false,
-            remainingMs: Boolean(rentDaily?.used) ? 1 : 0,
-            remainingText: Boolean(rentDaily?.used)
-              ? `รีเซ็ต ${getDateKeyInTimezone(timezone)} 00:00 (${timezone})`
-              : rentLink?.steamId
-                ? 'พร้อมเช่า'
-                : 'ต้องลิงก์ SteamID ก่อน',
-          },
-        ],
-      },
-    });
-  }
-
-  if (pathname === '/player/api/wheel/state' && method === 'GET') {
-    const wheelConfig = getLuckyWheelConfig();
-    const limit = asInt(urlObj.searchParams.get('limit'), 20, 1, 80);
-    return sendJson(res, 200, {
-      ok: true,
-      data: await buildWheelStatePayload(session.discordId, wheelConfig, limit),
-    });
-  }
-
-  if (pathname === '/player/api/wheel/spin' && method === 'POST') {
-    const wheelConfig = getLuckyWheelConfig();
-    if (!wheelConfig.enabled) {
-      return sendJson(res, 403, {
-        ok: false,
-        error: 'wheel-disabled',
-        data: {
-          message: 'วงล้อสุ่มรางวัลถูกปิดอยู่ชั่วคราว',
-        },
-      });
-    }
-
-    const check = await canSpinWheel(session.discordId, wheelConfig.cooldownMs);
-    if (!check.ok) {
-      return sendJson(res, 429, {
-        ok: false,
-        error: 'wheel-cooldown',
-        data: {
-          remainingMs: normalizeAmount(check.remainingMs, 0),
-          remainingText: msToCountdownText(check.remainingMs),
-          nextSpinAt: check.nextSpinAt || null,
-          message: 'ยังหมุนไม่ได้ในตอนนี้',
-        },
-      });
-    }
-
-    const reward = pickLuckyWheelReward(wheelConfig.rewards);
-    if (!reward) {
-      return sendJson(res, 500, {
-        ok: false,
-        error: 'wheel-reward-not-found',
-      });
-    }
-    const wheelResult = await awardWheelRewardForUser({
-      userId: session.discordId,
-      reward,
-      source: 'player-portal',
-      actor: 'system',
-    });
-    if (!wheelResult.ok) {
-      const error = wheelResult.reason || 'wheel-award-failed';
-      const statusCode = error === 'steam-link-required-for-item-wheel' ? 400 : 500;
-      return sendJson(res, statusCode, {
-        ok: false,
-        error,
-        data: {
-          message: error === 'steam-link-required-for-item-wheel'
-            ? 'วงล้อมีรางวัลไอเทมในเกม กรุณาผูก SteamID ก่อนหมุน'
-            : 'ไม่สามารถมอบรางวัลวงล้อได้',
-        },
-      });
-    }
-
-    const wheelState = await buildWheelStatePayload(
-      session.discordId,
-      wheelConfig,
-      20,
-    );
-    const rewardData = wheelResult.reward || {};
-    const rewardLabel = normalizeText(rewardData.label || reward.label || reward.id) || 'รางวัลพิเศษ';
-
-    return sendJson(res, 200, {
-      ok: true,
-      data: {
-        reward: {
-          id: rewardData.id,
-          label: rewardLabel,
-          type: rewardData.type,
-          amount: rewardData.amount,
-          quantity: rewardData.type === 'item' ? rewardData.quantity : 0,
-          itemId: rewardData.type === 'item' ? rewardData.itemId : null,
-          gameItemId: rewardData.type === 'item' ? rewardData.gameItemId : null,
-          iconUrl: rewardData.iconUrl,
-          purchaseCode: rewardData.purchaseCode,
-          deliveryQueued: rewardData.deliveryQueued,
-          deliveryQueueReason: rewardData.deliveryQueueReason,
-          at: rewardData.at,
-          awardedCoins: rewardData.awardedCoins,
-        },
-        walletBalance: normalizeAmount(wheelResult.walletBalance, 0),
-        message: wheelResult.message,
-        state: wheelState,
-      },
-    });
-  }
-
-  if (pathname === '/player/api/notifications' && method === 'GET') {
-    const limit = asInt(urlObj.searchParams.get('limit'), 30, 1, 100);
-    const [purchasesRaw, ledgerRaw, rentLink] = await Promise.all([
-      listUserPurchases(session.discordId),
-      listWalletLedger(session.discordId, limit),
-      resolveSessionSteamLink(session.discordId),
-    ]);
-
-    let rentalRaw = [];
-    if (rentLink?.steamId) {
-      await ensureRentBikeTables();
-      const rentals = await listRentalVehicles(300);
-      rentalRaw = rentals.filter((row) => normalizeText(row.userKey) === rentLink.steamId);
-    }
-
-    const items = buildNotificationItems({
-      purchases: purchasesRaw.slice(0, limit),
-      ledgers: ledgerRaw.slice(0, limit),
-      rentals: rentalRaw.slice(0, limit),
-    }).slice(0, limit);
-
-    return sendJson(res, 200, {
-      ok: true,
-      data: {
-        total: items.length,
-        items,
-      },
-    });
-  }
-
-  if (pathname === '/player/api/linksteam/me' && method === 'GET') {
-    const link = await resolveSessionSteamLink(session.discordId);
-    return sendJson(res, 200, {
-      ok: true,
-      data: {
-        linked: link.linked,
-        steamId: link.steamId,
-        inGameName: link.inGameName,
-        linkedAt: link.linkedAt,
-      },
-    });
-  }
-
-  if (pathname === '/player/api/linksteam/history' && method === 'GET') {
-    const link = await resolveSessionSteamLink(session.discordId);
-    const items = [];
-    if (link?.steamId) {
-      items.push({
-        action: 'bind',
-        steamId: link.steamId,
-        inGameName: link.inGameName || null,
-        at: link.linkedAt || null,
-      });
-    }
-    return sendJson(res, 200, {
-      ok: true,
-      data: {
-        total: items.length,
-        items,
-      },
-    });
-  }
-
-  if (pathname === '/player/api/linksteam/set' && method === 'POST') {
-    const body = await readJsonBody(req);
-    const steamId = normalizeText(body.steamId);
-    const isSteamId = /^\d{15,25}$/.test(steamId);
-    if (!isSteamId) {
-      return sendJson(res, 400, {
-        ok: false,
-        error: 'invalid-steamid',
-        data: {
-          message: 'SteamID ต้องเป็นตัวเลข 15-25 หลัก',
-        },
-      });
-    }
-
-    const userCurrentLink = await resolveSessionSteamLink(session.discordId);
-    if (userCurrentLink?.linked && normalizeText(userCurrentLink.steamId) !== steamId) {
-      return sendJson(res, 403, {
-        ok: false,
-        error: 'steam-link-locked',
-        data: {
-          message:
-            'บัญชีนี้ผูก SteamID ไปแล้ว เปลี่ยนไม่ได้เอง ต้องติดต่อแอดมินเท่านั้น',
-          steamId: userCurrentLink.steamId,
-        },
-      });
-    }
-
-    if (userCurrentLink?.linked && normalizeText(userCurrentLink.steamId) === steamId) {
-      return sendJson(res, 200, {
-        ok: true,
-        data: {
-          linked: true,
-          steamId: userCurrentLink.steamId,
-          inGameName: userCurrentLink.inGameName || null,
-          locked: true,
-        },
-      });
-    }
-
-    const existing = getLinkBySteamId(steamId);
-    if (existing && normalizeText(existing.userId) !== session.discordId) {
-      return sendJson(res, 409, {
-        ok: false,
-        error: 'steamid-already-bound',
-        data: {
-          message: 'SteamID นี้ถูกผูกกับบัญชีอื่นอยู่แล้ว',
-        },
-      });
-    }
-    const result = setLink({
-      steamId,
-      userId: session.discordId,
-      inGameName: null,
-    });
-    if (!result?.ok) {
-      return sendJson(res, 400, {
-        ok: false,
-        error: result?.reason || 'invalid-steamid',
-      });
-    }
-    return sendJson(res, 200, {
-      ok: true,
-      data: {
-        linked: true,
-        steamId: result.steamId,
-        inGameName: null,
-        locked: true,
-      },
-    });
-  }
-
-  if (pathname === '/player/api/linksteam/unset' && method === 'POST') {
-    return sendJson(res, 403, {
-      ok: false,
-      error: 'steam-link-locked',
-      data: {
-        message:
-          'ไม่สามารถยกเลิกการผูก SteamID ด้วยตัวเองได้ กรุณาติดต่อแอดมิน',
-      },
-    });
-  }
-
-  if (pathname === '/player/api/daily/claim' && method === 'POST') {
-    const economy = getEconomyConfig();
-    const check = await checkRewardClaimForUser({
-      userId: session.discordId,
-      type: 'daily',
-    });
-    if (!check?.ok) {
-      return sendJson(res, 400, {
-        ok: false,
-        error: 'daily-cooldown',
-        data: {
-          remainingMs: normalizeAmount(check?.remainingMs, 0),
-          remainingText: msToHoursMinutes(check?.remainingMs),
-        },
-      });
-    }
-    const result = await claimRewardForUser({
-      userId: session.discordId,
-      type: 'daily',
-    });
-    if (!result.ok) {
-      return sendJson(res, 500, {
-        ok: false,
-        error: result.reason || 'daily-claim-failed',
-      });
-    }
-    return sendJson(res, 200, {
-      ok: true,
-      data: {
-        reward: economy.dailyReward,
-        balance: normalizeAmount(result.balance, 0),
-        currencySymbol: economy.currencySymbol,
-        message: result.message,
-      },
-    });
-  }
-
-  if (pathname === '/player/api/weekly/claim' && method === 'POST') {
-    const economy = getEconomyConfig();
-    const check = await checkRewardClaimForUser({
-      userId: session.discordId,
-      type: 'weekly',
-    });
-    if (!check?.ok) {
-      return sendJson(res, 400, {
-        ok: false,
-        error: 'weekly-cooldown',
-        data: {
-          remainingMs: normalizeAmount(check?.remainingMs, 0),
-          remainingText: msToDaysHours(check?.remainingMs),
-        },
-      });
-    }
-    const result = await claimRewardForUser({
-      userId: session.discordId,
-      type: 'weekly',
-    });
-    if (!result.ok) {
-      return sendJson(res, 500, {
-        ok: false,
-        error: result.reason || 'weekly-claim-failed',
-      });
-    }
-    return sendJson(res, 200, {
-      ok: true,
-      data: {
-        reward: economy.weeklyReward,
-        balance: normalizeAmount(result.balance, 0),
-        currencySymbol: economy.currencySymbol,
-        message: result.message,
-      },
-    });
-  }
-
-  if (pathname === '/player/api/gift' && method === 'POST') {
-    const body = await readJsonBody(req);
-    const targetDiscordId = normalizeText(body.targetDiscordId || body.userId);
-    const amount = normalizeAmount(body.amount, 0);
-    if (!isDiscordId(targetDiscordId) || amount <= 0) {
-      return sendJson(res, 400, {
-        ok: false,
-        error: 'invalid-input',
-      });
-    }
-    if (targetDiscordId === session.discordId) {
-      return sendJson(res, 400, {
-        ok: false,
-        error: 'cannot-gift-self',
-      });
-    }
-
-    const result = await transferCoins({
-      fromUserId: session.discordId,
-      toUserId: targetDiscordId,
-      amount,
-      actor: `portal:${session.user}`,
-      source: 'player-portal-gift',
-      outReason: 'gift_transfer_out',
-      inReason: 'gift_transfer_in',
-      meta: {
-        via: 'web-portal-standalone',
-      },
-    });
-    if (!result.ok) {
-      const status = result.reason === 'insufficient-balance' ? 400 : 500;
-      return sendJson(res, status, {
-        ok: false,
-        error: result.reason || 'gift-failed',
-        data: result,
-      });
-    }
-    return sendJson(res, 200, {
-      ok: true,
-      data: result,
-    });
-  }
-
-  if (pathname === '/player/api/dashboard' && method === 'GET') {
-    const dashboard = await getPlayerDashboard(session.discordId);
-    if (!dashboard?.ok) {
-      return sendJson(res, 400, {
-        ok: false,
-        error: dashboard?.reason || 'Cannot build player dashboard',
-      });
-    }
-
-    const [dailyCheck, weeklyCheck, link] = await Promise.all([
-      canClaimDaily(session.discordId),
-      canClaimWeekly(session.discordId),
-      resolveSessionSteamLink(session.discordId),
-    ]);
-
-    let rent = {
-      linked: false,
-      todayQuotaUsed: false,
-      nextResetAt: getNextMidnightIsoInTimezone(getRentTimezone()),
-      current: null,
-    };
-    if (link?.steamId) {
-      await ensureRentBikeTables();
-      const timezone = getRentTimezone();
-      const dateKey = getDateKeyInTimezone(timezone);
-      const [dailyRent, rentals] = await Promise.all([
-        getDailyRent(link.steamId, dateKey),
-        listRentalVehicles(250),
-      ]);
-      const history = rentals
-        .filter((row) => normalizeText(row.userKey) === link.steamId)
-        .sort((a, b) => {
-          const at = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
-          const bt = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
-          return bt - at;
-        });
-      rent = {
-        linked: true,
-        todayQuotaUsed: Boolean(dailyRent?.used),
-        nextResetAt: getNextMidnightIsoInTimezone(timezone),
-        current: history.find((row) =>
-          ['pending', 'delivering', 'delivered'].includes(
-            normalizeText(row.status).toLowerCase(),
-          ),
-        ) || null,
-      };
-    }
-
-    const serverInfo = config.serverInfo || {};
-    const announcements = [
-      normalizeText(serverInfo.description),
-      ...(Array.isArray(config.raidTimes)
-        ? config.raidTimes.map((row) => normalizeText(row)).filter(Boolean)
-        : []),
-    ].filter(Boolean);
-
-    const latestPurchase = Array.isArray(dashboard.data?.recentPurchases)
-      ? dashboard.data.recentPurchases[0] || null
-      : null;
-
-    return sendJson(res, 200, {
-      ok: true,
-      data: {
-        ...dashboard.data,
-        steamLink: link,
-        latestOrder: latestPurchase,
-        missionsSummary: {
-          dailyClaimable: Boolean(dailyCheck?.ok),
-          weeklyClaimable: Boolean(weeklyCheck?.ok),
-          dailyRemainingMs: dailyCheck?.ok ? 0 : normalizeAmount(dailyCheck?.remainingMs, 0),
-          weeklyRemainingMs: weeklyCheck?.ok
-            ? 0
-            : normalizeAmount(weeklyCheck?.remainingMs, 0),
-        },
-        rent,
-        announcements,
-      },
-    });
-  }
-
-  if (pathname === '/player/api/shop/list' && method === 'GET') {
-    const q = normalizeText(urlObj.searchParams.get('q'));
-    const kind = normalizeText(urlObj.searchParams.get('kind') || 'all') || 'all';
-    const limit = asInt(urlObj.searchParams.get('limit'), 120, 1, 1000);
-    const rows = await listShopItems();
-    const items = filterShopItems(rows, { q, kind, limit });
-    return sendJson(res, 200, {
-      ok: true,
-      data: {
-        query: q,
-        kind,
-        total: items.length,
-        items,
-      },
-    });
-  }
-
-  if ((pathname === '/player/api/shop/buy' || pathname === '/player/api/buy') && method === 'POST') {
-    const body = await readJsonBody(req);
-    const query = normalizeText(body.item || body.itemId || body.query);
-    if (!query) {
-      return sendJson(res, 400, {
-        ok: false,
-        error: 'missing-item',
-      });
-    }
-
-    const item = await findShopItemByQuery(query);
-    if (!item) {
-      return sendJson(res, 404, {
-        ok: false,
-        error: 'item-not-found',
-      });
-    }
-
-    const itemKind = normalizeShopKind(item.kind);
-    const result = await purchaseShopItemForUser({
-      userId: session.discordId,
-      item,
-      guildId: normalizeText(body.guildId) || null,
-      actor: `portal:${session.user}`,
-      source: 'player-portal-buy',
-      resolveSteamLink: async () => resolveSessionSteamLink(session.discordId),
-    });
-    if (!result.ok) {
-      if (result.reason === 'steam-link-required') {
-        return sendJson(res, 400, {
-          ok: false,
-          error: 'steam-link-required',
-          data: {
-            message: 'ต้องผูก SteamID ก่อนซื้อสินค้าไอเทมในเกม',
-          },
-        });
-      }
-      if (result.reason === 'insufficient-balance') {
-        return sendJson(res, 400, {
-          ok: false,
-          error: 'insufficient-balance',
-          data: {
-            required: normalizeAmount(item.price, 0),
-            balance: normalizeAmount(result.balance, 0),
-          },
-        });
-      }
-      return sendJson(res, 500, {
-        ok: false,
-        error: 'purchase-failed',
-        data: {
-          message: 'ไม่สามารถสร้างคำสั่งซื้อได้ในตอนนี้ ระบบคืนเหรียญให้อัตโนมัติแล้ว',
-        },
-      });
-    }
-
-    const { purchase, delivery } = result;
-    const price = normalizeAmount(item.price, 0);
-
-    return sendJson(res, 200, {
-      ok: true,
-      data: {
-        purchaseCode: purchase.code,
-        item: {
-          id: item.id,
-          name: item.name,
-          kind: itemKind,
-          price,
-          iconUrl: normalizeText(item.iconUrl) || resolveItemIconUrl(item),
-          bundle: buildBundleSummary(item),
-        },
-        delivery: {
-          queued: Boolean(delivery?.queued),
-          reason: delivery?.reason || null,
-          statusText: getDeliveryStatusText(delivery),
-        },
-      },
-    });
-  }
-
-  if (pathname === '/player/api/purchase/list' && method === 'GET') {
-    const statusFilter = normalizePurchaseStatus(urlObj.searchParams.get('status'));
-    const limit = asInt(urlObj.searchParams.get('limit'), 40, 1, 200);
-    const includeHistory = urlObj.searchParams.get('includeHistory') === '1';
-    const [rows, shopRows] = await Promise.all([
-      listUserPurchases(session.discordId),
-      listShopItems(),
-    ]);
-    const shopMap = new Map(
-      (Array.isArray(shopRows) ? shopRows : []).map((row) => [String(row.id), row]),
-    );
-
-    let items = rows
-      .filter((row) => !statusFilter || normalizePurchaseStatus(row?.status) === statusFilter)
-      .slice(0, limit)
-      .map((row) => {
-        const item = shopMap.get(String(row.itemId));
-        const status = normalizePurchaseStatus(row.status) || 'unknown';
-        return {
-          ...row,
-          status,
-          statusText: status === 'delivered'
-            ? 'ส่งของแล้ว'
-            : status === 'delivery_failed'
-              ? 'ส่งของไม่สำเร็จ'
-              : status === 'delivering'
-                ? 'กำลังส่งของ'
-                : 'รอส่งของ',
-          itemName: normalizeText(item?.name) || normalizeText(row.itemId),
-          itemKind: normalizeShopKind(item?.kind),
-          iconUrl: normalizeText(item?.iconUrl) || resolveItemIconUrl(item || row),
-          bundle: buildBundleSummary(item || {}),
-        };
-      });
-
-    if (includeHistory && items.length > 0) {
-      const historyRows = await Promise.all(
-        items.map((row) => listPurchaseStatusHistory(row.code, 20)),
-      );
-      items = items.map((row, index) => ({
-        ...row,
-        history: historyRows[index] || [],
-      }));
-    }
-
-    return sendJson(res, 200, {
-      ok: true,
-      data: {
-        userId: session.discordId,
-        includeHistory,
-        total: items.length,
-        items,
-      },
-    });
-  }
-
-  if (pathname === '/player/api/cart' && method === 'GET') {
-    const raw = listCartItems(session.discordId);
-    const resolved = await getResolvedCart(session.discordId);
-    return sendJson(res, 200, {
-      ok: true,
-      data: {
-        raw,
-        ...serializeCartResolved(resolved),
-      },
-    });
-  }
-
-  if (pathname === '/player/api/cart/add' && method === 'POST') {
-    const body = await readJsonBody(req);
-    const query = normalizeText(body.item || body.itemId || body.query);
-    const quantity = normalizeQuantity(body.quantity, 1);
-    if (!query) {
-      return sendJson(res, 400, {
-        ok: false,
-        error: 'missing-item',
-      });
-    }
-
-    const item = await findShopItemByQuery(query);
-    if (!item) {
-      return sendJson(res, 404, {
-        ok: false,
-        error: 'item-not-found',
-      });
-    }
-
-    if (isGameItemShopKind(item.kind)) {
-      const steamLink = await resolveSessionSteamLink(session.discordId);
-      if (!steamLink.linked || !steamLink.steamId) {
-        return sendJson(res, 400, {
-          ok: false,
-          error: 'steam-link-required',
-          data: {
-            message: 'ต้องผูก SteamID ก่อนใส่สินค้าไอเทมลงตะกร้า',
-          },
-        });
-      }
-    }
-
-    addCartItem(session.discordId, item.id, quantity);
-    const resolved = await getResolvedCart(session.discordId);
-    return sendJson(res, 200, {
-      ok: true,
-      data: {
-        action: 'add',
-        itemId: item.id,
-        quantity,
-        ...serializeCartResolved(resolved),
-      },
-    });
-  }
-
-  if (pathname === '/player/api/cart/remove' && method === 'POST') {
-    const body = await readJsonBody(req);
-    const query = normalizeText(body.item || body.itemId || body.query);
-    const quantity = normalizeQuantity(body.quantity, 1);
-    if (!query) {
-      return sendJson(res, 400, {
-        ok: false,
-        error: 'missing-item',
-      });
-    }
-
-    const item = await findShopItemByQuery(query);
-    const itemId = item?.id || query;
-    const removed = removeCartItem(session.discordId, itemId, quantity);
-    if (!removed) {
-      return sendJson(res, 404, {
-        ok: false,
-        error: 'cart-item-not-found',
-      });
-    }
-    const resolved = await getResolvedCart(session.discordId);
-    return sendJson(res, 200, {
-      ok: true,
-      data: {
-        action: 'remove',
-        itemId,
-        quantity,
-        ...serializeCartResolved(resolved),
-      },
-    });
-  }
-
-  if (pathname === '/player/api/cart/clear' && method === 'POST') {
-    clearCart(session.discordId);
-    return sendJson(res, 200, {
-      ok: true,
-      data: {
-        action: 'clear',
-        rows: [],
-        missingItemIds: [],
-        totalPrice: 0,
-        totalUnits: 0,
-      },
-    });
-  }
-
-  if (pathname === '/player/api/cart/checkout' && method === 'POST') {
-    const body = await readJsonBody(req).catch(() => ({}));
-    const steamLink = await resolveSessionSteamLink(session.discordId);
-    const resolvedBeforeCheckout = await getResolvedCart(session.discordId);
-    const needsSteam = Array.isArray(resolvedBeforeCheckout?.rows)
-      && resolvedBeforeCheckout.rows.some(
-        (row) => isGameItemShopKind(row?.item?.kind),
-      );
-    if (needsSteam && (!steamLink.linked || !steamLink.steamId)) {
-      return sendJson(res, 400, {
-        ok: false,
-        error: 'steam-link-required',
-        data: {
-          ...serializeCartResolved(resolvedBeforeCheckout),
-          message: 'ต้องผูก SteamID ก่อนชำระตะกร้าที่มีสินค้าไอเทมในเกม',
-        },
-      });
-    }
-
-    const result = await checkoutCart(session.discordId, {
-      guildId: normalizeText(body.guildId) || null,
-      actor: `portal:${session.user}`,
-      source: 'player-portal-cart-checkout',
-    });
-    if (!result.ok) {
-      return sendJson(res, 400, {
-        ok: false,
-        error: result.reason || 'checkout-failed',
-        data: {
-          ...serializeCartResolved(result),
-          walletBalance: normalizeAmount(result.walletBalance, 0),
-        },
-      });
-    }
-
-    return sendJson(res, 200, {
-      ok: true,
-      data: {
-        ...serializeCartResolved(result),
-        purchases: Array.isArray(result.purchases)
-          ? result.purchases.map((entry) => ({
-              purchaseCode: entry.purchase?.code || null,
-              itemId: entry.itemId,
-              itemName: entry.itemName,
-              itemKind: entry.itemKind,
-              bundle: entry.bundle || null,
-              deliveryStatusText: getDeliveryStatusText(entry.delivery),
-              delivery: entry.delivery || null,
-            }))
-          : [],
-        failures: Array.isArray(result.failures) ? result.failures : [],
-        refundedAmount: normalizeAmount(result.refundedAmount, 0),
-      },
-    });
-  }
-
-  if (pathname === '/player/api/bounty/list' && method === 'GET') {
-    const items = listActiveBountiesForUser();
-    return sendJson(res, 200, {
-      ok: true,
-      data: {
-        total: items.length,
-        items,
-      },
-    });
-  }
-
-  if (pathname === '/player/api/redeem' && method === 'POST') {
-    const body = await readJsonBody(req);
-    const code = normalizeText(body.code);
-    if (!code) {
-      return sendJson(res, 400, {
-        ok: false,
-        error: 'Invalid request payload',
-      });
-    }
-
-    const result = await redeemCodeForUser({
-      userId: session.discordId,
-      code,
-      actor: `portal:${session.user}`,
-      source: 'player-portal-standalone',
-    });
-
-    if (!result.ok) {
-      const badRequestReasons = new Set([
-        'invalid-input',
-        'code-not-found',
-        'code-already-used',
-        'invalid-redeem-amount',
-      ]);
-      const status = badRequestReasons.has(result.reason) ? 400 : 500;
-      return sendJson(res, status, {
-        ok: false,
-        error: result.reason || 'redeem-failed',
-        data: result,
-      });
-    }
-
-    return sendJson(res, 200, {
-      ok: true,
-      data: {
-        ...result,
-        message:
-          result.type === 'coins'
-            ? `ใช้โค้ดสำเร็จ ได้รับ ${result.amount} เหรียญ`
-            : 'ใช้โค้ดสำเร็จ',
-      },
-    });
-  }
-
-  if (pathname === '/player/api/rentbike/request' && method === 'POST') {
-    const body = await readJsonBody(req).catch(() => ({}));
-    const result = await requestRentBikeForUser({
-      discordUserId: session.discordId,
-      guildId: normalizeText(body.guildId) || null,
-    });
-    if (!result.ok) {
-      return sendJson(res, 400, {
-        ok: false,
-        error: result.reason || 'rentbike-failed',
-        data: result,
-      });
-    }
-    return sendJson(res, 200, {
-      ok: true,
-      data: result,
-    });
-  }
-
-  if (pathname === '/player/api/bounty/add' && method === 'POST') {
-    const body = await readJsonBody(req);
-    const targetName = normalizeText(body.targetName);
-    const amount = Number(body.amount);
-    const result = createBountyForUser({
-      createdBy: session.discordId,
-      targetName,
-      amount,
-    });
-    if (!result.ok) {
-      return sendJson(res, 400, {
-        ok: false,
-        error: result.reason || 'bounty-create-failed',
-      });
-    }
-    return sendJson(res, 200, {
-      ok: true,
-      data: result,
-    });
+  if (
+    await handlePlayerCommerceRoute({
+      req,
+      res,
+      urlObj,
+      pathname,
+      method,
+      session,
+    })
+  ) {
+    return;
   }
 
   return sendJson(res, 405, { ok: false, error: 'Method not allowed' });
@@ -2812,30 +1301,34 @@ function buildLegacyAdminUrl(pathname, search) {
   }
 }
 
-function buildHealthPayload() {
+function getPortalRuntimeSettings() {
   return {
-    ok: true,
-    data: {
-      now: new Date().toISOString(),
-      nodeEnv: NODE_ENV,
-      mode: PORTAL_MODE,
-      uptimeSec: Math.round(process.uptime()),
-      sessions: sessions.size,
-      oauthStates: oauthStates.size,
-      secureCookie: SECURE_COOKIE,
-      cookieName: SESSION_COOKIE_NAME,
-      cookiePath: SESSION_COOKIE_PATH,
-      cookieSameSite: SESSION_COOKIE_SAMESITE,
-      enforceOriginCheck: ENFORCE_ORIGIN_CHECK,
-      discordOAuthConfigured: Boolean(DISCORD_CLIENT_ID && DISCORD_CLIENT_SECRET),
-      playerOpenAccess: PLAYER_OPEN_ACCESS,
-      requireGuildMember: REQUIRE_GUILD_MEMBER,
-      legacyAdminUrl: LEGACY_ADMIN_URL,
-      landingUrl: '/landing',
-      showcaseUrl: '/showcase',
-      trialUrl: '/trial',
-    },
+    nodeEnv: NODE_ENV,
+    mode: PORTAL_MODE,
+    baseUrl: BASE_URL,
+    legacyAdminUrl: LEGACY_ADMIN_URL,
+    sessionCount: sessions.size,
+    oauthStateCount: oauthStates.size,
+    secureCookie: SECURE_COOKIE,
+    cookieName: SESSION_COOKIE_NAME,
+    cookiePath: SESSION_COOKIE_PATH,
+    cookieSameSite: SESSION_COOKIE_SAMESITE,
+    cookieDomain: SESSION_COOKIE_DOMAIN,
+    enforceOriginCheck: ENFORCE_ORIGIN_CHECK,
+    discordOAuthConfigured: Boolean(DISCORD_CLIENT_ID && DISCORD_CLIENT_SECRET),
+    discordClientId: DISCORD_CLIENT_ID,
+    discordClientSecret: DISCORD_CLIENT_SECRET,
+    discordGuildId: DISCORD_GUILD_ID,
+    playerOpenAccess: PLAYER_OPEN_ACCESS,
+    requireGuildMember: REQUIRE_GUILD_MEMBER,
+    allowedDiscordIdsCount: ALLOWED_DISCORD_IDS.size,
+    sessionTtlMs: SESSION_TTL_MS,
+    isProduction: IS_PRODUCTION,
   };
+}
+
+function buildHealthPayload() {
+  return buildPortalHealthPayload(getPortalRuntimeSettings());
 }
 
 function isDiscordStartPath(pathname) {
@@ -2998,124 +1491,8 @@ async function requestHandler(req, res) {
   return sendJson(res, 404, { ok: false, error: 'Not found' });
 }
 
-function buildStartupValidation() {
-  const errors = [];
-  const warnings = [];
-
-  let base;
-  let legacy;
-
-  try {
-    base = new URL(BASE_URL);
-  } catch {
-    errors.push('WEB_PORTAL_BASE_URL is invalid URL');
-  }
-
-  try {
-    legacy = new URL(LEGACY_ADMIN_URL);
-  } catch {
-    errors.push('WEB_PORTAL_LEGACY_ADMIN_URL is invalid URL');
-  }
-
-  if (!DISCORD_CLIENT_ID) {
-    errors.push('WEB_PORTAL_DISCORD_CLIENT_ID is required');
-  }
-
-  if (!DISCORD_CLIENT_SECRET) {
-    errors.push('WEB_PORTAL_DISCORD_CLIENT_SECRET is required');
-  }
-
-  if (!PLAYER_OPEN_ACCESS && REQUIRE_GUILD_MEMBER && !DISCORD_GUILD_ID) {
-    errors.push('WEB_PORTAL_REQUIRE_GUILD_MEMBER=true requires WEB_PORTAL_DISCORD_GUILD_ID');
-  }
-
-  if (PORTAL_MODE !== 'player') {
-    warnings.push(`WEB_PORTAL_MODE=${PORTAL_MODE} is not supported, forcing player mode`);
-  }
-
-  if (!PLAYER_OPEN_ACCESS && ALLOWED_DISCORD_IDS.size === 0 && !REQUIRE_GUILD_MEMBER) {
-    warnings.push('Access policy is restricted mode but no allowlist/guild guard configured');
-  }
-
-  if (PLAYER_OPEN_ACCESS && (ALLOWED_DISCORD_IDS.size > 0 || REQUIRE_GUILD_MEMBER)) {
-    warnings.push('WEB_PORTAL_PLAYER_OPEN_ACCESS=true ignores allowlist/guild-member restrictions');
-  }
-
-  if (!ENFORCE_ORIGIN_CHECK) {
-    warnings.push('WEB_PORTAL_ENFORCE_ORIGIN_CHECK=false increases CSRF risk');
-  }
-
-  if (SESSION_COOKIE_SAMESITE === 'Strict') {
-    warnings.push('WEB_PORTAL_COOKIE_SAMESITE=Strict may break Discord OAuth redirect flow');
-  }
-
-  if (SESSION_COOKIE_SAMESITE === 'None' && !SECURE_COOKIE) {
-    warnings.push('WEB_PORTAL_COOKIE_SAMESITE=None without secure cookie may be rejected by browsers');
-  }
-
-  if (base && legacy && base.origin === legacy.origin) {
-    warnings.push('WEB_PORTAL_BASE_URL and WEB_PORTAL_LEGACY_ADMIN_URL share the same origin; prefer split origin/subdomain for cleaner cookie and routing isolation');
-  }
-
-  if (SESSION_TTL_MS > 24 * 60 * 60 * 1000) {
-    warnings.push('WEB_PORTAL_SESSION_TTL_HOURS is longer than 24 hours; review whether player sessions should expire sooner');
-  }
-
-  if (base && !isLoopbackHost(base.hostname) && base.protocol !== 'https:') {
-    warnings.push('WEB_PORTAL_BASE_URL is not HTTPS on non-loopback host');
-  }
-
-  if (legacy && !isLoopbackHost(legacy.hostname) && legacy.protocol !== 'https:') {
-    warnings.push('WEB_PORTAL_LEGACY_ADMIN_URL is not HTTPS on non-loopback host');
-  }
-
-  if (IS_PRODUCTION) {
-    if (!SECURE_COOKIE) {
-      errors.push('WEB_PORTAL_SECURE_COOKIE must be true in production');
-    }
-
-    if (!ENFORCE_ORIGIN_CHECK) {
-      errors.push('WEB_PORTAL_ENFORCE_ORIGIN_CHECK must be true in production');
-    }
-
-    if (base && base.protocol !== 'https:') {
-      errors.push('WEB_PORTAL_BASE_URL must use https in production');
-    }
-  }
-
-  return { errors, warnings };
-}
-
 function printStartupHints() {
-  console.log(`[web-portal-standalone] listening at ${BASE_URL}`);
-  console.log(`[web-portal-standalone] mode: ${PORTAL_MODE}`);
-  console.log(`[web-portal-standalone] legacy admin: ${LEGACY_ADMIN_URL}`);
-  console.log(`[web-portal-standalone] landing: ${new URL('/landing', BASE_URL).toString()}`);
-  console.log(`[web-portal-standalone] showcase: ${new URL('/showcase', BASE_URL).toString()}`);
-  console.log(`[web-portal-standalone] trial: ${new URL('/trial', BASE_URL).toString()}`);
-  console.log(
-    `[web-portal-standalone] cookie: name=${SESSION_COOKIE_NAME} path=${SESSION_COOKIE_PATH} secure=${SECURE_COOKIE} sameSite=${SESSION_COOKIE_SAMESITE}${SESSION_COOKIE_DOMAIN ? ` domain=${SESSION_COOKIE_DOMAIN}` : ''}`,
-  );
-
-  const validation = buildStartupValidation();
-
-  if (validation.warnings.length > 0) {
-    console.warn('[web-portal-standalone] startup warnings:');
-    for (const warning of validation.warnings) {
-      console.warn(`- ${warning}`);
-    }
-  }
-
-  if (validation.errors.length > 0) {
-    console.error('[web-portal-standalone] startup errors:');
-    for (const error of validation.errors) {
-      console.error(`- ${error}`);
-    }
-    process.exitCode = 1;
-    return false;
-  }
-
-  return true;
+  return printPortalStartupHints(getPortalRuntimeSettings());
 }
 
 function startCleanupTimer() {

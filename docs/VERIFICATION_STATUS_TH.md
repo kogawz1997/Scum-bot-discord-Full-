@@ -1,22 +1,15 @@
 # Verification Status
 
-เอกสารนี้เป็น source of truth สำหรับสถานะการตรวจสอบคุณภาพของ repo
+เอกสารนี้เป็นจุดอ้างอิงสำหรับสถานะการตรวจคุณภาพของ repo
 
-## อะไรคือหลักฐานที่ควรเชื่อ
+ให้ยึด artifact จาก CI และผลรันคำสั่งตรวจจริงเป็นหลัก ไม่ใช่ตัวเลข test count ที่เขียนค้างไว้ในเอกสารอื่น
+
+## Source of Truth
+
+ใช้ข้อมูลจากชุดนี้ก่อนเสมอ:
 
 - GitHub Actions workflow: `.github/workflows/ci.yml`
 - GitHub Actions release workflow: `.github/workflows/release.yml`
-- artifact ที่ job `verification-artifacts` สร้างไว้ใน `artifacts/ci/`
-- `verification-summary.json` และ `verification-summary.md` ที่สร้างจาก `npm run ci:verify`
-
-## อะไรไม่ควรใช้เป็น source of truth
-
-- ตัวเลข test count ที่เขียนค้างไว้ในเอกสาร
-- ข้อความว่า “ผ่านแล้ว” ที่ไม่มี log หรือ artifact รองรับ
-- badge หรือ summary ที่ไม่ได้ผูกกับ workflow จริง
-
-## Artifact หลักที่ CI สร้าง
-
 - `artifacts/ci/verification-summary.json`
 - `artifacts/ci/verification-summary.md`
 - `artifacts/ci/lint.log`
@@ -26,22 +19,13 @@
 - `artifacts/ci/readiness.log`
 - `artifacts/ci/smoke.log`
 
-## Local verification ที่ใกล้เคียง CI ที่สุด
+## Local Command Set
 
-```bash
-npm run ci:verify
-```
-
-หมายเหตุ:
-
-- `ci:verify` จะ inject test-safe env ให้ subprocess เอง
-- จึงไม่ควรต้องพึ่ง `.env` ปัจจุบันของเครื่อง
-- ถ้าต้องการตรวจ production boundary ให้ใช้ `readiness:prod` และ `smoke:postdeploy`
-
-## คำสั่งที่ใช้บ่อย
+คำสั่งที่ใช้ตรวจบนเครื่องนี้:
 
 ```bash
 npm run lint
+npm run test:policy
 npm test
 npm run doctor
 npm run security:check
@@ -49,10 +33,29 @@ npm run readiness:prod
 npm run smoke:postdeploy
 ```
 
-## สถานะล่าสุดที่ควรอ้างอิง
+ถ้าต้องการรันชุดที่ใกล้ CI ที่สุด ให้ใช้:
 
-ให้ดูจาก:
+```bash
+npm run ci:verify
+```
 
-- CI badges ใน [README.md](../README.md)
-- `artifacts/ci/verification-summary.md`
-- `artifacts/ci/verification-summary.json`
+## What This File Does Not Prove
+
+เอกสารนี้ไม่ควรถูกใช้เพื่ออ้างว่า:
+
+- live SCUM runtime พร้อมใช้งานทุกกรณี
+- agent mode ผ่านบนทุกเครื่อง
+- watcher พร้อมใช้งาน แม้ไม่มี `SCUM.log` จริง
+- visual evidence มีครบ ถ้ายังไม่มีไฟล์ screenshot หรือ diagram export ใน repo
+
+## Current Reading Rule
+
+- ถ้า claim ผูกกับ code path, test file, และ artifact ได้ ให้ถือว่า `verified`
+- ถ้า claim มีแค่ code path แต่ยังไม่มี test หรือ artifact ให้ถือว่า `implemented`
+- ถ้า claim ขึ้นกับ SCUM client, Windows session, หรือ infrastructure ภายนอก ให้ถือว่า `runtime-dependent`
+
+## Notes
+
+- ห้าม hardcode จำนวน test ไว้หลายไฟล์
+- ถ้าจำนวน test เปลี่ยน ให้ปล่อยให้ `verification-summary` เป็นตัวตอบแทน
+- badge ใน `README.md` และ `PROJECT_HQ.md` ต้องชี้ workflow จริงเท่านั้น

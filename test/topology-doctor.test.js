@@ -64,3 +64,30 @@ test('topology doctor blocks duplicate bot and worker service overlap', () => {
   assert.match(output, /Duplicate rent bike service detected/i);
   assert.match(output, /Duplicate delivery worker detected/i);
 });
+
+test('topology doctor emits JSON report for CI/tooling consumers', () => {
+  const result = runTopology(
+    {
+      NODE_ENV: 'production',
+      BOT_ENABLE_ADMIN_WEB: 'true',
+      BOT_ENABLE_RENTBIKE_SERVICE: 'false',
+      BOT_ENABLE_DELIVERY_WORKER: 'false',
+      WORKER_ENABLE_RENTBIKE: 'true',
+      WORKER_ENABLE_DELIVERY: 'true',
+      BOT_HEALTH_PORT: '3210',
+      WORKER_HEALTH_PORT: '3211',
+      SCUM_WATCHER_HEALTH_PORT: '3212',
+      ADMIN_WEB_PORT: '3200',
+      SCUM_WEBHOOK_PORT: '3100',
+      WEB_PORTAL_PORT: '3300',
+    },
+    ['--production', '--json'],
+  );
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.status, 'pass');
+  assert.equal(payload.mode, 'split-runtime');
+  assert.equal(payload.roles.bot.adminWeb, true);
+  assert.equal(payload.roles.worker.delivery, true);
+});

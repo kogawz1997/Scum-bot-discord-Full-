@@ -17,30 +17,36 @@
 ## 1. โครงสร้าง runtime
 
 1. `bot`
+
 - Discord slash commands
 - panel / button / modal
 - admin web
 - SCUM webhook receiver
 
 2. `worker`
+
 - delivery queue
 - retry / dead-letter / watchdog
 - rent bike queue
 
 3. `watcher`
+
 - อ่าน `SCUM.log`
 - parse event และยิงเข้า webhook
 
 4. `admin web`
+
 - dashboard แอดมิน
 - config, audit, snapshot, observability, delivery tools
 - tenant config, security events, step-up auth
 
 5. `player portal`
+
 - เว็บผู้เล่น login ผ่าน Discord
 - dashboard / profile / wallet / shop / orders
 
 6. `console-agent`
+
 - bridge คำสั่งจาก worker ไปยัง SCUM admin client
 - ใช้กับ `agent mode`
 

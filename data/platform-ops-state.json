@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-03-15T16:29:54.878Z",
+  "lastMonitoringAt": "2026-03-15T16:29:53.654Z",
+  "lastAutoBackupAt": "2026-03-15T09:04:10.331Z",
+  "lastReconcileAt": "2026-03-15T16:26:53.624Z",
+  "lastAlertAtByKey": {
+    "platform-auto-backup-created": "2026-03-15T09:04:10.331Z",
+    "delivery-reconcile-anomaly": "2026-03-15T09:34:44.228Z"
+  }
+}

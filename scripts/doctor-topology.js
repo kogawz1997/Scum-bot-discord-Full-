@@ -22,6 +22,7 @@ const args = new Set(process.argv.slice(2));
 const isProduction =
   args.has('--production')
   || String(process.env.NODE_ENV || '').trim().toLowerCase() === 'production';
+const asJson = args.has('--json');
 
 function isTruthy(value, fallback = false) {
   if (value == null || String(value).trim() === '') return fallback;
@@ -46,7 +47,7 @@ function pushPort(portMap, errors, port, label) {
   errors.push(`Port conflict on ${port}: ${portMap.get(port).join(', ')}`);
 }
 
-function main() {
+function evaluateTopology() {
   const env = process.env;
   const errors = [];
   const warnings = [];
@@ -182,27 +183,73 @@ function main() {
     errors.push('DELIVERY_EXECUTION_MODE=agent requires SCUM_CONSOLE_AGENT_TOKEN');
   }
 
-  console.log(`[topology] mode: ${topology}`);
+  return {
+    mode: topology,
+    isProduction,
+    roles: {
+      bot: {
+        adminWeb: botAdmin,
+        webhook: botWebhook,
+        rentBike: botRent,
+        delivery: botDelivery,
+      },
+      worker: {
+        rentBike: workerRent,
+        delivery: workerDelivery,
+      },
+    },
+    runtime: {
+      workerEnabled,
+      botServiceEnabled,
+      deliveryExecutionMode,
+    },
+    warnings,
+    errors,
+    status: errors.length > 0 ? 'failed' : warnings.length > 0 ? 'warning' : 'pass',
+  };
+}
+
+function printTextReport(report) {
+  console.log(`[topology] mode: ${report.mode}`);
   console.log(
-    `[topology] bot(admin=${botAdmin ? 'on' : 'off'}, webhook=${botWebhook ? 'on' : 'off'}, rent=${botRent ? 'on' : 'off'}, delivery=${botDelivery ? 'on' : 'off'})`,
+    `[topology] bot(admin=${report.roles.bot.adminWeb ? 'on' : 'off'}, webhook=${report.roles.bot.webhook ? 'on' : 'off'}, rent=${report.roles.bot.rentBike ? 'on' : 'off'}, delivery=${report.roles.bot.delivery ? 'on' : 'off'})`,
   );
   console.log(
-    `[topology] worker(rent=${workerRent ? 'on' : 'off'}, delivery=${workerDelivery ? 'on' : 'off'})`,
+    `[topology] worker(rent=${report.roles.worker.rentBike ? 'on' : 'off'}, delivery=${report.roles.worker.delivery ? 'on' : 'off'})`,
   );
 
-  for (const warning of warnings) {
+  for (const warning of report.warnings) {
     console.warn(`[topology] WARN: ${warning}`);
   }
 
-  if (errors.length > 0) {
+  if (report.errors.length > 0) {
     console.error('[topology] FAILED');
-    for (const error of errors) {
+    for (const error of report.errors) {
       console.error(`[topology] ERROR: ${error}`);
     }
-    process.exit(1);
+    return 1;
   }
 
   console.log('[topology] PASS');
+  return 0;
+}
+
+function main() {
+  const report = evaluateTopology();
+
+  if (asJson) {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    printTextReport(report);
+  }
+
+  if (report.errors.length > 0) {
+    process.exit(1);
+  }
 }
 
 main();
+
+module.exports = {
+  evaluateTopology,
+};

@@ -66,17 +66,60 @@ function ensureTestDatabaseDefaults() {
 let cachedClient = null;
 let cachedKey = '';
 
-function getClientKey() {
+function buildManagedDatasourceUrl() {
   ensureTestDatabaseDefaults();
+  const rawUrl = normalizeText(process.env.DATABASE_URL);
+  if (!/^postgres(?:ql)?:\/\//i.test(rawUrl) && !/^mysql:\/\//i.test(rawUrl)) {
+    return rawUrl;
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return rawUrl;
+  }
+
+  if (!normalizeText(parsed.searchParams.get('connection_limit'))) {
+    const defaultLimit = isNodeTestRuntime() ? '2' : '5';
+    parsed.searchParams.set(
+      'connection_limit',
+      normalizeText(process.env.PRISMA_CONNECTION_LIMIT) || defaultLimit,
+    );
+  }
+
+  if (!normalizeText(parsed.searchParams.get('pool_timeout'))) {
+    const defaultPoolTimeout = isNodeTestRuntime() ? '10' : '20';
+    parsed.searchParams.set(
+      'pool_timeout',
+      normalizeText(process.env.PRISMA_POOL_TIMEOUT) || defaultPoolTimeout,
+    );
+  }
+
+  return parsed.toString();
+}
+
+function getClientKey() {
+  const managedUrl = buildManagedDatasourceUrl();
   return JSON.stringify({
-    databaseUrl: String(process.env.DATABASE_URL || '').trim(),
+    databaseUrl: managedUrl,
     provider: String(process.env.PRISMA_SCHEMA_PROVIDER || process.env.DATABASE_PROVIDER || '').trim(),
     nodeEnv: String(process.env.NODE_ENV || '').trim(),
   });
 }
 
 function createPrismaClient() {
-  return new PrismaClient();
+  const managedUrl = buildManagedDatasourceUrl();
+  if (!managedUrl) {
+    return new PrismaClient();
+  }
+  return new PrismaClient({
+    datasources: {
+      db: {
+        url: managedUrl,
+      },
+    },
+  });
 }
 
 function getPrismaClient() {

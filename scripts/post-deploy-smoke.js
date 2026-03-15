@@ -31,6 +31,12 @@ function isLikelyPlaceholder(value) {
   return patterns.some((pattern) => text.includes(pattern));
 }
 
+function envFlag(value, fallback = false) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return fallback;
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+}
+
 function parseArgs(argv) {
   const out = {};
   for (let i = 0; i < argv.length; i += 1) {
@@ -104,6 +110,105 @@ async function assertJsonOk(url, timeoutMs, label) {
   }
 }
 
+function unwrapHealthPayload(payload) {
+  if (
+    payload
+    && typeof payload === 'object'
+    && payload.data
+    && typeof payload.data === 'object'
+    && !Array.isArray(payload.data)
+  ) {
+    return payload.data;
+  }
+  return payload && typeof payload === 'object' ? payload : {};
+}
+
+function summarizeHealthReason(payload) {
+  const data = unwrapHealthPayload(payload);
+  return String(
+    data.reason
+      || payload.reason
+      || data.statusMessage
+      || payload.statusMessage
+      || data.error
+      || payload.error
+      || data.statusCode
+      || payload.statusCode
+      || data.status
+      || payload.status
+      || '',
+  ).trim();
+}
+
+async function assertRuntimeHealth(url, timeoutMs, label, options = {}) {
+  const required = options.required !== false;
+  const allowDisabled = options.allowDisabled === true;
+  const requireDiscordReady = options.requireDiscordReady === true;
+
+  const res = await fetchWithTimeout(url, timeoutMs);
+  assertStatus(res, [200], label);
+  const json = await res.json().catch(() => null);
+  if (!json || json.ok !== true) {
+    throw new Error(`${label} expected JSON { ok: true }`);
+  }
+
+  const data = unwrapHealthPayload(json);
+  const rawStatus = String(data.status || json.status || '').trim().toLowerCase();
+  const ready =
+    typeof data.ready === 'boolean'
+      ? data.ready
+      : (typeof json.ready === 'boolean' ? json.ready : null);
+  const discordReady =
+    typeof data.discordReady === 'boolean'
+      ? data.discordReady
+      : (typeof json.discordReady === 'boolean' ? json.discordReady : null);
+  const reason = summarizeHealthReason(json);
+
+  if (rawStatus === 'disabled') {
+    if (required && !allowDisabled) {
+      throw new Error(`${label} is disabled${reason ? ` (${reason})` : ''}`);
+    }
+    return {
+      ok: true,
+      state: 'disabled',
+      reason,
+      payload: json,
+    };
+  }
+
+  if (required) {
+    if (ready === false || rawStatus === 'degraded' || rawStatus === 'error' || rawStatus === 'offline' || rawStatus === 'not-configured') {
+      throw new Error(`${label} is ${rawStatus || 'not-ready'}${reason ? ` (${reason})` : ''}`);
+    }
+    if (requireDiscordReady && discordReady === false) {
+      throw new Error(`${label} is not Discord-ready${reason ? ` (${reason})` : ''}`);
+    }
+  } else if (ready === false || rawStatus === 'degraded' || rawStatus === 'error' || rawStatus === 'offline' || rawStatus === 'not-configured') {
+    return {
+      ok: true,
+      state: rawStatus || 'not-ready',
+      reason,
+      payload: json,
+    };
+  }
+
+  if (!required && requireDiscordReady && discordReady === false) {
+    return {
+      ok: true,
+      state: 'discord-not-ready',
+      reason: reason || 'discord-not-ready',
+      payload: json,
+    };
+  }
+
+  return {
+    ok: true,
+    state: 'ready',
+    reason,
+    payload: json,
+  };
+}
+
 function parseLocation(value) {
   const text = String(value || '').trim();
   if (!text) return null;
@@ -160,11 +265,17 @@ async function assertStatusOrCanonicalRedirect(
 }
 
 function printCheckOk(label, detail) {
-  console.log(`[smoke] OK: ${label}${detail ? ` (${detail})` : ''}`);
+  console.log(`[smoke] OK: ${label}${detail ? ` (${truncateDetail(detail)})` : ''}`);
 }
 
 function printCheckSkip(label, detail) {
-  console.log(`[smoke] SKIP: ${label}${detail ? ` (${detail})` : ''}`);
+  console.log(`[smoke] SKIP: ${label}${detail ? ` (${truncateDetail(detail)})` : ''}`);
+}
+
+function truncateDetail(detail, maxLength = 220) {
+  const text = String(detail || '').trim();
+  if (!text || text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength - 3)}...`;
 }
 
 function buildOptionalHealthUrl({
@@ -226,6 +337,9 @@ async function main() {
 
   const adminParsed = new URL(adminBaseInput);
   const playerParsed = new URL(playerBaseInput);
+  const deliveryExecutionMode = String(process.env.DELIVERY_EXECUTION_MODE || '')
+    .trim()
+    .toLowerCase();
 
   const adminOrigin = `${adminParsed.protocol}//${adminParsed.host}`;
   const adminPath = trimTrailingSlash(adminParsed.pathname) || '/admin';
@@ -253,6 +367,25 @@ async function main() {
   const adminDiscordClientSecret = String(
     process.env.ADMIN_WEB_SSO_DISCORD_CLIENT_SECRET || '',
   ).trim();
+  const watcherConfigured =
+    Boolean(watcherHealthBase)
+    || String(process.env.SCUM_LOG_PATH || '').trim().length > 0;
+  const watcherEnabledRaw = String(process.env.SCUM_WATCHER_ENABLED || '').trim();
+  const watcherEnabled = watcherEnabledRaw
+    ? envFlag(watcherEnabledRaw, false)
+    : watcherConfigured;
+  const watcherRequired = Boolean(watcherHealthBase)
+    && watcherEnabled
+    && envFlag(process.env.SCUM_WATCHER_REQUIRED, watcherConfigured);
+  const agentModeRequired = deliveryExecutionMode === 'agent';
+  const agentEnabled =
+    Boolean(agentHealthBase)
+    || agentModeRequired
+    || envFlag(process.env.SCUM_CONSOLE_AGENT_ENABLED, false)
+    || String(process.env.SCUM_CONSOLE_AGENT_BASE_URL || '').trim().length > 0;
+  const agentRequired = Boolean(agentHealthBase)
+    && agentEnabled
+    && envFlag(process.env.SCUM_CONSOLE_AGENT_REQUIRED, agentModeRequired);
 
   console.log('[smoke] admin base :', adminBase);
   console.log('[smoke] player base:', playerBase);
@@ -384,29 +517,72 @@ async function main() {
   }
 
   if (botHealthBase) {
-    await assertJsonOk(buildUrl(botHealthBase, '/healthz'), timeoutMs, 'bot healthz');
-    printCheckOk('bot healthz');
+    const botHealth = await assertRuntimeHealth(
+      buildUrl(botHealthBase, '/healthz'),
+      timeoutMs,
+      'bot healthz',
+      { required: true, requireDiscordReady: true },
+    );
+    printCheckOk('bot healthz', botHealth.reason);
   }
   if (workerHealthBase) {
-    await assertJsonOk(buildUrl(workerHealthBase, '/healthz'), timeoutMs, 'worker healthz');
-    printCheckOk('worker healthz');
+    const workerHealth = await assertRuntimeHealth(
+      buildUrl(workerHealthBase, '/healthz'),
+      timeoutMs,
+      'worker healthz',
+      { required: true },
+    );
+    printCheckOk('worker healthz', workerHealth.reason);
   }
   if (watcherHealthBase) {
-    await assertJsonOk(buildUrl(watcherHealthBase, '/healthz'), timeoutMs, 'watcher healthz');
-    printCheckOk('watcher healthz');
+    const watcherHealth = await assertRuntimeHealth(
+      buildUrl(watcherHealthBase, '/healthz'),
+      timeoutMs,
+      'watcher healthz',
+      { required: watcherRequired, allowDisabled: !watcherRequired },
+    );
+    if (watcherHealth.state === 'ready') {
+      printCheckOk('watcher healthz', watcherHealth.reason);
+    } else {
+      printCheckSkip(
+        'watcher healthz',
+        `${watcherHealth.state}${watcherHealth.reason ? ` (${watcherHealth.reason})` : ''}`,
+      );
+    }
   }
   if (agentHealthBase) {
-    await assertJsonOk(buildUrl(agentHealthBase, '/healthz'), timeoutMs, 'console-agent healthz');
-    printCheckOk('console-agent healthz');
+    const agentHealth = await assertRuntimeHealth(
+      buildUrl(agentHealthBase, '/healthz'),
+      timeoutMs,
+      'console-agent healthz',
+      { required: agentRequired, allowDisabled: !agentRequired },
+    );
+    if (agentHealth.state === 'ready') {
+      printCheckOk('console-agent healthz', agentHealth.reason);
+    } else {
+      printCheckSkip(
+        'console-agent healthz',
+        `${agentHealth.state}${agentHealth.reason ? ` (${agentHealth.reason})` : ''}`,
+      );
+    }
   }
 
   console.log('[smoke] PASS');
 }
 
-main().catch((error) => {
-  const cause = error && typeof error === 'object' && error.cause
-    ? ` | cause: ${error.cause.message || String(error.cause)}`
-    : '';
-  console.error('[smoke] FAIL:', `${error.message || error}${cause}`);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    const cause = error && typeof error === 'object' && error.cause
+      ? ` | cause: ${error.cause.message || String(error.cause)}`
+      : '';
+    console.error('[smoke] FAIL:', `${error.message || error}${cause}`);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  assertRuntimeHealth,
+  isLikelyPlaceholder,
+  parseArgs,
+  unwrapHealthPayload,
+};

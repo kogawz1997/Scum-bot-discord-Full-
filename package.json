@@ -1,7 +1,7 @@
 {
   "name": "scum-th-platform",
   "version": "1.0.0",
-  "description": "SCUM TH control plane with Discord bot, admin web, player portal, and delivery runtime",
+  "description": "SCUM TH control plane with Discord bot, admin web, player portal, worker, watcher, and optional console-agent",
   "main": "src/bot.js",
   "scripts": {
     "setup:easy": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-easy.ps1",
@@ -33,7 +33,14 @@
     "register-commands": "node src/register-commands.js",
     "watch-scum": "node src/services/scumLogWatcherRuntime.js",
     "test": "node scripts/run-tests-with-provider.js",
-    "lint": "node scripts/check-js-syntax.js && node scripts/check-text-encoding.js",
+    "test:policy": "node --test test/runtime-profile.test.js test/admin-editable-config.test.js test/check-module-docs.test.js test/post-deploy-smoke.test.js test/readiness-gate.test.js test/portal-runtime.test.js test/portal-auth-runtime.test.js test/admin-tenant-scope.test.js",
+    "lint:syntax": "node scripts/check-js-syntax.js",
+    "lint:text": "node scripts/check-text-encoding.js",
+    "lint:eslint": "eslint .",
+    "check:jsdoc": "node scripts/check-module-docs.js",
+    "format:check": "prettier --check \"*.{json,md,yml,yaml}\" \".github/**/*.{md,yml,yaml}\" \"docs/**/*.md\"",
+    "format:write": "prettier --write \"*.{json,md,yml,yaml}\" \".github/**/*.{md,yml,yaml}\" \"docs/**/*.md\"",
+    "lint": "npm run lint:syntax && npm run lint:text && npm run lint:eslint && npm run check:jsdoc && npm run format:check",
     "check": "npm run lint && npm test",
     "ci:verify": "node scripts/run-ci-verification.js",
     "doctor": "node scripts/doctor.js",
@@ -45,6 +52,7 @@
     "smoke:local-ci": "node scripts/run-local-smoke-stack.js",
     "admin:sso:roles": "node scripts/export-admin-discord-roles.js",
     "security:check": "node scripts/security-check.js",
+    "secret:scan": "node scripts/secret-scan.js",
     "security:scan-secrets": "node scripts/secret-scan.js",
     "security:scan-secrets:staged": "node scripts/secret-scan.js --staged",
     "security:generate-secrets": "node scripts/generate-secrets.js",
@@ -89,7 +97,10 @@
     "discord",
     "bot",
     "scum",
-    "game-server"
+    "game-server",
+    "control-plane",
+    "admin-web",
+    "player-portal"
   ],
   "author": "Taweporn Chok (kogawz1997) <tawepornchok@gmail.com>",
   "license": "SEE LICENSE IN LICENSE.md",
@@ -115,6 +126,10 @@
     "undici": "^6.23.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.23.0",
+    "eslint": "^9.23.0",
+    "globals": "^16.0.0",
+    "prettier": "^3.5.3",
     "prisma": "^5.22.0"
   }
 }

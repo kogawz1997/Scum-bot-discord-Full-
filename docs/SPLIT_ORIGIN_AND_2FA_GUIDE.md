@@ -41,7 +41,7 @@ Notes:
 - add `--with-smoke` to run `smoke:postdeploy` after activation
 - add `--use-existing-scaffold` if you already generated `.env.production.split` files and only want to apply them
 
-## Recommended topology
+## Suggested topology
 
 - Admin: `https://admin.example.com/admin`
 - Player portal: `https://player.example.com`

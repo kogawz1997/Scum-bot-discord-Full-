@@ -1,4 +1,4 @@
-# ADR-0001: Why This Project Uses a Custom SCUM Control Plane
+# ADR-0001: The Project Uses A Custom SCUM Control Plane
 
 ## Status
 
@@ -6,7 +6,8 @@ Accepted
 
 ## Context
 
-โปรเจกต์นี้ไม่ได้เป็นแค่ Discord bot แต่ทำหน้าที่เป็น control plane สำหรับ SCUM server ทั้งก้อน:
+This repository is not only a Discord bot. It operates as a control plane across:
+
 - Discord bot
 - worker
 - watcher
@@ -14,32 +15,29 @@ Accepted
 - player portal
 - console-agent
 
-SCUM delivery runtime มีข้อจำกัดเฉพาะทาง:
-- บางคำสั่งทำผ่าน RCON ได้ แต่บาง flow ต้องอาศัย admin client จริง
-- order debug ต้อง trace ผ่านหลาย process
-- operator ต้องมีหน้า control plane ที่ยังเข้าได้แม้ bot runtime มีปัญหา
+SCUM operations require workflow-specific behavior that generic bot tooling does not cover well:
+
+- some actions are possible over RCON while others need an admin client
+- order debugging needs traceability across multiple runtimes
+- operators need a control surface beyond Discord commands
 
 ## Decision
 
-เราเลือกทำ runtime และ admin surface แบบ custom แทนการพึ่ง bot framework หรือ dashboard framework สำเร็จรูปอย่างเดียว
-
-ส่วนที่ทำ custom เพราะเหตุผลชัดเจน:
-- delivery execution abstraction ต้องแยก `RCON` กับ `agent mode`
-- order timeline / step log / evidence bundle ต้องผูกกับ flow ของเกมจริง
-- restore guardrails, step-up auth, live admin control, และ capability testing ต้อง integrate กันลึก
-- watcher / queue / retry / dead-letter ต้องมี semantics ที่ตรงกับ SCUM operations
+Build the runtime and admin surface as a custom control plane instead of relying only on a generic bot framework or a generic admin dashboard framework.
 
 ## Consequences
 
-ข้อดี:
-- คุม operational flow ได้ละเอียด
-- debug production ได้จาก domain model ที่ตรงกับงานจริง
-- เพิ่ม commercial/admin UX เฉพาะทางได้เร็ว
+Advantages:
 
-ข้อเสีย:
-- maintenance cost สูงกว่า generic bot
-- docs / CI / migration policy ต้องละเอียดกว่าปกติ
-- ต้องระวัง runtime boundary ระหว่าง bot / worker / watcher / web / agent มากขึ้น
+- operational flow can match the SCUM domain closely
+- debugging can use domain-specific evidence and audit trails
+- admin UX can reflect actual runtime boundaries
+
+Costs:
+
+- maintenance cost is higher than a small single-process bot
+- docs, CI, migration policy, and runtime boundaries need more discipline
+- runtime separation between bot, worker, watcher, web, and agent needs stronger review
 
 ## Evidence
 

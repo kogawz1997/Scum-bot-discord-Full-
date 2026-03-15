@@ -1,0 +1,1061 @@
+{
+  "bountyCounter": 97,
+  "bounties": [
+    [
+      1,
+      {
+        "id": 1,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91772926198018517",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      2,
+      {
+        "id": 2,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "191825254575050178",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      3,
+      {
+        "id": 3,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "9177292637847229",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      4,
+      {
+        "id": 4,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "780590665454648924",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      5,
+      {
+        "id": 5,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "9177292663308674",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      6,
+      {
+        "id": 6,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "025090716509031973",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      7,
+      {
+        "id": 7,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91772926682050158",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      8,
+      {
+        "id": 8,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "896808088965424002",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      9,
+      {
+        "id": 9,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91772926873444419",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      10,
+      {
+        "id": 10,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "676396441765038079",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      11,
+      {
+        "id": 11,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91772927417219848",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      12,
+      {
+        "id": 12,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "482762087576125187",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      13,
+      {
+        "id": 13,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91772927513251989",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      14,
+      {
+        "id": 14,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "984131167145358522",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      15,
+      {
+        "id": 15,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "9177292787830183",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      16,
+      {
+        "id": 16,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "589109635030026256",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      17,
+      {
+        "id": 17,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "917729279362384",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      18,
+      {
+        "id": 18,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "295884168105404205",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      19,
+      {
+        "id": 19,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91772928186932186",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      20,
+      {
+        "id": 20,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "792905920076486473",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      21,
+      {
+        "id": 21,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91772928259399633",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      22,
+      {
+        "id": 22,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "165042879592043913",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      23,
+      {
+        "id": 23,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91772928564849640",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      24,
+      {
+        "id": 24,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "063720519745688915",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      25,
+      {
+        "id": 25,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "9177292862895793",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      26,
+      {
+        "id": 26,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "642582373091589302",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      27,
+      {
+        "id": 27,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91772928698937290",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      28,
+      {
+        "id": 28,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "143722806668401411",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      29,
+      {
+        "id": 29,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "9177293327717132",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      30,
+      {
+        "id": 30,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "944138430482564750",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      31,
+      {
+        "id": 31,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91772933411065375",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      32,
+      {
+        "id": 32,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "461809520492135696",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      33,
+      {
+        "id": 33,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91772933471682957",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      34,
+      {
+        "id": 34,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "885893763094293512",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      35,
+      {
+        "id": 35,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91772935820391518",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      36,
+      {
+        "id": 36,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "767662659885798930",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      37,
+      {
+        "id": 37,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91772935897682462",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      38,
+      {
+        "id": 38,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "224820765663726252",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      39,
+      {
+        "id": 39,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "522215005992876345",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      40,
+      {
+        "id": 40,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91772949478065864",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      41,
+      {
+        "id": 41,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "045067028364314629",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      42,
+      {
+        "id": 42,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91772952082387802",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      43,
+      {
+        "id": 43,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "625330354006530461",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      44,
+      {
+        "id": 44,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91772952929266814",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      45,
+      {
+        "id": 45,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "789714670280298213",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      46,
+      {
+        "id": 46,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91772991298465113",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      47,
+      {
+        "id": 47,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "409741766687148168",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      48,
+      {
+        "id": 48,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91772991390473544",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      49,
+      {
+        "id": 49,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "277475982657476775",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      50,
+      {
+        "id": 50,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91772991683506789",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      51,
+      {
+        "id": 51,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "842844898409656862",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      52,
+      {
+        "id": 52,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91772993601529248",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      53,
+      {
+        "id": 53,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "063201387988359333",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      54,
+      {
+        "id": 54,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91772997573519997",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      55,
+      {
+        "id": 55,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "118190648793834206",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      56,
+      {
+        "id": 56,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91772997616817477",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      57,
+      {
+        "id": 57,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "347160880548064975",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      58,
+      {
+        "id": 58,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91772997642099190",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      59,
+      {
+        "id": 59,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "402166663901033002",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      60,
+      {
+        "id": 60,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91772997878565321",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      61,
+      {
+        "id": 61,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "233189084557818561",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      62,
+      {
+        "id": 62,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91772998039355972",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      63,
+      {
+        "id": 63,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "380361929299856142",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      64,
+      {
+        "id": 64,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91772998363154487",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      65,
+      {
+        "id": 65,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "557603859755819235",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      66,
+      {
+        "id": 66,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91773041798018262",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      67,
+      {
+        "id": 67,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "648500973184775779",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      68,
+      {
+        "id": 68,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91773042804686454",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      69,
+      {
+        "id": 69,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "681363224199105865",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      70,
+      {
+        "id": 70,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91773042904689560",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      71,
+      {
+        "id": 71,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91773043157459916",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      72,
+      {
+        "id": 72,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "379859018597890768",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      73,
+      {
+        "id": 73,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91773043191837359",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      74,
+      {
+        "id": 74,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "710361626269527339",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      75,
+      {
+        "id": 75,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91773043352199316",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      76,
+      {
+        "id": 76,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "711330211791874461",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      77,
+      {
+        "id": 77,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91773047887873113",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      78,
+      {
+        "id": 78,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "398552051400354355",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      79,
+      {
+        "id": 79,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91773047931040541",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      80,
+      {
+        "id": 80,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91773047931793862",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      81,
+      {
+        "id": 81,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "714387817260175409",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      82,
+      {
+        "id": 82,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "225488968788020037",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      83,
+      {
+        "id": 83,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91773047972003568",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      84,
+      {
+        "id": 84,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "815247418420992917",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      85,
+      {
+        "id": 85,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91773048058588142",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      86,
+      {
+        "id": 86,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "137229637147139205",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      87,
+      {
+        "id": 87,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91773048086284112",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      88,
+      {
+        "id": 88,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "108646457024245828",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      89,
+      {
+        "id": 89,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91773048111551828",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      90,
+      {
+        "id": 90,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "750202042923894332",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      91,
+      {
+        "id": 91,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "9177305125100290",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      92,
+      {
+        "id": 92,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "445542517307891041",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      93,
+      {
+        "id": 93,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "760896867703077155",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      94,
+      {
+        "id": 94,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "91773070615100156",
+        "status": "active",
+        "claimedBy": null
+      }
+    ],
+    [
+      95,
+      {
+        "id": 95,
+        "targetName": "TargetPlayer",
+        "amount": 777,
+        "createdBy": "808304466062384871",
+        "status": "cancelled",
+        "claimedBy": null
+      }
+    ],
+    [
+      96,
+      {
+        "id": 96,
+        "targetName": "PortalTarget",
+        "amount": 444,
+        "createdBy": "9177320963235190",
+        "status": "active",
+        "claimedBy": null
+      }
+    ]
+  ]
+}

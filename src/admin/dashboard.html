@@ -381,12 +381,12 @@
       gap: 10px;
     }
 
-    .showcase-shell {
+    .overview-shell {
       display: grid;
       gap: 14px;
     }
 
-    .showcase-intro {
+    .overview-intro {
       display: flex;
       justify-content: space-between;
       gap: 14px;
@@ -394,7 +394,7 @@
       align-items: flex-start;
     }
 
-    .showcase-intro p {
+    .overview-intro p {
       margin: 4px 0 0;
       color: var(--muted);
       font-size: 13px;
@@ -402,20 +402,20 @@
       line-height: 1.5;
     }
 
-    .showcase-actions {
+    .overview-actions {
       display: flex;
       gap: 8px;
       flex-wrap: wrap;
       align-items: center;
     }
 
-    .showcase-grid {
+    .overview-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
       gap: 10px;
     }
 
-    .showcase-card {
+    .overview-card {
       border: 1px solid var(--line);
       border-radius: 14px;
       padding: 12px;
@@ -425,40 +425,40 @@
       gap: 8px;
     }
 
-    .showcase-card h3,
-    .showcase-card h4 {
+    .overview-card h3,
+    .overview-card h4 {
       margin: 0;
       font-family: "Teko", sans-serif;
       letter-spacing: 0.28px;
     }
 
-    .showcase-card p {
+    .overview-card p {
       margin: 0;
       color: var(--muted);
       font-size: 12px;
       line-height: 1.45;
     }
 
-    .showcase-kicker {
+    .overview-kicker {
       font-size: 11px;
       letter-spacing: 1px;
       text-transform: uppercase;
       color: var(--accent);
     }
 
-    .showcase-value {
+    .overview-value {
       font-family: "Teko", sans-serif;
       font-size: 28px;
       line-height: 1;
     }
 
-    .showcase-tags {
+    .overview-tags {
       display: flex;
       gap: 6px;
       flex-wrap: wrap;
     }
 
-    .showcase-tag {
+    .overview-tag {
       display: inline-flex;
       align-items: center;
       min-height: 28px;
@@ -471,7 +471,7 @@
       letter-spacing: 0.35px;
     }
 
-    .showcase-list {
+    .overview-list {
       display: grid;
       gap: 6px;
       margin: 0;
@@ -481,7 +481,7 @@
       line-height: 1.45;
     }
 
-    .showcase-flow {
+    .overview-flow {
       display: grid;
       gap: 10px;
       border: 1px solid var(--line);
@@ -491,25 +491,25 @@
       box-shadow: inset 0 0 0 1px rgba(145, 179, 236, 0.08);
     }
 
-    .showcase-flow-head h3,
-    .showcase-flow-head p {
+    .overview-flow-head h3,
+    .overview-flow-head p {
       margin: 0;
     }
 
-    .showcase-flow-head p {
+    .overview-flow-head p {
       margin-top: 4px;
       color: var(--muted);
       font-size: 12px;
       line-height: 1.45;
     }
 
-    .showcase-flow-steps {
+    .overview-flow-steps {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
       gap: 8px;
     }
 
-    .showcase-step {
+    .overview-step {
       border: 1px solid rgba(146, 173, 255, 0.18);
       border-radius: 12px;
       padding: 10px;
@@ -518,19 +518,19 @@
       gap: 4px;
     }
 
-    .showcase-step .idx {
+    .overview-step .idx {
       font-size: 11px;
       color: var(--accent-2);
       text-transform: uppercase;
       letter-spacing: 0.8px;
     }
 
-    .showcase-step strong {
+    .overview-step strong {
       font-size: 14px;
       line-height: 1.15;
     }
 
-    .showcase-step span {
+    .overview-step span {
       color: var(--muted);
       font-size: 12px;
       line-height: 1.35;
@@ -1420,24 +1420,24 @@
       <div id="summary" class="summary"></div>
     </section>
 
-    <section class="panel showcase-shell">
-      <div class="showcase-intro">
+    <section class="panel overview-shell">
+      <div class="overview-intro">
         <div>
-          <h2 class="title">Showcase ระบบ</h2>
-          <p>สรุปของที่ระบบทำได้จริง, จุดแข็งเชิง operations, และ flow ที่ยืนยันใช้งานแล้ว เพื่อให้เห็นภาพรวมของแพลตฟอร์มแบบครบชุดโดยไม่ต้องไล่ทุกแท็บก่อน</p>
+          <h2 class="title">ภาพรวมการตรวจระบบ</h2>
+          <p>สรุปสถานะ runtime, modules, และเส้นทางหลักที่ตรวจได้จากข้อมูลจริงในระบบ เพื่อให้เห็นประเด็นหลักก่อนลงรายละเอียดในแต่ละแท็บ</p>
         </div>
-        <div class="showcase-actions">
-          <button type="button" class="ghost" data-showcase-tab="delivery">เปิดแท็บ Delivery</button>
-          <button type="button" class="ghost" data-showcase-tab="control">เปิดแท็บ Control Panel</button>
-          <button type="button" class="ghost" data-showcase-tab="platform">เปิดแท็บ Platform</button>
-          <button type="button" class="ghost" data-showcase-tab="metrics">เปิดแท็บ Metrics</button>
-          <button type="button" class="ghost" data-showcase-tab="config">เปิดแท็บ Raw Config</button>
-          <button type="button" class="ghost" data-showcase-tab="danger">เปิดแท็บ Restore</button>
+        <div class="overview-actions">
+          <button type="button" class="ghost" data-overview-tab="delivery">เปิดแท็บ Delivery</button>
+          <button type="button" class="ghost" data-overview-tab="control">เปิดแท็บ Control Panel</button>
+          <button type="button" class="ghost" data-overview-tab="platform">เปิดแท็บ Platform</button>
+          <button type="button" class="ghost" data-overview-tab="metrics">เปิดแท็บ Metrics</button>
+          <button type="button" class="ghost" data-overview-tab="config">เปิดแท็บ Raw Config</button>
+          <button type="button" class="ghost" data-overview-tab="danger">เปิดแท็บ Restore</button>
         </div>
       </div>
-      <div id="showcaseHero" class="showcase-grid"></div>
-      <div id="showcaseModules" class="showcase-grid"></div>
-      <div id="showcaseFlow" class="showcase-flow"></div>
+      <div id="overviewHero" class="overview-grid"></div>
+      <div id="overviewModules" class="overview-grid"></div>
+      <div id="overviewFlow" class="overview-flow"></div>
     </section>
 
     <main class="workspace">
@@ -3719,10 +3719,10 @@
     const statusMain = document.getElementById('statusMain');
     const statusSub = document.getElementById('statusSub');
     const summaryEl = document.getElementById('summary');
-    const showcaseHeroEl = document.getElementById('showcaseHero');
-    const showcaseModulesEl = document.getElementById('showcaseModules');
-    const showcaseFlowEl = document.getElementById('showcaseFlow');
-    const showcaseTabButtons = Array.from(document.querySelectorAll('[data-showcase-tab]'));
+    const overviewHeroEl = document.getElementById('overviewHero');
+    const overviewModulesEl = document.getElementById('overviewModules');
+    const overviewFlowEl = document.getElementById('overviewFlow');
+    const overviewTabButtons = Array.from(document.querySelectorAll('[data-overview-tab]'));
     const tableWrap = document.getElementById('tableWrap');
     const rawView = document.getElementById('rawView');
     const auditSummaryEl = document.getElementById('auditSummary');
@@ -4867,7 +4867,7 @@
         updateAuditPresetSharingControls();
         renderAuditCenter();
         renderAuthSecurityCenter();
-        renderShowcasePanel();
+        renderOverviewPanel();
       } else {
         syncAuthFilterInputs();
         updateShopKindUi();
@@ -6187,41 +6187,41 @@
       return Array.isArray(rows) ? rows.length : 0;
     }
 
-    function formatShowcaseNumber(value) {
+    function formatOverviewNumber(value) {
       const numeric = Number(value);
       if (!Number.isFinite(numeric)) return '-';
       return numeric.toLocaleString();
     }
 
-    function renderShowcaseCards(container, cards = [], emptyMessage = 'ยังไม่มีข้อมูล showcase') {
+    function renderOverviewCards(container, cards = [], emptyMessage = 'ยังไม่มีข้อมูลภาพรวม') {
       if (!container) return;
       const items = Array.isArray(cards) ? cards : [];
       if (items.length === 0) {
-        container.innerHTML = `<article class="showcase-card"><p>${escapeHtml(emptyMessage)}</p></article>`;
+        container.innerHTML = `<article class="overview-card"><p>${escapeHtml(emptyMessage)}</p></article>`;
         return;
       }
       container.innerHTML = items.map((card) => {
         const tags = Array.isArray(card?.tags) ? card.tags.filter(Boolean) : [];
         const bullets = Array.isArray(card?.bullets) ? card.bullets.filter(Boolean) : [];
         return [
-          '<article class="showcase-card">',
-          card?.kicker ? `<div class="showcase-kicker">${escapeHtml(String(card.kicker))}</div>` : '',
-          card?.value ? `<div class="showcase-value">${escapeHtml(String(card.value))}</div>` : '',
+          '<article class="overview-card">',
+          card?.kicker ? `<div class="overview-kicker">${escapeHtml(String(card.kicker))}</div>` : '',
+          card?.value ? `<div class="overview-value">${escapeHtml(String(card.value))}</div>` : '',
           card?.title ? `<h3>${escapeHtml(String(card.title))}</h3>` : '',
           card?.description ? `<p>${escapeHtml(String(card.description))}</p>` : '',
           bullets.length
-            ? `<ul class="showcase-list">${bullets.map((item) => `<li>${escapeHtml(String(item))}</li>`).join('')}</ul>`
+            ? `<ul class="overview-list">${bullets.map((item) => `<li>${escapeHtml(String(item))}</li>`).join('')}</ul>`
             : '',
           tags.length
-            ? `<div class="showcase-tags">${tags.map((tag) => `<span class="showcase-tag">${escapeHtml(String(tag))}</span>`).join('')}</div>`
+            ? `<div class="overview-tags">${tags.map((tag) => `<span class="overview-tag">${escapeHtml(String(tag))}</span>`).join('')}</div>`
             : '',
           '</article>',
         ].join('');
       }).join('');
     }
 
-    // Build a concise executive view from live runtime data so the landing section doubles as a product showcase.
-    function buildShowcaseHeroCards() {
+    // Build a concise overview from live runtime data for the landing section.
+    function buildOverviewHeroCards() {
       if (!snapshot && !currentRuntimeSupervisor && !currentDeliveryRuntime) {
         return [
           {
@@ -6248,14 +6248,14 @@
         {
           kicker: 'Runtime Topology',
           value: runtime
-            ? `${formatShowcaseNumber(runtimeCounts.ready || 0)}/${formatShowcaseNumber(runtimeCounts.required || 0)}`
+            ? `${formatOverviewNumber(runtimeCounts.ready || 0)}/${formatOverviewNumber(runtimeCounts.required || 0)}`
             : '-',
           title: 'required runtimes พร้อมทำงาน',
           description: 'ติดตาม bot, worker, watcher, admin web, player portal และ console-agent จาก supervisor ตัวเดียว พร้อมแยก ready / degraded / offline',
           tags: [
             `overall ${runtime?.overall || 'unknown'}`,
-            `offline ${formatShowcaseNumber(runtimeCounts.offline || 0)}`,
-            `degraded ${formatShowcaseNumber(runtimeCounts.degraded || 0)}`,
+            `offline ${formatOverviewNumber(runtimeCounts.offline || 0)}`,
+            `degraded ${formatOverviewNumber(runtimeCounts.degraded || 0)}`,
           ],
         },
         {
@@ -6264,42 +6264,42 @@
           title: 'pipeline ส่งของพร้อมใช้งาน',
           description: 'queue, worker, retry, dead-letter, timeline และ verification policy ถูกรวมให้ดูได้จาก landing panel เดียว',
           tags: [
-            `queue ${formatShowcaseNumber(deliveryRuntime?.queueLength || getDashboardMetricValue('deliveryQueueCount', getSnapshotCount('deliveryQueue')))}`,
-            `dead ${formatShowcaseNumber(deliveryRuntime?.deadLetterCount || getDashboardMetricValue('deliveryDeadLetterCount', getSnapshotCount('deliveryDeadLetters')))}`,
+            `queue ${formatOverviewNumber(deliveryRuntime?.queueLength || getDashboardMetricValue('deliveryQueueCount', getSnapshotCount('deliveryQueue')))}`,
+            `dead ${formatOverviewNumber(deliveryRuntime?.deadLetterCount || getDashboardMetricValue('deliveryDeadLetterCount', getSnapshotCount('deliveryDeadLetters')))}`,
             `verify ${verifyMode}`,
           ],
         },
         {
           kicker: 'Command Lab',
-          value: formatShowcaseNumber(builtin.length + presets.length),
+          value: formatOverviewNumber(builtin.length + presets.length),
           title: 'capability tests + presets',
           description: 'แอดมิน preview, preflight, simulate และทดสอบคำสั่งจริงสำหรับ announce / teleport / spawn ได้จากหน้าเดียว',
           tags: [
-            `${formatShowcaseNumber(builtin.length)} builtin`,
-            `${formatShowcaseNumber(presets.length)} preset`,
+            `${formatOverviewNumber(builtin.length)} builtin`,
+            `${formatOverviewNumber(presets.length)} preset`,
             'dry-run + live test',
           ],
         },
         {
           kicker: 'Platform Layer',
-          value: formatShowcaseNumber(getSnapshotCount('platformTenants')),
+          value: formatOverviewNumber(getSnapshotCount('platformTenants')),
           title: 'tenant / billing / legal / API',
           description: 'มี Platform Center แยกสำหรับ multi-tenant, subscription, license, public API, webhook, marketplace และ agent version management',
           tags: [
-            `tenants ${formatShowcaseNumber(analytics?.tenants?.total || getSnapshotCount('platformTenants'))}`,
-            `subs ${formatShowcaseNumber(analytics?.subscriptions?.active || getSnapshotCount('platformSubscriptions'))}`,
-            `offers ${formatShowcaseNumber(analytics?.marketplace?.offers || getSnapshotCount('platformMarketplaceOffers'))}`,
+            `tenants ${formatOverviewNumber(analytics?.tenants?.total || getSnapshotCount('platformTenants'))}`,
+            `subs ${formatOverviewNumber(analytics?.subscriptions?.active || getSnapshotCount('platformSubscriptions'))}`,
+            `offers ${formatOverviewNumber(analytics?.marketplace?.offers || getSnapshotCount('platformMarketplaceOffers'))}`,
           ],
         },
         {
           kicker: 'Player Surface',
-          value: formatShowcaseNumber(getDashboardMetricValue('walletCount', getSnapshotCount('wallets'))),
+          value: formatOverviewNumber(getDashboardMetricValue('walletCount', getSnapshotCount('wallets'))),
           title: 'wallets บน player portal',
           description: 'ผู้เล่นเข้าดู wallet, purchase history, redeem, profile และ steam binding ได้โดยไม่ต้องผ่านหน้าแอดมิน',
           tags: [
-            `purchases ${formatShowcaseNumber(getDashboardMetricValue('purchaseCount', getSnapshotCount('purchases')))}`,
-            `links ${formatShowcaseNumber(getDashboardMetricValue('linkCount', getSnapshotCount('links')))}`,
-            `vip ${formatShowcaseNumber(getDashboardMetricValue('membershipCount', getSnapshotCount('memberships')))}`,
+            `purchases ${formatOverviewNumber(getDashboardMetricValue('purchaseCount', getSnapshotCount('purchases')))}`,
+            `links ${formatOverviewNumber(getDashboardMetricValue('linkCount', getSnapshotCount('links')))}`,
+            `vip ${formatOverviewNumber(getDashboardMetricValue('membershipCount', getSnapshotCount('memberships')))}`,
           ],
         },
         {
@@ -6310,24 +6310,24 @@
           tags: [
             `status ${restoreState?.status || 'idle'}`,
             `backup ${restoreState?.backup || '-'}`,
-            `alerts ${formatShowcaseNumber(unackedNotifications)} open`,
+            `alerts ${formatOverviewNumber(unackedNotifications)} open`,
           ],
         },
         {
           kicker: 'Operational Evidence',
-          value: formatShowcaseNumber(getDashboardMetricValue('deliveryAuditCount', getSnapshotCount('deliveryAudit'))),
+          value: formatOverviewNumber(getDashboardMetricValue('deliveryAuditCount', getSnapshotCount('deliveryAudit'))),
           title: 'delivery audit records',
           description: 'ทุก order มี timeline, status history, audit และ dead-letter trail ให้ไล่ปัญหาเป็นขั้นแทนการเดาจาก log กระจัดกระจาย',
           tags: [
-            `queue ${formatShowcaseNumber(getDashboardMetricValue('deliveryQueueCount', getSnapshotCount('deliveryQueue')))}`,
-            `dead ${formatShowcaseNumber(getDashboardMetricValue('deliveryDeadLetterCount', getSnapshotCount('deliveryDeadLetters')))}`,
+            `queue ${formatOverviewNumber(getDashboardMetricValue('deliveryQueueCount', getSnapshotCount('deliveryQueue')))}`,
+            `dead ${formatOverviewNumber(getDashboardMetricValue('deliveryDeadLetterCount', getSnapshotCount('deliveryDeadLetters')))}`,
             'timeline + step log',
           ],
         },
       ];
     }
 
-    function buildShowcaseModuleCards() {
+    function buildOverviewModuleCards() {
       const runtime = currentRuntimeSupervisor || snapshot?.runtimeSupervisor || null;
       const deliveryRuntime = currentDeliveryRuntime || snapshot?.deliveryRuntime || null;
       const restoreState = currentBackupRestoreState || snapshot?.backupRestore || null;
@@ -6346,9 +6346,9 @@
             'รองรับ welcome, daily, weekly, wheel และ reward flow',
           ],
           tags: [
-            `${formatShowcaseNumber(getDashboardMetricValue('shopItemCount', getSnapshotCount('shopItems')))} items`,
-            `${formatShowcaseNumber(getDashboardMetricValue('purchaseCount', getSnapshotCount('purchases')))} purchases`,
-            `${formatShowcaseNumber(getDashboardMetricValue('walletCount', getSnapshotCount('wallets')))} wallets`,
+            `${formatOverviewNumber(getDashboardMetricValue('shopItemCount', getSnapshotCount('shopItems')))} items`,
+            `${formatOverviewNumber(getDashboardMetricValue('purchaseCount', getSnapshotCount('purchases')))} purchases`,
+            `${formatOverviewNumber(getDashboardMetricValue('walletCount', getSnapshotCount('wallets')))} wallets`,
           ],
         },
         {
@@ -6362,7 +6362,7 @@
           ],
           tags: [
             `mode ${deliveryRuntime?.executionMode || '-'}`,
-            `queue ${formatShowcaseNumber(queueDepth)}`,
+            `queue ${formatOverviewNumber(queueDepth)}`,
             `verify ${deliveryRuntime?.settings?.verifyMode || deliveryRuntime?.verifyMode || '-'}`,
           ],
         },
@@ -6377,8 +6377,8 @@
           ],
           tags: [
             `overall ${runtime?.overall || 'unknown'}`,
-            `${formatShowcaseNumber(runtime?.counts?.required || 0)} required`,
-            `${formatShowcaseNumber(unackedNotifications)} open alerts`,
+            `${formatOverviewNumber(runtime?.counts?.required || 0)} required`,
+            `${formatOverviewNumber(unackedNotifications)} open alerts`,
           ],
         },
         {
@@ -6399,15 +6399,15 @@
         {
           kicker: 'Module 05',
           title: 'Player Portal',
-          description: 'แยกประสบการณ์ผู้เล่นออกจากแอดมินชัดเจน ทำให้ระบบดูเป็นแพลตฟอร์มเต็มตัวมากกว่าบอทคำสั่ง',
+          description: 'แยกหน้าผู้เล่นออกจากหน้าผู้ดูแลเพื่อลดการปะปนของสิทธิ์และเส้นทางใช้งาน',
           bullets: [
             'Discord login, dashboard, wallet, purchase history และ shop',
             'redeem, profile, steam link และ player-only mode แยกจาก admin',
             'เชื่อมกับ delivery และ reward stack เดียวกับหลังบ้าน',
           ],
           tags: [
-            `${formatShowcaseNumber(getDashboardMetricValue('linkCount', getSnapshotCount('links')))} bindings`,
-            `${formatShowcaseNumber(getDashboardMetricValue('membershipCount', getSnapshotCount('memberships')))} vip`,
+            `${formatOverviewNumber(getDashboardMetricValue('linkCount', getSnapshotCount('links')))} bindings`,
+            `${formatOverviewNumber(getDashboardMetricValue('membershipCount', getSnapshotCount('memberships')))} vip`,
             '/player',
           ],
         },
@@ -6429,7 +6429,7 @@
       ];
     }
 
-    function buildShowcaseFlowSteps() {
+    function buildOverviewFlowSteps() {
       const deliveryRuntime = currentDeliveryRuntime || snapshot?.deliveryRuntime || null;
       const mode = String(deliveryRuntime?.executionMode || 'agent').toUpperCase();
       const verifyMode = deliveryRuntime?.settings?.verifyMode || deliveryRuntime?.verifyMode || 'basic';
@@ -6467,20 +6467,20 @@
       ];
     }
 
-    function renderShowcaseFlow() {
-      if (!showcaseFlowEl) return;
-      const steps = buildShowcaseFlowSteps();
+    function renderOverviewFlow() {
+      if (!overviewFlowEl) return;
+      const steps = buildOverviewFlowSteps();
       if (!steps.length) {
-        showcaseFlowEl.innerHTML = '<div class="showcase-flow-head"><h3>Validated Flow</h3><p>ยังไม่มีข้อมูล flow</p></div>';
+        overviewFlowEl.innerHTML = '<div class="overview-flow-head"><h3>Observed Flow</h3><p>ยังไม่มีข้อมูล flow</p></div>';
         return;
       }
-      showcaseFlowEl.innerHTML = [
-        '<div class="showcase-flow-head">',
-        '<h3>Validated Flow</h3>',
-        '<p>เส้นทางหลักที่ระบบใช้จริงตั้งแต่ผู้เล่นกดซื้อจนถึงการ verify และปิดงานใน delivery timeline</p>',
+      overviewFlowEl.innerHTML = [
+        '<div class="overview-flow-head">',
+        '<h3>Observed Flow</h3>',
+        '<p>เส้นทางหลักที่ระบบบันทึกและแสดงจาก runtime ปัจจุบันตั้งแต่ผู้เล่นกดซื้อจนถึงการตรวจสถานะและปิดงาน</p>',
         '</div>',
-        `<div class="showcase-flow-steps">${steps.map((step) => [
-          '<article class="showcase-step">',
+        `<div class="overview-flow-steps">${steps.map((step) => [
+          '<article class="overview-step">',
           `<div class="idx">${escapeHtml(String(step.index || '-'))}</div>`,
           `<strong>${escapeHtml(String(step.title || '-'))}</strong>`,
           `<span>${escapeHtml(String(step.detail || '-'))}</span>`,
@@ -6489,10 +6489,10 @@
       ].join('');
     }
 
-    function renderShowcasePanel() {
-      renderShowcaseCards(showcaseHeroEl, buildShowcaseHeroCards(), 'ยังไม่มีข้อมูลระบบสำหรับโชว์');
-      renderShowcaseCards(showcaseModulesEl, buildShowcaseModuleCards(), 'ยังไม่มีข้อมูล module');
-      renderShowcaseFlow();
+    function renderOverviewPanel() {
+      renderOverviewCards(overviewHeroEl, buildOverviewHeroCards(), 'ยังไม่มีข้อมูลระบบ');
+      renderOverviewCards(overviewModulesEl, buildOverviewModuleCards(), 'ยังไม่มีข้อมูล module');
+      renderOverviewFlow();
     }
 
     function renderSummary() {
@@ -6501,13 +6501,13 @@
         : buildFallbackSummaryCards();
       if (!metrics.length) {
         summaryEl.innerHTML = '<div class="metric"><div class="k">Summary</div><div class="v">ไม่มีข้อมูล</div></div>';
-        renderShowcasePanel();
+        renderOverviewPanel();
         return;
       }
       summaryEl.innerHTML = metrics
         .map(([k, v]) => `<div class="metric"><div class="k">${escapeHtml(k)}</div><div class="v">${escapeHtml(String(v))}</div></div>`)
         .join('');
-      renderShowcasePanel();
+      renderOverviewPanel();
     }
 
     function renderDeliveryRuntime(data = null) {
@@ -6521,7 +6521,7 @@
       if (!runtime) {
         deliveryRuntimeSummary.innerHTML = '<div class="metric"><div class="k">Delivery</div><div class="v">ไม่มีข้อมูล</div></div>';
         deliveryRuntimeView.textContent = 'ยังไม่มีข้อมูล runtime ส่งของ';
-        renderShowcasePanel();
+        renderOverviewPanel();
         return;
       }
 
@@ -6578,7 +6578,7 @@
         latestAudit: Array.isArray(runtime.latestAudit) ? runtime.latestAudit.slice(0, 5) : [],
       };
       deliveryRuntimeView.textContent = JSON.stringify(detail, null, 2);
-      renderShowcasePanel();
+      renderOverviewPanel();
     }
 
     function renderRuntimeSupervisor(data = null) {
@@ -6595,7 +6595,7 @@
           runtimeSupervisorTable.innerHTML = '<div style="padding:12px; color:#9eb0d9;">ยังไม่มีข้อมูล runtime topology</div>';
         }
         runtimeSupervisorView.textContent = 'ยังไม่มีข้อมูล runtime topology';
-        renderShowcasePanel();
+        renderOverviewPanel();
         return;
       }
 
@@ -6627,7 +6627,7 @@
         'ยังไม่มีข้อมูล runtime topology',
       );
       runtimeSupervisorView.textContent = JSON.stringify(runtime, null, 2);
-      renderShowcasePanel();
+      renderOverviewPanel();
     }
 
     async function refreshRuntimeSupervisor() {
@@ -6660,7 +6660,7 @@
           backupRestorePreviewMeta.innerHTML = '';
         }
         backupRestoreStateView.textContent = 'ยังไม่มีข้อมูล restore';
-        renderShowcasePanel();
+        renderOverviewPanel();
         return;
       }
 
@@ -6695,7 +6695,7 @@
         }
       }
       backupRestoreStateView.textContent = JSON.stringify(preview || restoreState, null, 2);
-      renderShowcasePanel();
+      renderOverviewPanel();
     }
 
     async function refreshBackupRestoreState() {
@@ -7254,7 +7254,7 @@
         reconcileRows,
         'ยังไม่มี reconcile / anti-abuse finding',
       );
-      renderShowcasePanel();
+      renderOverviewPanel();
     }
 
     async function refreshPlatformCenter(options = {}) {
@@ -7591,7 +7591,7 @@
         ? res.data
         : { builtin: [], presets: [] };
       renderDeliveryCapabilityOptions();
-      renderShowcasePanel();
+      renderOverviewPanel();
       return currentDeliveryCapabilities;
     }
 
@@ -7651,7 +7651,7 @@
           }).join('')}</div>`;
         }
       }
-      renderShowcasePanel();
+      renderOverviewPanel();
       return currentAdminNotifications;
     }
 
@@ -10057,9 +10057,9 @@
       });
     }
 
-    showcaseTabButtons.forEach((btn) => {
+    overviewTabButtons.forEach((btn) => {
       btn.addEventListener('click', () => {
-        const tabKey = String(btn.dataset.showcaseTab || '').trim();
+        const tabKey = String(btn.dataset.overviewTab || '').trim();
         if (tabKey) {
           activateTab(tabKey);
         }

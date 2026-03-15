@@ -84,7 +84,7 @@ async function redeemCodeForUser(params = {}) {
   };
 }
 
-function createBountyForUser(params = {}) {
+async function createBountyForUser(params = {}) {
   const createdBy = normalizeText(params.createdBy);
   const targetName = normalizeText(params.targetName);
   const amount = normalizeAmount(params.amount);
@@ -92,7 +92,7 @@ function createBountyForUser(params = {}) {
     return { ok: false, reason: 'invalid-input' };
   }
 
-  const bounty = createBounty({
+  const bounty = await createBounty({
     targetName,
     amount,
     createdBy,

@@ -2,10 +2,7 @@
 
 const crypto = require('node:crypto');
 const {
-  Client,
-  Collection,
   Events,
-  GatewayIntentBits,
   PermissionFlagsBits,
   ChannelType,
   ModalBuilder,
@@ -14,24 +11,29 @@ const {
   ActionRowBuilder,
   MessageFlags,
 } = require('discord.js');
-const fs = require('node:fs');
-const path = require('node:path');
 const config = require('./config');
 const { moderation, roles, channels, economy } = config;
+const { loadRuntimeEnv } = require('./config/loadEnv');
+const { getBotRuntimeProfile } = require('./config/runtimeProfile');
+const {
+  createDiscordClient,
+  loadDiscordCommands,
+} = require('./bootstrap/discordRuntime');
+const { mountAdminWeb } = require('./bootstrap/adminWebMount');
+const { mountScumWebhook } = require('./bootstrap/scumWebhookMount');
+const { registerGracefulShutdown } = require('./bootstrap/gracefulShutdown');
+const { createBotRuntimeContainer } = require('./bootstrap/runtimeContainer');
 const {
   pushMessage,
   getRecentMessages,
 } = require('./store/moderationStore');
 const { createPunishmentEntry } = require('./services/moderationService');
 const { listMemberships, revokeVipForUser } = require('./services/vipService');
-const { startScumServer } = require('./scumWebhookServer');
 const { startRestartScheduler } = require('./services/restartScheduler');
 const { startRentBikeService } = require('./services/rentBikeService');
 const {
   startRconDeliveryWorker,
 } = require('./services/rconDelivery');
-const { startAdminWebServer } = require('./adminWebServer');
-const { startRuntimeHealthServer } = require('./services/runtimeHealthServer');
 const { acquireRuntimeLock, releaseAllRuntimeLocks } = require('./services/runtimeLock');
 const { queueLeaderboardRefreshForGuild } = require('./services/leaderboardPanels');
 const { adminLiveBus } = require('./services/adminLiveBus');
@@ -71,6 +73,7 @@ const {
 } = require('./services/ticketService');
 const { enterGiveawayForUser } = require('./services/giveawayService');
 
+loadRuntimeEnv();
 assertBotEnv();
 const token = process.env.DISCORD_TOKEN;
 let opsAlertRouteBound = false;
@@ -86,81 +89,34 @@ function acquireExclusiveServiceLockOrExit(serviceName) {
   process.exit(1);
 }
 
-function envFlag(name, fallback = true) {
-  const raw = String(process.env[name] || '').trim().toLowerCase();
-  if (!raw) return fallback;
-  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
-}
+const botProfile = getBotRuntimeProfile();
+const client = createDiscordClient();
+loadDiscordCommands(client);
 
-const IS_TEST_RUNTIME = String(process.env.NODE_ENV || '').trim().toLowerCase() === 'test';
-const START_SCUM_WEBHOOK = envFlag('BOT_ENABLE_SCUM_WEBHOOK', !IS_TEST_RUNTIME);
-const START_RESTART_SCHEDULER = envFlag('BOT_ENABLE_RESTART_SCHEDULER', !IS_TEST_RUNTIME);
-const START_ADMIN_WEB = envFlag('BOT_ENABLE_ADMIN_WEB', !IS_TEST_RUNTIME);
-const START_RENT_BIKE_SERVICE = envFlag('BOT_ENABLE_RENTBIKE_SERVICE', !IS_TEST_RUNTIME);
-const START_DELIVERY_WORKER = envFlag('BOT_ENABLE_DELIVERY_WORKER', !IS_TEST_RUNTIME);
-const START_OPS_ALERT_ROUTE = envFlag('BOT_ENABLE_OPS_ALERT_ROUTE', !IS_TEST_RUNTIME);
-const BOT_HEALTH_HOST = String(
-  process.env.BOT_HEALTH_HOST || '127.0.0.1',
-).trim() || '127.0.0.1';
-const BOT_HEALTH_PORT = Math.max(
-  0,
-  Math.trunc(Number(process.env.BOT_HEALTH_PORT || 0)),
-);
-
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-  ],
-});
-
-const botHealthServer = startRuntimeHealthServer({
-  name: 'bot',
-  host: BOT_HEALTH_HOST,
-  port: BOT_HEALTH_PORT,
-  getPayload: () => ({
+const runtimeContainer = createBotRuntimeContainer({
+  client,
+  profile: botProfile,
+  getHealthPayload: () => ({
     now: new Date().toISOString(),
     uptimeSec: Math.round(process.uptime()),
     discordReady: Boolean(client?.isReady && client.isReady()),
     features: {
-      scumWebhook: START_SCUM_WEBHOOK,
-      restartScheduler: START_RESTART_SCHEDULER,
-      adminWeb: START_ADMIN_WEB,
-      rentBikeService: START_RENT_BIKE_SERVICE,
-      deliveryWorker: START_DELIVERY_WORKER,
-      opsAlertRoute: START_OPS_ALERT_ROUTE,
+      scumWebhook: botProfile.features.scumWebhook,
+      restartScheduler: botProfile.features.restartScheduler,
+      adminWeb: botProfile.features.adminWeb,
+      rentBikeService: botProfile.features.rentBikeService,
+      deliveryWorker: botProfile.features.deliveryWorker,
+      opsAlertRoute: botProfile.features.opsAlertRoute,
     },
   }),
 });
+const botHealthServer = runtimeContainer.healthServer;
 
-client.commands = new Collection();
+console.log(
+  `[boot] runtime=bot dbProvider=${botProfile.database.provider} adminWeb=${botProfile.features.adminWeb ? 'on' : 'off'} webhook=${botProfile.features.scumWebhook ? 'on' : 'off'} delivery=${botProfile.features.deliveryWorker ? 'on' : 'off'}`,
+);
 
-const commandsPath = path.join(__dirname, 'commands');
-if (fs.existsSync(commandsPath)) {
-  const commandFiles = fs
-    .readdirSync(commandsPath)
-    .filter((file) => file.endsWith('.js'));
-
-  for (const file of commandFiles) {
-    const filePath = path.join(commandsPath, file);
-    const command = require(filePath);
-    if ('data' in command && 'execute' in command) {
-      client.commands.set(command.data.name, command);
-    } else {
-      console.warn(`คำสั่งที่ไฟล์ ${filePath} ไม่มี "data" หรือ "execute"`);
-    }
-  }
-}
-
-if (START_ADMIN_WEB) {
-  // Keep the admin control plane available even when Discord login is degraded so
-  // operators can still inspect runtime health, config, and incident tooling.
-  startAdminWebServer(client);
-} else {
-  console.log('[boot] skip admin web (BOT_ENABLE_ADMIN_WEB=false)');
-}
+mountAdminWeb(client, botProfile.features.adminWeb);
 
 client.once(Events.ClientReady, async (c) => {
   console.log(`บอทล็อกอินสำเร็จเป็น ${c.user.tag}`);
@@ -175,19 +131,15 @@ client.once(Events.ClientReady, async (c) => {
     console.error('[boot] store warmup failed:', warmup.reason?.message || warmup.reason);
   }
 
-  if (START_SCUM_WEBHOOK) {
-    startScumServer(client);
-  } else {
-    console.log('[boot] skip SCUM webhook (BOT_ENABLE_SCUM_WEBHOOK=false)');
-  }
+  mountScumWebhook(client, botProfile.features.scumWebhook);
 
-  if (START_RESTART_SCHEDULER) {
+  if (botProfile.features.restartScheduler) {
     startRestartScheduler(client);
   } else {
     console.log('[boot] skip restart scheduler (BOT_ENABLE_RESTART_SCHEDULER=false)');
   }
 
-  if (START_RENT_BIKE_SERVICE) {
+  if (botProfile.features.rentBikeService) {
     acquireExclusiveServiceLockOrExit('rent-bike-service');
     startRentBikeService(client).catch((error) => {
       console.error('[rent-bike] failed to start service:', error.message);
@@ -196,14 +148,14 @@ client.once(Events.ClientReady, async (c) => {
     console.log('[boot] skip rent bike service (BOT_ENABLE_RENTBIKE_SERVICE=false)');
   }
 
-  if (START_DELIVERY_WORKER) {
+  if (botProfile.features.deliveryWorker) {
     acquireExclusiveServiceLockOrExit('delivery-worker');
     startRconDeliveryWorker(client);
   } else {
     console.log('[boot] skip delivery worker (BOT_ENABLE_DELIVERY_WORKER=false)');
   }
 
-  if (START_OPS_ALERT_ROUTE) {
+  if (botProfile.features.opsAlertRoute) {
     bindOpsAlertRoute(client);
   } else {
     console.log('[boot] skip ops alert route (BOT_ENABLE_OPS_ALERT_ROUTE=false)');
@@ -1017,29 +969,25 @@ client.on(Events.GuildMemberAdd, async (member) => {
 });
 
 if (require.main === module) {
-client.login(token);
-
-process.once('SIGINT', () => {
-  releaseAllRuntimeLocks();
-});
-process.once('SIGTERM', () => {
-  releaseAllRuntimeLocks();
-});
-process.once('exit', () => {
-  releaseAllRuntimeLocks();
-});
+  client.login(token);
 }
 
-process.once('SIGINT', () => {
-  if (botHealthServer) {
-    botHealthServer.close();
-  }
-});
-
-process.once('SIGTERM', () => {
-  if (botHealthServer) {
-    botHealthServer.close();
-  }
+registerGracefulShutdown({
+  onSigint: () => {
+    releaseAllRuntimeLocks();
+    if (botHealthServer) {
+      botHealthServer.close();
+    }
+  },
+  onSigterm: () => {
+    releaseAllRuntimeLocks();
+    if (botHealthServer) {
+      botHealthServer.close();
+    }
+  },
+  onExit: () => {
+    releaseAllRuntimeLocks();
+  },
 });
 
 module.exports = {

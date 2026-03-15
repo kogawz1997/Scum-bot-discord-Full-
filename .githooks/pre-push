@@ -1,4 +1,4 @@
-#!/bin/sh
-set -eu
+#!/usr/bin/env node
+'use strict';
 
-node scripts/secret-scan.js
+require('../scripts/run-git-hook').runGitHook('pre-push');

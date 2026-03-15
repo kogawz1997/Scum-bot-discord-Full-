@@ -5,12 +5,14 @@
 อัปเดตล่าสุด: **2026-03-15**
 
 ไฟล์ที่ตรวจ
+
 - root runtime: [../.env](../.env)
 - root baseline: [../.env.production.example](../.env.production.example)
 - portal runtime: [../apps/web-portal-standalone/.env](../apps/web-portal-standalone/.env)
 - portal baseline: [../apps/web-portal-standalone/.env.production.example](../apps/web-portal-standalone/.env.production.example)
 
 หมายเหตุ
+
 - เอกสารนี้ไม่แสดงค่า secret จริง
 - สถานะจะสรุปเป็น `ตั้งแล้ว`, `ตั้งแล้วโดยตั้งใจ`, `ควรหมุนตาม policy`, หรือ `ต้องยืนยันหน้างาน`
 
@@ -19,6 +21,7 @@
 ## 1. สรุปภาพรวม
 
 ### Production baseline ที่ปิดแล้ว
+
 - `NODE_ENV=production`
 - `PERSIST_REQUIRE_DB=true`
 - `PERSIST_LEGACY_SNAPSHOTS=false`
@@ -37,12 +40,14 @@
 - PM2 runtime `bot / worker / watcher / web / console-agent` ออนไลน์ครบ
 
 ### สิ่งที่ผ่านการยืนยันแล้ว
+
 - `npm run doctor`
 - `npm run security:check`
 - `npm run readiness:prod`
 - `npm run smoke:postdeploy`
 
 ### ช่องว่างที่ไม่ใช่บั๊ก env แล้ว
+
 - ต้องยืนยัน DNS / reverse proxy / TLS ของโดเมนจริงในหน้างาน
 - ต้องยืนยัน redirect URIs ใน Discord Developer Portal ให้ตรงกับโดเมนจริง
 - ควรมี secret rotation policy ต่อเนื่อง
@@ -53,6 +58,7 @@
 ## 2. สถานะแยกตามกลุ่มสำคัญ
 
 ### 2.1 Core runtime
+
 - `DISCORD_TOKEN`: ตั้งแล้ว, ควรหมุนตาม policy
 - `DISCORD_CLIENT_ID`: ตั้งแล้ว
 - `DISCORD_GUILD_ID`: ตั้งแล้ว
@@ -60,6 +66,7 @@
 - `NODE_ENV`: ตั้งแล้ว
 
 ### 2.2 Admin web hardening
+
 - `ADMIN_WEB_ALLOWED_ORIGINS`: ตั้งแล้ว
 - `ADMIN_WEB_SECURE_COOKIE`: ตั้งแล้ว
 - `ADMIN_WEB_HSTS_ENABLED`: ตั้งแล้ว
@@ -73,6 +80,7 @@
 - `ADMIN_WEB_TOKEN`: ตั้งแล้ว, ควรหมุนตาม policy
 
 ### 2.3 Admin Discord SSO
+
 - `ADMIN_WEB_SSO_DISCORD_ENABLED=true`: ตั้งแล้ว
 - `ADMIN_WEB_SSO_DISCORD_CLIENT_ID`: ตั้งแล้ว
 - `ADMIN_WEB_SSO_DISCORD_CLIENT_SECRET`: ตั้งแล้ว
@@ -81,16 +89,19 @@
 - `ADMIN_WEB_SSO_DEFAULT_ROLE`: ตั้งแล้ว
 
 ผลที่ยืนยันแล้ว
+
 - `/admin/auth/discord/start` redirect ไป Discord ได้จริงใน smoke test
 - admin SSO ใช้งานร่วมกับ split-origin และ 2FA baseline ได้
 
 ข้อแนะนำเพิ่ม
+
 - ถ้าต้องการ map สิทธิ์ละเอียดตาม role จริง ควรตั้ง
   - `ADMIN_WEB_SSO_DISCORD_OWNER_ROLE_IDS`
   - `ADMIN_WEB_SSO_DISCORD_ADMIN_ROLE_IDS`
   - `ADMIN_WEB_SSO_DISCORD_MOD_ROLE_IDS`
 
 ### 2.4 Player portal OAuth
+
 - `WEB_PORTAL_BASE_URL`: ตั้งแล้ว
 - `WEB_PORTAL_LEGACY_ADMIN_URL`: ตั้งแล้ว
 - `WEB_PORTAL_DISCORD_CLIENT_ID`: ตั้งแล้ว
@@ -98,10 +109,12 @@
 - `WEB_PORTAL_DISCORD_CLIENT_SECRET`: ตั้งแล้วโดยตั้งใจให้ว่าง
 
 หมายเหตุ
+
 - portal fallback ไปใช้ `ADMIN_WEB_SSO_DISCORD_CLIENT_SECRET`
 - tooling ปัจจุบันรองรับ pattern นี้ และผ่านทั้ง `security:check`, `readiness:prod`, `smoke:postdeploy`
 
 ### 2.5 Delivery / watcher / agent runtime
+
 - `SCUM_LOG_PATH`: ตั้งแล้ว
 - `SCUM_WEBHOOK_SECRET`: ตั้งแล้ว, ควรหมุนตาม policy
 - `SCUM_CONSOLE_AGENT_TOKEN`: ตั้งแล้ว, ควรหมุนตาม policy
@@ -110,6 +123,7 @@
 - health ports ของ `bot / worker / watcher / agent`: ตั้งแล้ว
 
 ### 2.6 Persistence / topology
+
 - `PERSIST_REQUIRE_DB=true`: ตั้งแล้ว
 - `PERSIST_LEGACY_SNAPSHOTS=false`: ตั้งแล้ว
 - topology แยก `bot` กับ `worker` สำหรับ delivery แล้ว
@@ -122,6 +136,7 @@
 ไม่มี blocker ระดับ env/validation ภายใน repo แล้วสำหรับ production baseline ชุดนี้
 
 สิ่งที่ยังเหลือเป็นงานหน้างานจริง:
+
 - ชี้ DNS ให้ `admin.genz.noah-dns.online` และ `player.genz.noah-dns.online`
 - ใช้ reverse proxy/TLS ตาม [deploy/nginx.player-admin.example.conf](../deploy/nginx.player-admin.example.conf)
 - ลง redirect URIs ใน Discord Developer Portal ให้ตรง
@@ -140,6 +155,7 @@ npm run smoke:postdeploy
 ```
 
 ผลอ้างอิงล่าสุด
+
 - `doctor`: ผ่าน
 - `security:check`: ผ่าน
 - `readiness:prod`: ผ่าน
