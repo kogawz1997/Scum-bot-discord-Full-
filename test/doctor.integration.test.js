@@ -6,8 +6,8 @@ const { spawnSync } = require('node:child_process');
 const projectRoot = path.resolve(__dirname, '..');
 const scriptPath = path.resolve(projectRoot, 'scripts', 'doctor.js');
 
-function runDoctor(env) {
-  return spawnSync(process.execPath, [scriptPath], {
+function runDoctor(env, args = []) {
+  return spawnSync(process.execPath, [scriptPath, ...args], {
     cwd: projectRoot,
     env: {
       ...process.env,
@@ -28,7 +28,7 @@ test('doctor passes valid reverse proxy/origin/port production setup', () => {
     ADMIN_WEB_TRUST_PROXY: 'true',
     ADMIN_WEB_ENFORCE_ORIGIN_CHECK: 'true',
     ADMIN_WEB_ALLOWED_ORIGINS: 'https://admin.example.com',
-    ADMIN_WEB_SSO_DISCORD_ENABLED: '',
+    ADMIN_WEB_SSO_DISCORD_ENABLED: 'false',
     ADMIN_WEB_SSO_DISCORD_CLIENT_ID: '',
     ADMIN_WEB_SSO_DISCORD_CLIENT_SECRET: '',
     ADMIN_WEB_SSO_DISCORD_REDIRECT_URI: '',
@@ -78,6 +78,13 @@ test('doctor fails when player legacy admin origin is not allowed by admin origi
     ADMIN_WEB_TRUST_PROXY: 'true',
     ADMIN_WEB_ENFORCE_ORIGIN_CHECK: 'true',
     ADMIN_WEB_ALLOWED_ORIGINS: 'https://admin.example.com',
+    ADMIN_WEB_SSO_DISCORD_ENABLED: 'false',
+    ADMIN_WEB_SSO_DISCORD_CLIENT_ID: '',
+    ADMIN_WEB_SSO_DISCORD_CLIENT_SECRET: '',
+    ADMIN_WEB_SSO_DISCORD_REDIRECT_URI: '',
+    ADMIN_WEB_SSO_DISCORD_OWNER_ROLE_NAMES: '',
+    ADMIN_WEB_SSO_DISCORD_ADMIN_ROLE_NAMES: '',
+    ADMIN_WEB_SSO_DISCORD_MOD_ROLE_NAMES: '',
     WEB_PORTAL_BASE_URL: 'https://player.example.com',
     WEB_PORTAL_LEGACY_ADMIN_URL: 'https://panel.example.com/admin',
     WEB_PORTAL_DISCORD_CLIENT_ID: '1478651427088760842',
@@ -107,6 +114,13 @@ test('doctor fails when RCON template is missing {command}', () => {
     ADMIN_WEB_TRUST_PROXY: 'true',
     ADMIN_WEB_ENFORCE_ORIGIN_CHECK: 'true',
     ADMIN_WEB_ALLOWED_ORIGINS: 'https://admin.example.com',
+    ADMIN_WEB_SSO_DISCORD_ENABLED: '',
+    ADMIN_WEB_SSO_DISCORD_CLIENT_ID: '',
+    ADMIN_WEB_SSO_DISCORD_CLIENT_SECRET: '',
+    ADMIN_WEB_SSO_DISCORD_REDIRECT_URI: '',
+    ADMIN_WEB_SSO_DISCORD_OWNER_ROLE_NAMES: '',
+    ADMIN_WEB_SSO_DISCORD_ADMIN_ROLE_NAMES: '',
+    ADMIN_WEB_SSO_DISCORD_MOD_ROLE_NAMES: '',
     WEB_PORTAL_BASE_URL: 'https://player.example.com',
     WEB_PORTAL_LEGACY_ADMIN_URL: 'https://admin.example.com/admin',
     WEB_PORTAL_DISCORD_CLIENT_ID: '1478651427088760842',
@@ -204,4 +218,47 @@ test('doctor warns when external admin lacks 2FA and session ttl is too long', (
   assert.match(output, /ADMIN_WEB_SESSION_TTL_HOURS=48/i);
   assert.match(output, /WEB_PORTAL_SESSION_TTL_HOURS=72/i);
   assert.match(output, /fall back to ADMIN_WEB_SSO_DEFAULT_ROLE/i);
+});
+
+test('doctor emits shared JSON report when requested', () => {
+  const result = runDoctor({
+    NODE_ENV: 'production',
+    DATABASE_URL: 'file:./prisma/dev.db',
+    ADMIN_WEB_HOST: '127.0.0.1',
+    ADMIN_WEB_PORT: '3200',
+    ADMIN_WEB_SECURE_COOKIE: 'true',
+    ADMIN_WEB_HSTS_ENABLED: 'true',
+    ADMIN_WEB_TRUST_PROXY: 'true',
+    ADMIN_WEB_ENFORCE_ORIGIN_CHECK: 'true',
+    ADMIN_WEB_ALLOWED_ORIGINS: 'https://admin.example.com',
+    ADMIN_WEB_SSO_DISCORD_ENABLED: 'false',
+    ADMIN_WEB_SSO_DISCORD_CLIENT_ID: '',
+    ADMIN_WEB_SSO_DISCORD_CLIENT_SECRET: '',
+    ADMIN_WEB_SSO_DISCORD_REDIRECT_URI: '',
+    ADMIN_WEB_SSO_DISCORD_OWNER_ROLE_NAMES: '',
+    ADMIN_WEB_SSO_DISCORD_ADMIN_ROLE_NAMES: '',
+    ADMIN_WEB_SSO_DISCORD_MOD_ROLE_NAMES: '',
+    WEB_PORTAL_BASE_URL: 'https://player.example.com',
+    WEB_PORTAL_LEGACY_ADMIN_URL: 'https://admin.example.com/admin',
+    WEB_PORTAL_DISCORD_CLIENT_ID: '1478651427088760842',
+    WEB_PORTAL_DISCORD_CLIENT_SECRET: 'portal-secret-1234567890',
+    WEB_PORTAL_SECURE_COOKIE: 'true',
+    WEB_PORTAL_ENFORCE_ORIGIN_CHECK: 'true',
+    BOT_ENABLE_RENTBIKE_SERVICE: 'false',
+    BOT_ENABLE_DELIVERY_WORKER: 'false',
+    WORKER_ENABLE_RENTBIKE: 'true',
+    WORKER_ENABLE_DELIVERY: 'true',
+    DELIVERY_EXECUTION_MODE: 'rcon',
+    RCON_HOST: '127.0.0.1',
+    RCON_PORT: '27015',
+    RCON_PASSWORD: 'rcon-secret-1234567890',
+    RCON_EXEC_TEMPLATE:
+      'node scripts/rcon-send.js --host {host} --port {port} --password \"{password}\" --command \"{command}\"',
+  }, ['--json']);
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.kind, 'doctor');
+  assert.equal(payload.ok, true);
+  assert.equal(Array.isArray(payload.checks), true);
 });

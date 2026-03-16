@@ -121,7 +121,7 @@ test('scum console agent: window-script preflight exposes actionable stderr deta
         process.cwd(),
         'scripts',
         'send-scum-admin-command.ps1',
-      )}" -WindowTitle "THIS_WINDOW_DOES_NOT_EXIST" -Command "{command}"`,
+      )}" -WindowTitle "THIS_WINDOW_DOES_NOT_EXIST" -WindowProcessName "THIS_PROCESS_DOES_NOT_EXIST" -Command "{command}"`,
       SCUM_CONSOLE_AGENT_COMMAND_TIMEOUT_MS: '8000',
     },
   });
@@ -135,7 +135,7 @@ test('scum console agent: window-script preflight exposes actionable stderr deta
     assert.match(String(preflight.payload.error || ''), /SCUM window not found/i);
     assert.match(
       String(preflight.payload.result?.detail?.stderr || ''),
-      /THIS_WINDOW_DOES_NOT_EXIST/i,
+      /THIS_WINDOW_DOES_NOT_EXIST|THIS_PROCESS_DOES_NOT_EXIST/i,
     );
     assert.match(
       String(preflight.payload.result?.detail?.shellCommand || ''),

@@ -1,12 +1,17 @@
 'use strict';
 
 const { spawnSync } = require('node:child_process');
+const {
+  createValidationCheck,
+  createValidationReport,
+} = require('../src/utils/runtimeStatus');
 
 const args = new Set(process.argv.slice(2));
 const isWindows = process.platform === 'win32';
 const isProduction = args.has('--production');
 const withAudit = args.has('--with-audit');
 const skipSmoke = args.has('--skip-smoke');
+const asJson = args.has('--json');
 
 if (args.has('--help') || args.has('-h')) {
   console.log('Usage: node scripts/readiness-gate.js [--production] [--with-audit] [--skip-smoke]');
@@ -20,25 +25,24 @@ if (args.has('--help') || args.has('-h')) {
   process.exit(0);
 }
 
-function runStep(label, command, commandArgs) {
-  console.log(`\n[readiness] ${label}`);
-  const result = spawnSync(command, commandArgs, {
-    stdio: 'inherit',
-    shell: false,
-  });
-
-  if (result.status !== 0) {
-    console.error(`[readiness] FAILED at: ${label}`);
-    process.exit(result.status || 1);
+function runStep(label, command, commandArgs, options = {}) {
+  if (!options.quiet) {
+    console.log(`\n[readiness] ${label}`);
   }
+  const result = spawnSync(command, commandArgs, {
+    stdio: options.capture ? 'pipe' : 'inherit',
+    shell: false,
+    encoding: options.capture ? 'utf8' : undefined,
+    maxBuffer: options.capture ? 32 * 1024 * 1024 : undefined,
+  });
+  return result;
 }
 
-function runNpm(commandArgs) {
+function runNpm(commandArgs, options = {}) {
   if (isWindows) {
-    runStep(`npm ${commandArgs.join(' ')}`, 'cmd', ['/c', 'npm', ...commandArgs]);
-    return;
+    return runStep(`npm ${commandArgs.join(' ')}`, 'cmd', ['/c', 'npm', ...commandArgs], options);
   }
-  runStep(`npm ${commandArgs.join(' ')}`, 'npm', commandArgs);
+  return runStep(`npm ${commandArgs.join(' ')}`, 'npm', commandArgs, options);
 }
 
 function buildScriptSequence(options = {}) {
@@ -59,21 +63,128 @@ function buildScriptSequence(options = {}) {
   return scripts;
 }
 
+function extractStepDetail(result) {
+  if (result?.error) {
+    return String(result.error.message || result.error);
+  }
+  const lines = String(result?.stderr || result?.stdout || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length === 0) return '';
+  const preferred = lines.findLast((line) => (
+    /\bPASS\b/i.test(line)
+    || /\bFAILED\b/i.test(line)
+    || /\bERROR\b/i.test(line)
+    || /\bWARN\b/i.test(line)
+    || /SECURITY_CHECK:/i.test(line)
+    || /WEB_PORTAL_DOCTOR:/i.test(line)
+    || /^\[smoke\]/i.test(line)
+    || /^\[topology\]/i.test(line)
+    || /^OK:/i.test(line)
+  ));
+  if (preferred) {
+    return preferred;
+  }
+  if (result?.status === 0) {
+    return 'step completed';
+  }
+  return lines.at(-1) || '';
+}
+
+function buildReadinessReport(stepResults, options = {}) {
+  return createValidationReport({
+    kind: 'readiness',
+    checks: stepResults.map((entry) => createValidationCheck(entry.name, {
+      ok: entry.ok,
+      detail: entry.detail || '',
+      data: {
+        exitCode: entry.exitCode,
+      },
+    })),
+    warnings: [],
+    errors: stepResults
+      .filter((entry) => !entry.ok)
+      .map((entry) => `${entry.name} failed${entry.detail ? `: ${entry.detail}` : ''}`),
+    data: {
+      production: options.isProduction === true,
+      withAudit: options.withAudit === true,
+      skipSmoke: options.skipSmoke === true,
+      sequence: stepResults.map((entry) => entry.script),
+    },
+  });
+}
+
 function main() {
   const scripts = buildScriptSequence({
     isProduction,
     skipSmoke,
   });
+  const stepResults = [];
 
   for (const scriptName of scripts) {
-    runNpm(['run', scriptName]);
+    const result = runNpm(['run', scriptName], { capture: asJson, quiet: asJson });
+    const entry = {
+      name: scriptName,
+      script: scriptName,
+      ok: result.status === 0,
+      exitCode: result.status || 0,
+      detail: '',
+    };
+    if (asJson) {
+      entry.detail = extractStepDetail(result);
+    }
+    stepResults.push(entry);
+    if (result.status !== 0) {
+      if (!asJson) {
+        console.error(`[readiness] FAILED at: npm run ${scriptName}`);
+        process.exit(result.status || 1);
+      }
+      const report = buildReadinessReport(stepResults, {
+        isProduction,
+        withAudit,
+        skipSmoke,
+      });
+      console.log(JSON.stringify(report, null, 2));
+      process.exit(result.status || 1);
+    }
   }
 
   if (withAudit) {
-    runNpm(['audit', '--omit=dev']);
+    const result = runNpm(['audit', '--omit=dev'], { capture: asJson, quiet: asJson });
+    const entry = {
+      name: 'audit',
+      script: 'npm audit --omit=dev',
+      ok: result.status === 0,
+      exitCode: result.status || 0,
+      detail: asJson ? extractStepDetail(result) : '',
+    };
+    stepResults.push(entry);
+    if (result.status !== 0) {
+      if (!asJson) {
+        console.error('[readiness] FAILED at: npm audit --omit=dev');
+        process.exit(result.status || 1);
+      }
+      const report = buildReadinessReport(stepResults, {
+        isProduction,
+        withAudit,
+        skipSmoke,
+      });
+      console.log(JSON.stringify(report, null, 2));
+      process.exit(result.status || 1);
+    }
   }
 
-  console.log('\n[readiness] PASS');
+  const report = buildReadinessReport(stepResults, {
+    isProduction,
+    withAudit,
+    skipSmoke,
+  });
+  if (asJson) {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    console.log('\n[readiness] PASS');
+  }
 }
 
 if (require.main === module) {
@@ -81,5 +192,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  buildReadinessReport,
   buildScriptSequence,
+  extractStepDetail,
 };

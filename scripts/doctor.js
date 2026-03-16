@@ -6,6 +6,10 @@ const { loadMergedEnvFiles } = require('../src/utils/loadEnvFiles');
 const { validateCommandTemplate } = require('../src/utils/commandTemplate');
 const { getAdminSsoRoleMappingSummary } = require('../src/utils/adminSsoRoleMapping');
 const { resolveDatabaseRuntime } = require('../src/utils/dbEngine');
+const {
+  createValidationCheck,
+  createValidationReport,
+} = require('../src/utils/runtimeStatus');
 
 const ROOT_DIR = process.cwd();
 const ROOT_ENV_PATH = path.join(ROOT_DIR, '.env');
@@ -20,6 +24,9 @@ loadMergedEnvFiles({
   basePath: ROOT_ENV_PATH,
   overlayPath: fs.existsSync(PORTAL_ENV_PATH) ? PORTAL_ENV_PATH : null,
 });
+
+const args = new Set(process.argv.slice(2));
+const asJson = args.has('--json');
 
 const checks = [];
 const warnings = [];
@@ -570,18 +577,32 @@ runCheck('port matrix has no conflicts', () => {
 });
 
 const failed = checks.filter((c) => !c.ok);
-for (const c of checks) {
-  if (c.ok) {
-    console.log(`OK: ${c.name}`);
-  } else {
-    console.error(`ERROR: ${c.name} -> ${c.error}`);
+const report = createValidationReport({
+  kind: 'doctor',
+  checks: checks.map((entry) => createValidationCheck(entry.name, {
+    ok: entry.ok,
+    detail: entry.error || '',
+  })),
+  warnings,
+  errors: failed.map((entry) => `${entry.name} -> ${entry.error}`),
+});
+
+if (asJson) {
+  console.log(JSON.stringify(report, null, 2));
+} else {
+  for (const c of checks) {
+    if (c.ok) {
+      console.log(`OK: ${c.name}`);
+    } else {
+      console.error(`ERROR: ${c.name} -> ${c.error}`);
+    }
+  }
+
+  for (const warning of warnings) {
+    console.warn(`WARN: ${warning}`);
   }
 }
 
-for (const warning of warnings) {
-  console.warn(`WARN: ${warning}`);
-}
-
-if (failed.length) {
+if (!report.ok) {
   process.exit(1);
 }

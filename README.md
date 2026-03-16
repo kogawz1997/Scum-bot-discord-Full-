@@ -6,7 +6,7 @@
 ![discord.js](https://img.shields.io/badge/discord.js-v14.25.1-5865F2?style=for-the-badge&logo=discord&logoColor=white)
 ![Prisma](https://img.shields.io/badge/Prisma-5.22.0-2D3748?style=for-the-badge&logo=prisma&logoColor=white)
 
-Last updated: **2026-03-15**
+Last updated: **2026-03-16**
 
 SCUM TH Platform is a control plane for a SCUM community stack built around:
 
@@ -25,6 +25,7 @@ If a statement in this repository is not backed by code, tests, CI artifacts, or
 - System status: [PROJECT_HQ.md](./PROJECT_HQ.md)
 - Verification status: [docs/VERIFICATION_STATUS_TH.md](./docs/VERIFICATION_STATUS_TH.md)
 - Evidence map: [docs/EVIDENCE_MAP_TH.md](./docs/EVIDENCE_MAP_TH.md)
+- Visual assets: [docs/assets/README.md](./docs/assets/README.md)
 - Architecture: [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)
 - Runtime topology: [docs/RUNTIME_TOPOLOGY.md](./docs/RUNTIME_TOPOLOGY.md)
 - Worklist: [docs/WORKLIST.md](./docs/WORKLIST.md)
@@ -50,8 +51,12 @@ If a statement in this repository is not backed by code, tests, CI artifacts, or
 - Split origin deployment for admin and player surfaces
 - Runtime env parsing now has a dedicated boundary under `src/config/`
 - Bot and worker startup wiring now lives under `src/bootstrap/`
+- Bot ready/runtime boot logic and community listeners are split under `src/bootstrap/`
 - Admin route groups are partly split under `src/admin/api/` and `src/admin/audit/`
+- Admin page/static loading, request/body parsing, request routing, access/security/control-panel helpers, live/SSE/metrics helpers, and Discord OAuth client calls are split under `src/admin/runtime/` and `src/admin/auth/`
 - Player API groups are partly split under `apps/web-portal-standalone/api/`
+- Player portal page routing and canonical redirects now live under `apps/web-portal-standalone/runtime/portalPageRoutes.js`
+- Player portal page/static loading, response/security helpers, reward/wheel helpers, and HTTP lifecycle wiring now live under `apps/web-portal-standalone/runtime/`
 
 ### Persistence
 
@@ -68,6 +73,13 @@ If a statement in this repository is not backed by code, tests, CI artifacts, or
 - Session revoke, security events, request trail, audit, and restore preview
 - Player portal with wallet, purchase history, redeem, profile, and Steam link flows
 - Control panel for a growing subset of runtime and bot settings
+- Control panel env metadata now classifies keys by policy and apply mode
+- Bot and worker entrypoints are now mostly bootstrap/runtime composition
+- Admin browser shell/common helpers now live under `src/admin/assets/dashboard-shell.js`
+- Admin snapshot/session/form runtime helpers now live under `src/admin/assets/dashboard-runtime.js`
+- Admin browser DOM refs, mutable state, and event binding/startup wiring now live under `src/admin/assets/dashboard-dom.js`, `src/admin/assets/dashboard-state.js`, and `src/admin/assets/dashboard-bindings.js`
+- Admin server lifecycle/bootstrap wiring now lives under `src/admin/runtime/adminServerLifecycleRuntime.js`
+- Player portal helper/auth/route bootstrap wiring now lives under `apps/web-portal-standalone/runtime/portalBootstrapRuntime.js`
 
 ### Operations and observability
 
@@ -75,6 +87,8 @@ If a statement in this repository is not backed by code, tests, CI artifacts, or
 - Notification center and reconcile findings in admin
 - Backup / restore preview and restore guardrails
 - CI artifacts for lint, tests, doctor, security checks, readiness, and smoke
+- `doctor`, `security:check`, `readiness`, `smoke`, and `doctor:topology` now share one machine-readable report contract when called with `--json`
+- `ci:verify` now writes `verification-contract.json` from the shared JSON contract instead of relying only on raw log parsing
 - `lint` now covers syntax, text-encoding scan, ESLint, and formatting checks for repo metadata/docs
 - Policy checks now include runtime profile, control-panel config registry, smoke behavior, readiness sequencing, and module docs
 
@@ -83,8 +97,10 @@ If a statement in this repository is not backed by code, tests, CI artifacts, or
 - Admin web still does not cover every `.env` or config setting
 - Multi-tenant isolation is application-scoped, not database-per-tenant or RLS-backed
 - Restore still relies on a guarded maintenance flow rather than fully automatic rollback
-- Evidence in the repository is still stronger in logs/tests than in screenshots, diagrams, or recorded demos
-- `src/adminWebServer.js` and `apps/web-portal-standalone/server.js` are still larger than the target module split
+- Evidence in the repository is still stronger in logs/tests and exported diagrams than in fully authenticated walkthrough capture
+- Real captures now exist for admin login, authenticated admin dashboard, player landing, player login, player showcase, and a simple demo GIF under `docs/assets/`
+- `src/adminWebServer.js` and `apps/web-portal-standalone/server.js` are now thin bootstrap/composition entrypoints
+- `src/admin/dashboard.html` is now a thinner shell, and the browser runtime is split across focused assets under `src/admin/assets/`, though the surface is still large
 
 ## What Is Runtime-Dependent
 
@@ -98,7 +114,8 @@ If a statement in this repository is not backed by code, tests, CI artifacts, or
 - Admin web is not yet a full replacement for direct env/config editing
 - Tenant isolation is not yet database-level
 - Game-side verification is not inventory-native proof for every case
-- Screenshots, GIFs, and exported architecture images are still missing from the repository
+- Visual evidence is still incomplete: authenticated player portal dashboard views and live in-game delivery evidence are still pending
+- A capture checklist now exists at [docs/assets/CAPTURE_CHECKLIST.md](./docs/assets/CAPTURE_CHECKLIST.md)
 
 ## Evidence
 
@@ -106,6 +123,7 @@ Source of truth for verification status:
 
 - `artifacts/ci/verification-summary.json`
 - `artifacts/ci/verification-summary.md`
+- `artifacts/ci/verification-contract.json`
 - `artifacts/ci/lint.log`
 - `artifacts/ci/test.log`
 - `artifacts/ci/doctor.log`
@@ -124,6 +142,8 @@ npm run security:check
 npm run readiness:prod
 npm run smoke:postdeploy
 ```
+
+Latest local verification on this workstation completed on `2026-03-16` with all commands above passing.
 
 ## Architecture Summary
 

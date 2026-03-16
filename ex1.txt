@@ -1,0 +1,74 @@
+สิ่งที่ควรแก้เพิ่มก่อน
+
+1) ลดการพึ่ง agent mode ให้มากที่สุด
+
+ตอนนี้ระบบใช้งานจริงได้ใน agent mode แต่เอกสารระบุเองว่า #SpawnItem ยังยิงตรงผ่าน RCon ไม่ได้จริง ทำให้ runtime ที่ใช้จริงยังต้องพึ่ง SCUM client window, ห้าม lock Windows session, และยังไวต่อ keyboard/channel state อยู่มาก จุดนี้คือคอขวดตัวจริงของระบบเลย  ￼
+
+ควรทำเพิ่ม
+•ทำ watchdog ระดับ “window/session health” ให้ละเอียดขึ้น
+•ตรวจ active window, admin channel, input focus ก่อนทุกคำสั่งสำคัญ
+•แยก retry policy ตาม error class เช่น focus lost, wrong channel, timeout, spawn not observed
+•ทำ auto-pause runtime เมื่อ session ไม่พร้อม แทนการปล่อยให้คำสั่ง fail ยาวๆ
+
+เหตุผล: ฟีเจอร์เยอะแค่ไหนก็ไม่มีค่า ถ้า execution layer ยังเปราะกับการที่ Windows โดน lock แบบมนุษย์ลืมตัวอีกแล้ว
+
+2) ทำ delivery analytics ให้ลึกกว่านี้
+
+ในเอกสาร “งานที่คุ้มสุดถัดไป” ก็ชี้ไว้แล้วว่าอยากเพิ่ม server-side command log analytics, success/fail by item, retry hotspots และ bulk retry/selective resend  ￼
+
+ควรทำเพิ่ม•dashboard อัตราสำเร็จแยกตาม item / command profile / backend (rcon vs agent)
+•median time per order / per step
+•top failure reasons รายวัน
+•bulk retry แบบเลือกเฉพาะ failed steps ไม่ใช่ resend ทั้ง order•anomaly alert เช่น item ไหน fail พุ่งหลังเกมอัปเดต
+
+เหตุผล: ตอนนี้ระบบ “ทำงานได้” แล้ว ขั้นต่อไปต้องทำให้ “รู้ว่าพังตรงไหนไวมาก” ไม่งั้นจะกลายเป็นเครื่องจักรหรูที่นั่งเดาสาเหตุเองทุกคืน
+
+3) ปิดงาน consistency ของ API และ serialization ให้หมด
+
+เอกสารระบุไว้ตรงๆ ว่ายังมีงาน “ปิด BigInt / serialization / API consistency ทุกจุดที่เหลือ”  ￼
+
+ควรทำเพิ่ม•มาตรฐาน response schema กลางทั้งหมด
+•error envelope เดียวกันทุก service
+•date, bigint, numeric precision แปลงเหมือนกันทุก endpoint
+•validation schema กลางฝั่ง request/response•versioned API contract สำหรับ public platform API
+เหตุผล: ตอนระบบเริ่มมี admin web + portal + webhook + API key แล้ว ความไม่สม่ำเสมอของ API จะกลายเป็นหนี้เทคนิคที่กัดกินเร็วมาก
+
+4) ทำ production deployment ให้ “กดแล้วมั่นใจ” กว่านี้
+
+แม้ baseline production พร้อมพอสมควร และมี checklist ชัดเจน เช่น security:check, readiness:prod, smoke:postdeploy แต่เอกสารก็ยังบอกว่าการ deploy ต้องอิง env จริง, OAuth secrets/tokens จริง ก่อนใช้งานเต็มรูปแบบ  ￼
+
+ควรทำเพิ่ม•preflight ที่ fail-fast ถ้า env สำคัญขาดแม้แต่ตัวเดียว
+•config diff ระหว่าง dev/staging/prod•deploy doctor ที่สรุปเป็นหน้าเดียวว่า “พร้อม / ไม่พร้อม เพราะอะไร”
+•template .env แยก role ชัดเจนมากขึ้น เช่น bot, worker, web, agent•secret rotation playbook ที่ทำตามง่ายจริง
+
+เหตุผล: ปัญหา production ส่วนใหญ่ไม่ใช่อัลกอริทึม มันคือ .env กับ token ที่คนลืมใส่ แล้วโลกก็พังอย่างมีวินัย
+
+5) เพิ่ม test ฝั่ง workflow จริง ไม่ใช่แค่ unit/integration
+
+ตอนนี้มี npm test ผ่าน 119/119, lint ผ่าน, smoke ผ่านบน stack จริงแล้ว ซึ่งถือว่าดีมาก  ￼
+แต่จากลักษณะโปรเจกต์นี้ ความเสี่ยงหนักอยู่ที่ cross-process + game-coupled workflow
+ควรทำเพิ่ม•end-to-end test ของ flow สั่งซื้อ → queue → execute → verify → audit → notify
+•test การ recover หลัง worker restart
+•test dead-letter → bulk retry → audit consistency•test webhook delivery failure / retry / signature validation•test migration rollback กับข้อมูลจริงจำลอง
+
+เหตุผล: unit test ชนะ 119 เคสก็จริง แต่ production ชอบสอบคนละวิชาเสมอ
+
+6) เติม player portal ให้ “จบ” กว่านี้
+เอกสารระบุว่าฝั่ง portal ยังควรเติม missions, notification center, richer profile และ steam binding UX  ￼
+
+ควรทำเพิ่ม•หน้า notification ของผู้เล่นแยกจาก admin alert•delivery history ที่ผู้เล่นอ่านเข้าใจง่ายขึ้น
+•สถานะ order แบบ timeline ที่ไม่ต้องตีความ log•steam binding/rebind flow ที่ปลอดภัยและกู้คืนได้
+•self-service support เช่น resend receipt, claim check, recent failures
+
+เหตุผล: ตอนนี้ระบบฝั่งแอดมินดูแน่นกว่าฝั่งผู้เล่น ถ้าจะโตเป็น product จริง UX ฝั่ง player ต้องไม่เหมือนแค่ “มีหน้าเว็บไว้พอครบเช็กลิสต์”
+
+7) ทำ repo presentation ให้ขายงานได้ง่ายขึ้น
+
+เอกสารก็ยอมรับเองว่าควรเพิ่ม architecture image, screenshots, demo GIF และปรับ repo presentation ให้ขายของได้เร็วขึ้น  ￼
+
+ควรทำเพิ่ม•architecture diagram แบบ 1 รูปจบ
+•screenshot flow สำคัญ 5-8 หน้า•“What problem this solves” แบบชัดๆ ใน README
+•deployment topology ตัวอย่าง
+•feature matrix แยก “works now / partial / planned”
+
+เหตุผล: ตอนนี้ repo ดูมีของ แต่ยังใช้แรงอ่านเยอะ คนส่วนมากขี้เกียจอ่านลึกกว่าหน้าแรกกันทั้งนั้น น่าเศร้าแต่จริง

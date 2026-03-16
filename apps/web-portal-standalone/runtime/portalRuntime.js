@@ -36,6 +36,62 @@ function buildPortalHealthPayload(settings) {
   };
 }
 
+function buildLegacyAdminUrl(legacyAdminUrl, pathname, search) {
+  try {
+    const base = new URL(legacyAdminUrl);
+    const basePath = base.pathname.replace(/\/+$/, '') || '/admin';
+    const suffix = pathname.startsWith('/admin')
+      ? pathname.slice('/admin'.length)
+      : pathname;
+    base.pathname = `${basePath}${suffix || ''}`;
+    base.search = search || '';
+    return base.toString();
+  } catch {
+    return null;
+  }
+}
+
+function buildPortalRuntimeSettings(settings) {
+  return {
+    nodeEnv: settings.nodeEnv,
+    mode: settings.mode,
+    baseUrl: settings.baseUrl,
+    legacyAdminUrl: settings.legacyAdminUrl,
+    sessionCount: Number(settings.sessionCount || 0),
+    oauthStateCount: Number(settings.oauthStateCount || 0),
+    secureCookie: Boolean(settings.secureCookie),
+    cookieName: settings.cookieName,
+    cookiePath: settings.cookiePath,
+    cookieSameSite: settings.cookieSameSite,
+    cookieDomain: settings.cookieDomain || '',
+    enforceOriginCheck: Boolean(settings.enforceOriginCheck),
+    discordOAuthConfigured: Boolean(settings.discordOAuthConfigured),
+    discordClientId: settings.discordClientId || '',
+    discordClientSecret: settings.discordClientSecret || '',
+    discordGuildId: settings.discordGuildId || '',
+    playerOpenAccess: Boolean(settings.playerOpenAccess),
+    requireGuildMember: Boolean(settings.requireGuildMember),
+    allowedDiscordIdsCount: Number(settings.allowedDiscordIdsCount || 0),
+    sessionTtlMs: Number(settings.sessionTtlMs || 0),
+    isProduction: Boolean(settings.isProduction),
+  };
+}
+
+function isDiscordStartPath(pathname) {
+  return pathname === '/auth/discord/start' || pathname === '/admin/auth/discord/start';
+}
+
+function isDiscordCallbackPath(pathname, redirectPath = '/auth/discord/callback') {
+  const normalizedPath = String(redirectPath || '/auth/discord/callback').startsWith('/')
+    ? String(redirectPath || '/auth/discord/callback')
+    : `/${String(redirectPath || '/auth/discord/callback')}`;
+  return (
+    pathname === '/auth/discord/callback'
+    || pathname === '/admin/auth/discord/callback'
+    || pathname === normalizedPath
+  );
+}
+
 function buildPortalStartupValidation(settings) {
   const errors = [];
   const warnings = [];
@@ -170,7 +226,11 @@ function printPortalStartupHints(settings, logger = console) {
 }
 
 module.exports = {
+  buildLegacyAdminUrl,
   buildPortalHealthPayload,
+  buildPortalRuntimeSettings,
   buildPortalStartupValidation,
+  isDiscordCallbackPath,
+  isDiscordStartPath,
   printPortalStartupHints,
 };

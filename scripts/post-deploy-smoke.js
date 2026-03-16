@@ -2,6 +2,13 @@
 
 const path = require('node:path');
 const { loadMergedEnvFiles } = require('../src/utils/loadEnvFiles');
+const {
+  classifyRuntimeStatus,
+  createValidationCheck,
+  createValidationReport,
+  summarizeRuntimeReason,
+  unwrapRuntimePayload,
+} = require('../src/utils/runtimeStatus');
 
 const DEFAULT_TIMEOUT_MS = 10000;
 
@@ -110,103 +117,18 @@ async function assertJsonOk(url, timeoutMs, label) {
   }
 }
 
-function unwrapHealthPayload(payload) {
-  if (
-    payload
-    && typeof payload === 'object'
-    && payload.data
-    && typeof payload.data === 'object'
-    && !Array.isArray(payload.data)
-  ) {
-    return payload.data;
-  }
-  return payload && typeof payload === 'object' ? payload : {};
-}
-
-function summarizeHealthReason(payload) {
-  const data = unwrapHealthPayload(payload);
-  return String(
-    data.reason
-      || payload.reason
-      || data.statusMessage
-      || payload.statusMessage
-      || data.error
-      || payload.error
-      || data.statusCode
-      || payload.statusCode
-      || data.status
-      || payload.status
-      || '',
-  ).trim();
-}
-
 async function assertRuntimeHealth(url, timeoutMs, label, options = {}) {
-  const required = options.required !== false;
-  const allowDisabled = options.allowDisabled === true;
-  const requireDiscordReady = options.requireDiscordReady === true;
-
   const res = await fetchWithTimeout(url, timeoutMs);
   assertStatus(res, [200], label);
   const json = await res.json().catch(() => null);
   if (!json || json.ok !== true) {
     throw new Error(`${label} expected JSON { ok: true }`);
   }
-
-  const data = unwrapHealthPayload(json);
-  const rawStatus = String(data.status || json.status || '').trim().toLowerCase();
-  const ready =
-    typeof data.ready === 'boolean'
-      ? data.ready
-      : (typeof json.ready === 'boolean' ? json.ready : null);
-  const discordReady =
-    typeof data.discordReady === 'boolean'
-      ? data.discordReady
-      : (typeof json.discordReady === 'boolean' ? json.discordReady : null);
-  const reason = summarizeHealthReason(json);
-
-  if (rawStatus === 'disabled') {
-    if (required && !allowDisabled) {
-      throw new Error(`${label} is disabled${reason ? ` (${reason})` : ''}`);
-    }
-    return {
-      ok: true,
-      state: 'disabled',
-      reason,
-      payload: json,
-    };
+  const classified = classifyRuntimeStatus(json, options);
+  if (!classified.ok) {
+    throw new Error(`${label} is ${classified.state || 'not-ready'}${classified.reason ? ` (${classified.reason})` : ''}`);
   }
-
-  if (required) {
-    if (ready === false || rawStatus === 'degraded' || rawStatus === 'error' || rawStatus === 'offline' || rawStatus === 'not-configured') {
-      throw new Error(`${label} is ${rawStatus || 'not-ready'}${reason ? ` (${reason})` : ''}`);
-    }
-    if (requireDiscordReady && discordReady === false) {
-      throw new Error(`${label} is not Discord-ready${reason ? ` (${reason})` : ''}`);
-    }
-  } else if (ready === false || rawStatus === 'degraded' || rawStatus === 'error' || rawStatus === 'offline' || rawStatus === 'not-configured') {
-    return {
-      ok: true,
-      state: rawStatus || 'not-ready',
-      reason,
-      payload: json,
-    };
-  }
-
-  if (!required && requireDiscordReady && discordReady === false) {
-    return {
-      ok: true,
-      state: 'discord-not-ready',
-      reason: reason || 'discord-not-ready',
-      payload: json,
-    };
-  }
-
-  return {
-    ok: true,
-    state: 'ready',
-    reason,
-    payload: json,
-  };
+  return classified;
 }
 
 function parseLocation(value) {
@@ -296,6 +218,7 @@ function buildOptionalHealthUrl({
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  const asJson = args.json === 'true';
   if (args.help || args.h) {
     console.log('Usage: node scripts/post-deploy-smoke.js [--admin-base URL] [--player-base URL] [--timeout-ms N] [--bot-health-url URL] [--worker-health-url URL] [--watcher-health-url URL] [--agent-health-url URL]');
     process.exit(0);
@@ -387,20 +310,59 @@ async function main() {
     && agentEnabled
     && envFlag(process.env.SCUM_CONSOLE_AGENT_REQUIRED, agentModeRequired);
 
-  console.log('[smoke] admin base :', adminBase);
-  console.log('[smoke] player base:', playerBase);
-  console.log('[smoke] timeout ms :', timeoutMs);
-  if (botHealthBase) console.log('[smoke] bot health  :', botHealthBase);
-  if (workerHealthBase) console.log('[smoke] worker health:', workerHealthBase);
-  if (watcherHealthBase) console.log('[smoke] watcher health:', watcherHealthBase);
-  if (agentHealthBase) console.log('[smoke] agent health :', agentHealthBase);
+  if (!asJson) {
+    console.log('[smoke] admin base :', adminBase);
+    console.log('[smoke] player base:', playerBase);
+    console.log('[smoke] timeout ms :', timeoutMs);
+    if (botHealthBase) console.log('[smoke] bot health  :', botHealthBase);
+    if (workerHealthBase) console.log('[smoke] worker health:', workerHealthBase);
+    if (watcherHealthBase) console.log('[smoke] watcher health:', watcherHealthBase);
+    if (agentHealthBase) console.log('[smoke] agent health :', agentHealthBase);
+  }
+
+  const checks = [];
+  const errors = [];
+
+  function recordCheck(name, options = {}) {
+    checks.push(createValidationCheck(name, options));
+  }
+
+  function ok(name, detail = '') {
+    recordCheck(name, { ok: true, detail });
+    if (!asJson) {
+      printCheckOk(name, detail);
+    }
+  }
+
+  function skip(name, detail = '') {
+    recordCheck(name, { status: 'skipped', detail });
+    if (!asJson) {
+      printCheckSkip(name, detail);
+    }
+  }
+
+  function buildSmokeReport() {
+    return createValidationReport({
+      kind: 'smoke',
+      checks,
+      errors,
+      data: {
+        adminBase,
+        playerBase,
+        botHealthBase,
+        workerHealthBase,
+        watcherHealthBase,
+        agentHealthBase,
+      },
+    });
+  }
 
   await assertJsonOk(buildUrl(adminOrigin, '/healthz'), timeoutMs, 'admin healthz');
-  printCheckOk('admin healthz');
+  ok('admin healthz');
 
   const adminLoginRes = await fetchWithTimeout(buildUrl(adminBase, '/login'), timeoutMs);
   assertStatus(adminLoginRes, [200], 'admin login page');
-  printCheckOk('admin login page');
+  ok('admin login page');
 
   const playerHealthz = await assertJsonOkOrCanonicalRedirect(
     buildUrl(playerBase, '/healthz'),
@@ -409,7 +371,7 @@ async function main() {
     expectedPlayerCanonicalBase,
     '/healthz',
   );
-  printCheckOk(
+  ok(
     'player healthz',
     playerHealthz.mode === 'canonical-redirect'
       ? `canonical redirect -> ${String(playerHealthz.res.headers.get('location') || '')}`
@@ -424,7 +386,7 @@ async function main() {
     expectedPlayerCanonicalBase,
     '/player/login',
   );
-  printCheckOk(
+  ok(
     'player login page',
     playerLogin.mode === 'canonical-redirect'
       ? `canonical redirect -> ${String(playerLogin.res.headers.get('location') || '')}`
@@ -445,7 +407,7 @@ async function main() {
   ) {
     throw new Error(`player root redirect expected /player but got ${rootLocation || '(empty)'}`);
   }
-  printCheckOk('player root redirect', rootLocation);
+  ok('player root redirect', rootLocation);
 
   const legacyRedirectRes = await fetchWithTimeout(buildUrl(playerBase, '/admin'), timeoutMs);
   assertStatus(legacyRedirectRes, [301, 302, 307, 308], 'legacy admin redirect');
@@ -455,7 +417,7 @@ async function main() {
       `legacy admin redirect expected prefix ${expectedLegacyAdmin} but got ${legacyLocation || '(empty)'}`,
     );
   }
-  printCheckOk('legacy admin redirect', legacyLocation);
+  ok('legacy admin redirect', legacyLocation);
 
   const meRes = await assertStatusOrCanonicalRedirect(
     buildUrl(playerBase, '/player/api/me'),
@@ -465,7 +427,7 @@ async function main() {
     expectedPlayerCanonicalBase,
     '/player/api/me',
   );
-  printCheckOk(
+  ok(
     'player api auth gate',
     meRes.mode === 'canonical-redirect'
       ? `canonical redirect -> ${String(meRes.res.headers.get('location') || '')}`
@@ -490,9 +452,9 @@ async function main() {
     ) {
       throw new Error(`player oauth start expected redirect to Discord but got ${location || '(empty)'}`);
     }
-    printCheckOk('player oauth start', location);
+    ok('player oauth start', location);
   } else {
-    printCheckSkip('player oauth start', 'Discord OAuth secret/client id not configured');
+    skip('player oauth start', 'Discord OAuth secret/client id not configured');
   }
 
   if (
@@ -511,9 +473,9 @@ async function main() {
     if (!location.startsWith('https://discord.com/')) {
       throw new Error(`admin oauth start expected redirect to Discord but got ${location || '(empty)'}`);
     }
-    printCheckOk('admin oauth start', location);
+    ok('admin oauth start', location);
   } else {
-    printCheckSkip('admin oauth start', 'Admin Discord SSO is disabled or incomplete');
+    skip('admin oauth start', 'Admin Discord SSO is disabled or incomplete');
   }
 
   if (botHealthBase) {
@@ -523,7 +485,7 @@ async function main() {
       'bot healthz',
       { required: true, requireDiscordReady: true },
     );
-    printCheckOk('bot healthz', botHealth.reason);
+    ok('bot healthz', botHealth.reason);
   }
   if (workerHealthBase) {
     const workerHealth = await assertRuntimeHealth(
@@ -532,7 +494,7 @@ async function main() {
       'worker healthz',
       { required: true },
     );
-    printCheckOk('worker healthz', workerHealth.reason);
+    ok('worker healthz', workerHealth.reason);
   }
   if (watcherHealthBase) {
     const watcherHealth = await assertRuntimeHealth(
@@ -542,9 +504,9 @@ async function main() {
       { required: watcherRequired, allowDisabled: !watcherRequired },
     );
     if (watcherHealth.state === 'ready') {
-      printCheckOk('watcher healthz', watcherHealth.reason);
+      ok('watcher healthz', watcherHealth.reason);
     } else {
-      printCheckSkip(
+      skip(
         'watcher healthz',
         `${watcherHealth.state}${watcherHealth.reason ? ` (${watcherHealth.reason})` : ''}`,
       );
@@ -558,24 +520,41 @@ async function main() {
       { required: agentRequired, allowDisabled: !agentRequired },
     );
     if (agentHealth.state === 'ready') {
-      printCheckOk('console-agent healthz', agentHealth.reason);
+      ok('console-agent healthz', agentHealth.reason);
     } else {
-      printCheckSkip(
+      skip(
         'console-agent healthz',
         `${agentHealth.state}${agentHealth.reason ? ` (${agentHealth.reason})` : ''}`,
       );
     }
   }
 
-  console.log('[smoke] PASS');
+  const report = buildSmokeReport();
+  if (asJson) {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    console.log('[smoke] PASS');
+  }
+  return report;
 }
 
 if (require.main === module) {
   main().catch((error) => {
+    const args = parseArgs(process.argv.slice(2));
+    const asJson = args.json === 'true';
     const cause = error && typeof error === 'object' && error.cause
       ? ` | cause: ${error.cause.message || String(error.cause)}`
       : '';
-    console.error('[smoke] FAIL:', `${error.message || error}${cause}`);
+    const report = createValidationReport({
+      kind: 'smoke',
+      checks: [],
+      errors: [`${error.message || error}${cause}`],
+    });
+    if (asJson) {
+      console.log(JSON.stringify(report, null, 2));
+    } else {
+      console.error('[smoke] FAIL:', `${error.message || error}${cause}`);
+    }
     process.exit(1);
   });
 }
@@ -584,5 +563,5 @@ module.exports = {
   assertRuntimeHealth,
   isLikelyPlaceholder,
   parseArgs,
-  unwrapHealthPayload,
+  unwrapHealthPayload: unwrapRuntimePayload,
 };

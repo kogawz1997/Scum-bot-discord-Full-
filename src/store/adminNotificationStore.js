@@ -27,6 +27,39 @@ function createId(prefix = 'admin-note') {
   return `${prefix}-${suffix}`;
 }
 
+function sleepMs(delayMs) {
+  if (!Number.isFinite(delayMs) || delayMs <= 0) return;
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Math.trunc(delayMs));
+}
+
+function replaceFileWithRetry(tmpPath, targetPath) {
+  let lastError = null;
+  for (const delayMs of [0, 20, 80, 160]) {
+    try {
+      if (delayMs > 0) {
+        sleepMs(delayMs);
+      }
+      fs.renameSync(tmpPath, targetPath);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (!['EPERM', 'EBUSY'].includes(String(error && error.code || ''))) {
+        throw error;
+      }
+    }
+  }
+
+  if (lastError && ['EPERM', 'EBUSY'].includes(String(lastError.code || ''))) {
+    fs.copyFileSync(tmpPath, targetPath);
+    fs.unlinkSync(tmpPath);
+    return;
+  }
+
+  if (lastError) {
+    throw lastError;
+  }
+}
+
 function normalizeNotification(entry = {}) {
   if (!entry || typeof entry !== 'object') return null;
   const createdAt = entry.createdAt ? new Date(entry.createdAt) : new Date();
@@ -64,7 +97,7 @@ function queueWrite(work, label) {
 function writeSnapshotToDisk() {
   const tmpPath = `${FILE_PATH}.tmp`;
   fs.writeFileSync(tmpPath, JSON.stringify(notifications, null, 2), 'utf8');
-  fs.renameSync(tmpPath, FILE_PATH);
+  replaceFileWithRetry(tmpPath, FILE_PATH);
 }
 
 async function hydrateFromDisk() {

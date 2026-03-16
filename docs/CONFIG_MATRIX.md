@@ -1,6 +1,6 @@
 # Config Matrix
 
-Last updated: **2026-03-15**
+Last updated: **2026-03-16**
 
 This document is the operator-facing matrix for core configuration. It is not a complete dump of every env key. For the full list, see [ENV_REFERENCE_TH.md](./ENV_REFERENCE_TH.md).
 
@@ -83,7 +83,12 @@ This document is the operator-facing matrix for core configuration. It is not a 
 | `ADMIN_WEB_2FA_SECRET`                | Yes      | Yes             | admin web | no-ui    | secret                         |
 | `ADMIN_WEB_STEP_UP_ENABLED`           | Yes      | Yes             | admin web | restart  | should be `true` in production |
 | `ADMIN_WEB_SSO_DISCORD_ENABLED`       | Optional | No              | admin web | restart  | SSO feature flag               |
+| `ADMIN_WEB_SSO_DISCORD_CLIENT_ID`     | Optional | Yes             | admin web | restart  | OAuth client id                |
 | `ADMIN_WEB_SSO_DISCORD_CLIENT_SECRET` | Optional | Yes             | admin web | no-ui    | secret                         |
+| `ADMIN_WEB_SSO_DISCORD_GUILD_ID`      | Optional | Yes             | admin web | restart  | guild scope for SSO            |
+| `ADMIN_WEB_SECURE_COOKIE`             | Yes      | Yes             | admin web | restart  | should be `true` in production |
+| `ADMIN_WEB_ENFORCE_ORIGIN_CHECK`      | Yes      | Yes             | admin web | restart  | should be `true` in production |
+| `ADMIN_WEB_ALLOWED_ORIGINS`           | Optional | Yes             | admin web | restart  | comma-separated allowlist      |
 
 ## Player Portal
 
@@ -94,8 +99,10 @@ This document is the operator-facing matrix for core configuration. It is not a 
 | `WEB_PORTAL_BASE_URL`              | Yes      | Yes             | web     | restart  | canonical public URL           |
 | `WEB_PORTAL_DISCORD_CLIENT_ID`     | Optional | Yes             | web     | no-ui    | OAuth                          |
 | `WEB_PORTAL_DISCORD_CLIENT_SECRET` | Optional | Yes             | web     | no-ui    | secret                         |
+| `WEB_PORTAL_DISCORD_GUILD_ID`      | Optional | Yes             | web     | restart  | guild membership enforcement   |
 | `WEB_PORTAL_SECURE_COOKIE`         | Yes      | Yes             | web     | restart  | should be `true` in production |
 | `WEB_PORTAL_ENFORCE_ORIGIN_CHECK`  | Yes      | Yes             | web     | restart  | should be `true` in production |
+| `WEB_PORTAL_COOKIE_SAMESITE`       | Optional | Yes             | web     | restart  | cookie isolation policy        |
 
 ## Current Admin UI Coverage
 
@@ -103,6 +110,7 @@ Current state:
 
 - some runtime, bot, delivery, and feature settings are editable through admin UI
 - some env-backed settings can be edited but still require restart
+- admin env metadata now covers SSO role mapping, login/rate-limit settings, cookie/origin policy, persistence flags, watcher health settings, agent tuning, and portal OAuth/map settings
 - secrets and low-level bind/topology settings remain env-only by design
 
 Use this rule for review:

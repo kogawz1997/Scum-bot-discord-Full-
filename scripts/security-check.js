@@ -5,6 +5,10 @@ const { loadMergedEnvFiles } = require('../src/utils/loadEnvFiles');
 const { validateCommandTemplate } = require('../src/utils/commandTemplate');
 const { getAdminSsoRoleMappingSummary } = require('../src/utils/adminSsoRoleMapping');
 const { resolveDatabaseRuntime } = require('../src/utils/dbEngine');
+const {
+  createValidationCheck,
+  createValidationReport,
+} = require('../src/utils/runtimeStatus');
 
 const ROOT_DIR = process.cwd();
 const ROOT_ENV_PATH = path.join(ROOT_DIR, '.env');
@@ -20,6 +24,9 @@ loadMergedEnvFiles({
   basePath: ROOT_ENV_PATH,
   overlayPath: hasPortalEnvFile ? PORTAL_ENV_PATH : null,
 });
+
+const args = new Set(process.argv.slice(2));
+const asJson = args.has('--json');
 
 function isTruthy(value) {
   const text = String(value || '').trim().toLowerCase();
@@ -411,7 +418,37 @@ function run() {
     );
   }
 
-  if (errors.length > 0) {
+  const report = createValidationReport({
+    kind: 'security-check',
+    checks: [
+      createValidationCheck('discord token configured', {
+        ok: !errors.some((entry) => entry.includes('DISCORD_TOKEN')),
+      }),
+      createValidationCheck('database url configured', {
+        ok: !errors.some((entry) => entry.includes('DATABASE_URL')),
+      }),
+      createValidationCheck('admin web hardening baseline', {
+        status: warnings.some((entry) => entry.includes('ADMIN_WEB_'))
+          ? 'warning'
+          : errors.some((entry) => entry.includes('ADMIN_WEB_'))
+            ? 'failed'
+            : 'pass',
+      }),
+      createValidationCheck('agent execution template safety', {
+        status:
+          errors.some((entry) => entry.includes('SCUM_CONSOLE_AGENT_EXEC_TEMPLATE'))
+          || errors.some((entry) => entry.includes('SCUM_CONSOLE_AGENT_TOKEN'))
+            ? 'failed'
+            : 'pass',
+      }),
+    ],
+    warnings,
+    errors,
+  });
+
+  if (asJson) {
+    console.log(JSON.stringify(report, null, 2));
+  } else if (errors.length > 0) {
     console.error('SECURITY_CHECK: FAILED');
     for (const line of errors) {
       console.error(`ERROR: ${line}`);
@@ -422,14 +459,25 @@ function run() {
     process.exit(1);
   }
 
-  if (warnings.length > 0) {
+  if (!asJson && warnings.length > 0) {
     console.warn('SECURITY_CHECK: PASSED with warnings');
     for (const line of warnings) {
       console.warn(`WARN: ${line}`);
     }
-  } else {
+  } else if (!asJson) {
     console.log('SECURITY_CHECK: PASSED');
+  }
+
+  return report;
+}
+
+if (require.main === module) {
+  const report = run();
+  if (!report.ok) {
+    process.exit(1);
   }
 }
 
-run();
+module.exports = {
+  run,
+};

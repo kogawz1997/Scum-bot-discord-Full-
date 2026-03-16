@@ -3,6 +3,10 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { loadMergedEnvFiles } = require('../src/utils/loadEnvFiles');
+const {
+  createValidationCheck,
+  createValidationReport,
+} = require('../src/utils/runtimeStatus');
 
 const ROOT_DIR = process.cwd();
 const ROOT_ENV_PATH = path.join(ROOT_DIR, '.env');
@@ -183,7 +187,7 @@ function evaluateTopology() {
     errors.push('DELIVERY_EXECUTION_MODE=agent requires SCUM_CONSOLE_AGENT_TOKEN');
   }
 
-  return {
+  const report = {
     mode: topology,
     isProduction,
     roles: {
@@ -206,6 +210,32 @@ function evaluateTopology() {
     warnings,
     errors,
     status: errors.length > 0 ? 'failed' : warnings.length > 0 ? 'warning' : 'pass',
+  };
+
+  return {
+    ...report,
+    kind: 'topology',
+    ok: report.errors.length === 0,
+    summary:
+      report.errors.length > 0
+        ? `${report.mode}: ${report.errors.length} errors`
+        : report.warnings.length > 0
+          ? `${report.mode}: ${report.warnings.length} warnings`
+          : `${report.mode}: topology checks passed`,
+    checks: [
+      createValidationCheck('duplicate rent bike service overlap', {
+        ok: !errors.some((entry) => entry.includes('Duplicate rent bike service detected')),
+      }),
+      createValidationCheck('duplicate delivery worker overlap', {
+        ok: !errors.some((entry) => entry.includes('Duplicate delivery worker detected')),
+      }),
+      createValidationCheck('production split topology constraints', {
+        status:
+          isProduction && errors.some((entry) => entry.includes('Production split topology'))
+            ? 'failed'
+            : 'pass',
+      }),
+    ],
   };
 }
 
@@ -236,9 +266,29 @@ function printTextReport(report) {
 
 function main() {
   const report = evaluateTopology();
+  const contractReport = createValidationReport({
+    kind: 'topology',
+    status: report.status,
+    summary: report.summary,
+    checks: report.checks,
+    warnings: report.warnings,
+    errors: report.errors,
+    data: {
+      mode: report.mode,
+      isProduction: report.isProduction,
+      roles: report.roles,
+      runtime: report.runtime,
+    },
+  });
 
   if (asJson) {
-    console.log(JSON.stringify(report, null, 2));
+    console.log(JSON.stringify({
+      ...contractReport,
+      mode: report.mode,
+      isProduction: report.isProduction,
+      roles: report.roles,
+      runtime: report.runtime,
+    }, null, 2));
   } else {
     printTextReport(report);
   }

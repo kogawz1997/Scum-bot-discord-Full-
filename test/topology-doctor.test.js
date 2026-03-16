@@ -86,6 +86,8 @@ test('topology doctor emits JSON report for CI/tooling consumers', () => {
 
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const payload = JSON.parse(result.stdout);
+  assert.equal(payload.kind, 'topology');
+  assert.equal(payload.ok, true);
   assert.equal(payload.status, 'pass');
   assert.equal(payload.mode, 'split-runtime');
   assert.equal(payload.roles.bot.adminWeb, true);

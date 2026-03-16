@@ -3,7 +3,7 @@
 [![CI](https://github.com/kogawz1997/Scum-bot-discord-Full-/actions/workflows/ci.yml/badge.svg)](https://github.com/kogawz1997/Scum-bot-discord-Full-/actions/workflows/ci.yml)
 [![Release](https://github.com/kogawz1997/Scum-bot-discord-Full-/actions/workflows/release.yml/badge.svg)](https://github.com/kogawz1997/Scum-bot-discord-Full-/actions/workflows/release.yml)
 
-Last updated: **2026-03-15**
+Last updated: **2026-03-16**
 
 This document is the working status register for the repository. It should stay factual. Do not use it as a sales page.
 
@@ -33,21 +33,35 @@ This document is the working status register for the repository. It should stay 
 - Prisma tooling is provider-aware and test-safe
 - Runtime env parsing has a dedicated boundary under `src/config/`
 - Bot and worker startup wiring has been moved into `src/bootstrap/`
+- Bot ready/runtime boot logic and community listeners have been extracted from the main entry file
+- Bot interactions and ops-alert routing have been extracted from the main entry file
 - Admin auth includes DB login, Discord SSO, TOTP 2FA, step-up auth, session revoke, and security event logging
 - Admin route groups are partly split under `src/admin/api/` and `src/admin/audit/`
+- Admin page/static loading, request/body parsing, request routing, access/security/control-panel helpers, live/SSE/metrics helpers, security export helpers, and Discord OAuth client calls are split out of the main server entry file
 - Player API groups are partly split under `apps/web-portal-standalone/api/`
+- Player portal page routing, canonical redirects, env/body/player helper assembly, response/security helpers, and canonical runtime helpers now have dedicated runtime modules
+- Player portal page/static loading, reward/wheel helpers, and HTTP lifecycle wiring now have dedicated runtime modules
 - Production validation commands exist and CI artifacts are written on every verification run
+- Validation scripts now share one machine-readable runtime status contract via `--json`
+- `ci:verify` now emits a contract-driven `artifacts/ci/verification-contract.json`
 - `lint` now includes syntax, encoding, ESLint, and docs/metadata formatting checks
 - Policy checks now cover runtime profile parsing, control-panel env registry rules, smoke behavior, readiness ordering, and module docs
 - Tenant scope exists across core platform, commerce, and audit surfaces
+- Admin browser shell/common helpers are extracted under `src/admin/assets/dashboard-shell.js`
+- Admin snapshot/session/form browser runtime is extracted under `src/admin/assets/dashboard-runtime.js`
+- Admin browser DOM refs, mutable state, and event binding/startup wiring are extracted under `src/admin/assets/dashboard-dom.js`, `src/admin/assets/dashboard-state.js`, and `src/admin/assets/dashboard-bindings.js`
+- Admin server lifecycle/bootstrap wiring is extracted under `src/admin/runtime/adminServerLifecycleRuntime.js`
+- Player portal helper/auth/route bootstrap wiring is extracted under `apps/web-portal-standalone/runtime/portalBootstrapRuntime.js`
 
 ### Partial
 
 - Admin web still does not expose every env/config switch
 - Tenant isolation is not database-per-tenant or RLS-backed
 - Restore remains a controlled maintenance workflow with confirmation gates
-- Documentation evidence is still stronger than visual evidence; screenshots and GIFs are still missing
-- `src/adminWebServer.js` and `apps/web-portal-standalone/server.js` still need further module extraction
+- Documentation evidence is still stronger than full interactive runtime evidence; exported diagrams, login/dashboard PNG captures, and a simple demo GIF now exist under `docs/assets/`
+- `apps/web-portal-standalone/server.js` is now down to bootstrap/composition scale
+- `src/admin/dashboard.html` is thinner, and the admin browser runtime is split across focused assets now
+- `src/bot.js` and `src/worker.js` are down to bootstrap/composition scale and are no longer primary refactor blockers
 
 ### Runtime-dependent
 
@@ -72,6 +86,7 @@ These are machine-specific notes. Keep them aligned with the active env when thi
 Current validation stack:
 
 - `npm run lint`
+- `npm run test:policy`
 - `npm test`
 - `npm run doctor`
 - `npm run security:check`
@@ -83,6 +98,7 @@ Important detail:
 - `readiness:prod` now includes `smoke:postdeploy`
 - `smoke:postdeploy` no longer treats required runtimes as healthy based only on HTTP 200 and `{ ok: true }`
 - optional runtimes such as a disabled watcher or an optional console-agent are reported without failing the run
+- the latest local full pass on this workstation completed on `2026-03-16`
 
 ## Remaining Non-Delivery Gaps
 
@@ -90,7 +106,7 @@ Use [docs/WORKLIST.md](./docs/WORKLIST.md) as the only detailed backlog.
 
 Short form:
 
-- `P1`: finish module extraction for admin/player surfaces, close remaining admin/config and tenant-boundary gaps, unify runtime status contract
+- `P1`: finish module extraction for admin/player surfaces and close remaining admin/config and tenant-boundary gaps
 - `P2`: reduce entrypoint size further, clean up docs encoding/consistency, improve visual evidence, move more high-impact settings into admin web
 - `P3`: stronger tenant isolation model and broader release-note coverage
 
@@ -99,6 +115,7 @@ Short form:
 - Do not claim full tenant isolation; it is still application-level
 - Do not claim every setting is editable from admin web
 - Do not claim agent execution is independent of Windows and SCUM client state
+- Do not claim authenticated player dashboard capture or live in-game delivery evidence unless those assets are added to `docs/assets/`
 - Do not use hardcoded test counts in documents; use CI artifacts instead
 
 ## Summary

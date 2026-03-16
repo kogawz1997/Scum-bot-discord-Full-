@@ -141,6 +141,10 @@ jobs:
       - name: Run verification suite
         run: npm run ci:verify
 
+      - name: Publish verification summary
+        if: always()
+        run: cat artifacts/ci/verification-summary.md >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload verification artifacts
         if: always()
         uses: actions/upload-artifact@v4

@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">Runtime Validation Contract</title>
+  <desc id="desc">Shared validation report contract used by doctor, security-check, smoke, readiness, and topology scripts.</desc>
+  <style>
+    .bg { fill: #0d1117; }
+    .panel { fill: #161b22; stroke: #30363d; stroke-width: 2; rx: 14; }
+    .panel2 { fill: #111827; stroke: #3b4b66; stroke-width: 2; rx: 14; }
+    .line { stroke: #79c0ff; stroke-width: 3; fill: none; marker-end: url(#arrow); }
+    .title { font: 700 28px 'Segoe UI', Arial, sans-serif; fill: #f0f6fc; }
+    .label { font: 700 20px 'Segoe UI', Arial, sans-serif; fill: #f0f6fc; }
+    .text { font: 400 14px 'Segoe UI', Arial, sans-serif; fill: #c9d1d9; }
+    .code { font: 400 13px Consolas, 'Courier New', monospace; fill: #a5d6ff; }
+    .small { font: 400 12px 'Segoe UI', Arial, sans-serif; fill: #94a3b8; }
+  </style>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#79c0ff"/>
+    </marker>
+  </defs>
+  <rect class="bg" x="0" y="0" width="1280" height="720"/>
+  <text class="title" x="44" y="54">Shared Validation Contract</text>
+  <text class="text" x="44" y="84">Machine-readable output path for tooling and CI. Text output stays unchanged for local operator use.</text>
+
+  <rect class="panel" x="44" y="128" width="236" height="88"/>
+  <text class="label" x="68" y="164">doctor</text>
+  <text class="text" x="68" y="192">origin, OAuth, ports, RCON checks</text>
+
+  <rect class="panel" x="44" y="252" width="236" height="88"/>
+  <text class="label" x="68" y="288">security-check</text>
+  <text class="text" x="68" y="316">secret posture and prod hardening</text>
+
+  <rect class="panel" x="44" y="376" width="236" height="88"/>
+  <text class="label" x="68" y="412">doctor-topology</text>
+  <text class="text" x="68" y="440">split-runtime overlap and role map</text>
+
+  <rect class="panel" x="44" y="500" width="236" height="88"/>
+  <text class="label" x="68" y="536">smoke:postdeploy</text>
+  <text class="text" x="68" y="564">live HTTP/runtime checks after boot</text>
+
+  <rect class="panel" x="44" y="624" width="236" height="56"/>
+  <text class="label" x="68" y="660">readiness:prod</text>
+
+  <rect class="panel2" x="420" y="188" width="360" height="340"/>
+  <text class="label" x="448" y="228">Report shape</text>
+  <text class="code" x="448" y="264">{</text>
+  <text class="code" x="472" y="292">"kind": "smoke" | "doctor" | "topology" | ...</text>
+  <text class="code" x="472" y="320">"ok": true | false</text>
+  <text class="code" x="472" y="348">"status": "pass" | "warning" | "failed"</text>
+  <text class="code" x="472" y="376">"summary": "..."</text>
+  <text class="code" x="472" y="404">"checks": [{ "name", "status", "ok", "detail" }]</text>
+  <text class="code" x="472" y="432">"warnings": ["..."]</text>
+  <text class="code" x="472" y="460">"errors": ["..."]</text>
+  <text class="code" x="472" y="488">"data": { ...tool-specific fields... }</text>
+  <text class="code" x="472" y="516">"generatedAt": "ISO-8601"</text>
+  <text class="code" x="448" y="544">}</text>
+
+  <rect class="panel2" x="884" y="188" width="336" height="252"/>
+  <text class="label" x="912" y="228">Semantics</text>
+  <text class="text" x="912" y="264">- failed: hard stop, non-zero exit</text>
+  <text class="text" x="912" y="296">- warning: pass with review-required findings</text>
+  <text class="text" x="912" y="328">- pass: checks clean</text>
+  <text class="text" x="912" y="360">- skipped: optional check not required now</text>
+  <text class="text" x="912" y="392">- data: tool-specific payload for CI or scripts</text>
+
+  <rect class="panel2" x="884" y="470" width="336" height="136"/>
+  <text class="label" x="912" y="510">Current limitation</text>
+  <text class="text" x="912" y="546">Live agent validation and watcher readiness still</text>
+  <text class="text" x="912" y="570">depend on external runtime state, not on repo-only checks.</text>
+
+  <path class="line" d="M280 172 C338 172, 352 228, 420 228"/>
+  <path class="line" d="M280 296 C338 296, 352 280, 420 280"/>
+  <path class="line" d="M280 420 C338 420, 352 332, 420 332"/>
+  <path class="line" d="M280 544 C338 544, 352 384, 420 384"/>
+  <path class="line" d="M280 652 C338 652, 352 436, 420 436"/>
+  <path class="line" d="M780 356 C824 356, 832 314, 884 314"/>
+  <path class="line" d="M780 470 C824 470, 832 538, 884 538"/>
+</svg>

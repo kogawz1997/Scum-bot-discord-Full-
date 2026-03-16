@@ -14,6 +14,7 @@ Use this index to find the right document set by audience instead of scanning th
 ## Developer Docs
 
 - [ARCHITECTURE.md](./ARCHITECTURE.md)
+- [assets/README.md](./assets/README.md)
 - [RUNTIME_TOPOLOGY.md](./RUNTIME_TOPOLOGY.md)
 - [WORKLIST.md](./WORKLIST.md)
 - [REFACTOR_PLAN.md](./REFACTOR_PLAN.md)

@@ -36,6 +36,26 @@ function randomPort(base = 38000, span = 1000) {
   return base + Math.floor(Math.random() * span);
 }
 
+function closeHttpServer(server) {
+  return new Promise((resolve) => {
+    if (!server || typeof server.close !== 'function') {
+      resolve();
+      return;
+    }
+    try {
+      if (typeof server.closeIdleConnections === 'function') {
+        server.closeIdleConnections();
+      }
+    } catch {}
+    try {
+      if (typeof server.closeAllConnections === 'function') {
+        server.closeAllConnections();
+      }
+    } catch {}
+    server.close(() => resolve());
+  });
+}
+
 function decodeBase32(input) {
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
   const clean = String(input || '')
@@ -143,7 +163,7 @@ test('admin API auth + validation integration flow', async (t) => {
 
   t.after(async () => {
     resetAdminIntegrationRuntimeState();
-    await new Promise((resolve) => server.close(resolve));
+    await closeHttpServer(server);
     delete require.cache[adminWebServerPath];
   });
 
@@ -870,8 +890,8 @@ test('admin platform APIs expose overview data while snapshot stays sanitized', 
   }
 
   t.after(async () => {
-    await new Promise((resolve) => server.close(resolve));
-    await new Promise((resolve) => captureServer.close(resolve));
+    await closeHttpServer(server);
+    await closeHttpServer(captureServer);
     await prisma.deliveryAudit.deleteMany({ where: { purchaseCode } }).catch(() => null);
     await prisma.purchase.deleteMany({ where: { code: purchaseCode } }).catch(() => null);
     await prisma.platformWebhookEndpoint.deleteMany({ where: { id: webhookId } }).catch(() => null);
@@ -1231,7 +1251,7 @@ test('admin API rejects malformed JSON and oversized UTF-8 body with proper stat
   }
 
   t.after(async () => {
-    await new Promise((resolve) => server.close(resolve));
+    await closeHttpServer(server);
     delete require.cache[adminWebServerPath];
     if (originalMaxBody == null) {
       delete process.env.ADMIN_WEB_MAX_BODY_BYTES;
@@ -1292,7 +1312,7 @@ test('admin observability request log exposes recent request traces with request
 
   t.after(async () => {
     resetAdminIntegrationRuntimeState();
-    await new Promise((resolve) => server.close(resolve));
+    await closeHttpServer(server);
     delete require.cache[adminWebServerPath];
   });
 
@@ -1402,7 +1422,7 @@ test('admin API blocks mutating writes while backup restore maintenance is activ
       previewIssuedAt: null,
       previewExpiresAt: null,
     });
-    await new Promise((resolve) => server.close(resolve));
+    await closeHttpServer(server);
     delete require.cache[adminWebServerPath];
   });
 
@@ -1516,7 +1536,7 @@ test('admin API delivery detail + test send routes work with local console agent
   }
 
   t.after(async () => {
-    await new Promise((resolve) => server.close(resolve));
+    await closeHttpServer(server);
     await runtime.close();
     delete require.cache[adminWebServerPath];
     for (const key of envKeys) {
@@ -1927,7 +1947,7 @@ test('admin API control panel settings, env patching, and admin user management'
       }
     }
     resetAdminIntegrationRuntimeState();
-    await new Promise((resolve) => server.close(resolve));
+    await closeHttpServer(server);
     fs.rmSync(tempDir, { recursive: true, force: true });
     delete require.cache[adminWebServerPath];
   });
@@ -2049,6 +2069,14 @@ test('admin API control panel settings, env patching, and admin user management'
     '10.0.0.5',
   );
   assert.equal(Boolean(updatedSettings.data.data?.env?.portal?.WEB_PORTAL_PLAYER_OPEN_ACCESS?.value), true);
+  assert.equal(
+    Number(updatedSettings.data.data?.envPolicy?.root?.restartRequired || 0) > 0,
+    true,
+  );
+  assert.equal(
+    Number(updatedSettings.data.data?.envPolicy?.portal?.adminEditable || 0) > 0,
+    true,
+  );
   assert.ok(
     Array.isArray(updatedSettings.data.data?.commandConfig?.disabled)
       && updatedSettings.data.data.commandConfig.disabled.includes('alpha'),
@@ -2064,6 +2092,41 @@ test('admin API control panel settings, env patching, and admin user management'
   assert.ok(
     Array.isArray(updatedSettings.data.data?.managedServices)
       && updatedSettings.data.data.managedServices.some((entry) => entry.key === 'worker'),
+  );
+  assert.ok(
+    Array.isArray(updatedSettings.data.data?.envCatalog?.root)
+      && updatedSettings.data.data.envCatalog.root.some((entry) => entry.key === 'ADMIN_WEB_2FA_ENABLED'),
+  );
+  assert.ok(
+    updatedSettings.data.data.envCatalog.root.some((entry) =>
+      entry.key === 'DISCORD_TOKEN'
+      && entry.policy === 'runtime-only'
+      && entry.editable === false
+      && entry.secret === true),
+  );
+  assert.ok(
+    updatedSettings.data.data.envCatalog.root.some((entry) =>
+      entry.key === 'ADMIN_WEB_LOGIN_MAX_ATTEMPTS'
+      && entry.policy === 'admin-editable'
+      && entry.applyMode === 'restart-required'),
+  );
+  assert.ok(
+    updatedSettings.data.data.envCatalog.root.some((entry) =>
+      entry.key === 'SCUM_WATCHER_HEALTH_PORT'
+      && entry.policy === 'runtime-only'
+      && entry.editable === false),
+  );
+  assert.ok(
+    Array.isArray(updatedSettings.data.data?.envCatalog?.portal)
+      && updatedSettings.data.data.envCatalog.portal.some((entry) =>
+        entry.key === 'WEB_PORTAL_MAP_EMBED_ENABLED'
+        && entry.policy === 'admin-editable'),
+  );
+  assert.ok(
+    updatedSettings.data.data.envCatalog.portal.some((entry) =>
+      entry.key === 'WEB_PORTAL_PORT'
+      && entry.policy === 'runtime-only'
+      && entry.editable === false),
   );
 });
 
@@ -2098,7 +2161,7 @@ test('admin API step-up, session revoke, and security event flow', async (t) => 
 
   t.after(async () => {
     resetAdminIntegrationRuntimeState();
-    await new Promise((resolve) => server.close(resolve));
+    await closeHttpServer(server);
     delete require.cache[adminWebServerPath];
   });
 

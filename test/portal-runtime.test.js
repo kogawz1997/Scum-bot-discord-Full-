@@ -2,8 +2,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
+  buildLegacyAdminUrl,
   buildPortalHealthPayload,
+  buildPortalRuntimeSettings,
   buildPortalStartupValidation,
+  isDiscordCallbackPath,
+  isDiscordStartPath,
   printPortalStartupHints,
 } = require('../apps/web-portal-standalone/runtime/portalRuntime');
 
@@ -73,6 +77,51 @@ test('portal runtime validation reports production and access-policy issues', ()
       'WEB_PORTAL_SESSION_TTL_HOURS is longer than 24 hours; review whether player sessions should expire sooner',
     ),
   );
+});
+
+test('portal runtime route helpers normalize admin URL and Discord paths', () => {
+  assert.equal(
+    buildLegacyAdminUrl(
+      'https://admin.example.com/admin',
+      '/admin/api/portal/shop/list',
+      '?limit=10',
+    ),
+    'https://admin.example.com/admin/api/portal/shop/list?limit=10',
+  );
+  assert.equal(isDiscordStartPath('/auth/discord/start'), true);
+  assert.equal(isDiscordCallbackPath('/oauth/callback', '/oauth/callback'), true);
+  assert.equal(isDiscordCallbackPath('/auth/discord/callback', '/oauth/callback'), true);
+});
+
+test('portal runtime settings builder normalizes counts and booleans', () => {
+  const settings = buildPortalRuntimeSettings({
+    nodeEnv: 'production',
+    mode: 'player',
+    baseUrl: 'https://player.example.com',
+    legacyAdminUrl: 'https://admin.example.com/admin',
+    sessionCount: '4',
+    oauthStateCount: '2',
+    secureCookie: 1,
+    cookieName: 'portal',
+    cookiePath: '/',
+    cookieSameSite: 'Lax',
+    enforceOriginCheck: 1,
+    discordOAuthConfigured: 1,
+    discordClientId: 'client',
+    discordClientSecret: 'secret',
+    discordGuildId: 'guild',
+    playerOpenAccess: 1,
+    requireGuildMember: 0,
+    allowedDiscordIdsCount: '3',
+    sessionTtlMs: '3600',
+    isProduction: 1,
+  });
+
+  assert.equal(settings.sessionCount, 4);
+  assert.equal(settings.oauthStateCount, 2);
+  assert.equal(settings.secureCookie, true);
+  assert.equal(settings.requireGuildMember, false);
+  assert.equal(settings.allowedDiscordIdsCount, 3);
 });
 
 test('portal runtime startup printer returns false and logs errors when invalid', () => {

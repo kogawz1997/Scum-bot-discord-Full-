@@ -19,12 +19,13 @@ function createAdminPortalPostRoutes(deps) {
       res,
       urlObj,
       pathname,
+      body: providedBody,
     } = context;
 
     if (pathname === '/admin/api/portal/redeem') {
       const portal = ensurePortalTokenAuth(req, urlObj, res);
       if (!portal) return true;
-      const body = await readJsonBody(req);
+      const body = providedBody ?? await readJsonBody(req);
       const code = requiredString(body, 'code');
       if (!code) {
         sendJson(res, 400, { ok: false, error: 'Invalid request payload' });
@@ -65,7 +66,7 @@ function createAdminPortalPostRoutes(deps) {
     if (pathname === '/admin/api/portal/rentbike/request') {
       const portal = ensurePortalTokenAuth(req, urlObj, res);
       if (!portal) return true;
-      const body = await readJsonBody(req).catch(() => ({}));
+      const body = providedBody ?? await readJsonBody(req).catch(() => ({}));
       const result = await requestRentBikeForUser({
         discordUserId: portal.discordId,
         guildId: requiredString(body, 'guildId') || null,
@@ -85,7 +86,7 @@ function createAdminPortalPostRoutes(deps) {
     if (pathname === '/admin/api/portal/bounty/add') {
       const portal = ensurePortalTokenAuth(req, urlObj, res);
       if (!portal) return true;
-      const body = await readJsonBody(req);
+      const body = providedBody ?? await readJsonBody(req);
       const targetName = requiredString(body, 'targetName');
       const amount = Number(body?.amount);
       const result = await createBountyForUser({

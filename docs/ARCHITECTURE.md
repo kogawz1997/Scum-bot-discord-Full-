@@ -4,6 +4,7 @@ This document describes the current architecture from the repository and active 
 
 For verification status, see [VERIFICATION_STATUS_TH.md](./VERIFICATION_STATUS_TH.md).  
 For feature-by-feature evidence, see [EVIDENCE_MAP_TH.md](./EVIDENCE_MAP_TH.md).
+For exported visual assets, see [assets/README.md](./assets/README.md).
 
 ## Runtime Source Of Truth
 
@@ -27,6 +28,10 @@ Do not describe SQLite as the active production runtime for this repository unle
 | Player portal | `apps/web-portal-standalone/server.js`                          | Player login, wallet, purchase history, redeem, profile, Steam link          | Deployable as a separate runtime                                |
 
 ## Runtime Topology
+
+Exported diagram:
+
+![Architecture overview](./assets/architecture-overview.svg)
 
 ```mermaid
 flowchart LR
@@ -157,6 +162,10 @@ What is not finished yet:
 - complete tenant coverage across every admin/config collection
 
 ## Health, Readiness, And Smoke Boundaries
+
+Exported contract diagram:
+
+![Runtime validation contract](./assets/runtime-validation-contract.svg)
 
 Health endpoints:
 
