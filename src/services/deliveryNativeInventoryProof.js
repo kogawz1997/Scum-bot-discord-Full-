@@ -2,7 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
+const { spawn } = require('node:child_process');
 
 function trimText(value, maxLen = 500) {
   const text = String(value || '').trim();
@@ -56,22 +56,93 @@ function listSqliteExecutableCandidates(env = process.env) {
   return Array.from(new Set(candidates));
 }
 
-function canExecuteSqlite(binaryPath) {
-  const result = spawnSync(binaryPath, ['-version'], {
-    windowsHide: true,
-    stdio: 'pipe',
-    encoding: 'utf8',
+function runChildProcess(command, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    const maxBuffer = Math.max(
+      1024,
+      Math.trunc(Number(options.maxBuffer || 4 * 1024 * 1024) || (4 * 1024 * 1024)),
+    );
+    const child = spawn(command, args, {
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    let exceeded = false;
+    let settled = false;
+
+    function appendChunk(target, chunk) {
+      const text = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+      if (!text) return target;
+      const remaining = maxBuffer - Buffer.byteLength(target, 'utf8');
+      if (remaining <= 0) {
+        exceeded = true;
+        return target;
+      }
+      const slice = Buffer.byteLength(text, 'utf8') <= remaining
+        ? text
+        : Buffer.from(text, 'utf8').subarray(0, remaining).toString('utf8');
+      if (slice.length < text.length) {
+        exceeded = true;
+      }
+      return target + slice;
+    }
+
+    function fail(error) {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    }
+
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => {
+      stdout = appendChunk(stdout, chunk);
+      if (exceeded) child.kill();
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr = appendChunk(stderr, chunk);
+      if (exceeded) child.kill();
+    });
+    child.on('error', (error) => {
+      fail(error);
+    });
+    child.on('close', (code, signal) => {
+      if (settled) return;
+      if (exceeded) {
+        const error = new Error('sqlite3 output exceeded maxBuffer');
+        error.code = 'SQLITE3_OUTPUT_TOO_LARGE';
+        fail(error);
+        return;
+      }
+      settled = true;
+      resolve({
+        code: Number(code || 0),
+        signal: signal || null,
+        stdout,
+        stderr,
+      });
+    });
   });
-  if (result.error) return false;
-  return Number(result.status || 0) === 0;
 }
 
-function findSqliteExecutable(env = process.env) {
+async function canExecuteSqlite(binaryPath) {
+  try {
+    const result = await runChildProcess(binaryPath, ['-version'], {
+      maxBuffer: 64 * 1024,
+    });
+    return Number(result.code || 0) === 0;
+  } catch {
+    return false;
+  }
+}
+
+async function findSqliteExecutable(env = process.env) {
   for (const candidate of listSqliteExecutableCandidates(env)) {
     if (path.isAbsolute(candidate) && !fs.existsSync(candidate)) {
       continue;
     }
-    if (canExecuteSqlite(candidate)) {
+    if (await canExecuteSqlite(candidate)) {
       return candidate;
     }
   }
@@ -168,29 +239,21 @@ function buildAdminSpawnDeltaSql(minEntityId = 0, maxRows = 200) {
   `;
 }
 
-function runSqliteJsonQuery(databasePath, sql, env = process.env) {
-  const sqliteBinary = findSqliteExecutable(env);
+async function runSqliteJsonQuery(databasePath, sql, env = process.env) {
+  const sqliteBinary = await findSqliteExecutable(env);
   if (!sqliteBinary) {
     const error = new Error('sqlite3 executable not found');
     error.code = 'SQLITE3_NOT_FOUND';
     throw error;
   }
-  const result = spawnSync(
+  const result = await runChildProcess(
     sqliteBinary,
     ['-readonly', '-json', '-cmd', '.timeout 2000', databasePath, sql],
     {
-      windowsHide: true,
-      stdio: 'pipe',
-      encoding: 'utf8',
       maxBuffer: 4 * 1024 * 1024,
     },
   );
-  if (result.error) {
-    const error = new Error(result.error.message);
-    error.code = result.error.code || 'SQLITE3_EXEC_FAILED';
-    throw error;
-  }
-  if (Number(result.status || 0) !== 0) {
+  if (Number(result.code || 0) !== 0) {
     const error = new Error(trimText(result.stderr || result.stdout || 'sqlite query failed', 500));
     error.code = 'SQLITE3_QUERY_FAILED';
     throw error;
@@ -639,9 +702,11 @@ async function loadScumSavefileInventoryState(steamId, options = {}) {
   let inventoryRows = [];
   let maxEntityRows = [];
   try {
-    playerRows = runSqliteJsonQuery(dbPath, buildPlayerLookupSql(id), env);
-    inventoryRows = runSqliteJsonQuery(dbPath, buildInventoryLookupSql(id), env);
-    maxEntityRows = runSqliteJsonQuery(dbPath, buildMaxEntityIdSql(), env);
+    [playerRows, inventoryRows, maxEntityRows] = await Promise.all([
+      runSqliteJsonQuery(dbPath, buildPlayerLookupSql(id), env),
+      runSqliteJsonQuery(dbPath, buildInventoryLookupSql(id), env),
+      runSqliteJsonQuery(dbPath, buildMaxEntityIdSql(), env),
+    ]);
   } catch (error) {
     return {
       ok: false,
@@ -738,7 +803,7 @@ async function runScumSavefileInventoryProof(payload = {}, options = {}) {
     let spawnDeltaVerification = null;
     if (baselineEntityCursor > 0) {
       try {
-        const spawnDeltaRows = runSqliteJsonQuery(
+        const spawnDeltaRows = await runSqliteJsonQuery(
           state.databasePath,
           buildAdminSpawnDeltaSql(baselineEntityCursor),
           env,

@@ -190,7 +190,14 @@ function getOrCreateStats(userIdRaw, options = {}) {
 }
 
 function getStats(userId, options = {}) {
-  return getOrCreateStats(userId, options);
+  const scope = ensureStatsScope(options);
+  void initStatsStore(options);
+  const normalizedUserId = String(userId || '').trim();
+  if (!normalizedUserId) {
+    return buildEmptyStat();
+  }
+  const value = scope.state.stats.get(normalizedUserId);
+  return value ? { ...value } : buildEmptyStat();
 }
 
 function listAllStats(options = {}) {

@@ -17,8 +17,8 @@ const REFRESH_DEBOUNCE_MS = Math.max(
   Number(process.env.LEADERBOARD_PANEL_REFRESH_MS || 1200),
 );
 
-const refreshTimers = new Map(); // guildId -> timeout
-const runningGuilds = new Set(); // guildId
+const refreshTimers = new Map();
+const runningGuilds = new Set();
 
 function normalizeScopeOptions(options = {}) {
   return {
@@ -81,7 +81,7 @@ function buildTopKillerEmbed(client, guildId, options = {}) {
   );
 
   return new EmbedBuilder()
-    .setTitle('🏆 อันดับการสังหาร')
+    .setTitle('อันดับการสังหาร')
     .setColor(0xff8c00)
     .setDescription(ascii)
     .setTimestamp();
@@ -111,7 +111,7 @@ function buildTopGunKillEmbed(options = {}) {
   );
 
   return new EmbedBuilder()
-    .setTitle('🔫 อันดับฆ่าด้วยอาวุธ')
+    .setTitle('อันดับฆ่าด้วยอาวุธ')
     .setColor(0x4aa3ff)
     .setDescription(ascii)
     .setTimestamp();
@@ -149,7 +149,7 @@ function buildTopKdEmbed(client, guildId, options = {}) {
   );
 
   return new EmbedBuilder()
-    .setTitle('🎯 อันดับ K/D')
+    .setTitle('อันดับ K/D')
     .setColor(0xf0abfc)
     .setDescription(ascii)
     .setTimestamp();
@@ -162,7 +162,7 @@ function buildTopPlaytimeEmbed(client, guildId, options = {}) {
 
   const rows = all.slice(0, 25).map((s, i) => ({
     rank: `[${i + 1}]`,
-    playtime: `${Math.floor((s.playtimeMinutes || 0) / 60)}ชม`,
+    playtime: `${Math.floor((s.playtimeMinutes || 0) / 60)}ชม.`,
     kills: String(s.kills),
     deaths: String(s.deaths),
     name: resolveDisplayName(client, guild, s.userId),
@@ -180,7 +180,7 @@ function buildTopPlaytimeEmbed(client, guildId, options = {}) {
   );
 
   return new EmbedBuilder()
-    .setTitle('🕒 อันดับเวลาเล่น')
+    .setTitle('อันดับเวลาเล่น')
     .setColor(0x38bdf8)
     .setDescription(ascii)
     .setTimestamp();
@@ -206,7 +206,7 @@ async function buildTopEconomyEmbed(client, guildId, options = {}) {
   );
 
   return new EmbedBuilder()
-    .setTitle('💰 อันดับเศรษฐกิจ')
+    .setTitle('อันดับเศรษฐกิจ')
     .setColor(0x22c55e)
     .setDescription(
       [
@@ -296,7 +296,6 @@ async function refreshLeaderboardPanelsNow(client, guildId, reason = 'update', o
         updated += 1;
       } catch (error) {
         const code = Number(error?.code || 0);
-        // Unknown Message / Missing Access / Missing Permissions
         if (code === 10008 || code === 50001 || code === 50013) {
           removeTopPanelMessage(gid, task.type, scopeOptions);
           continue;

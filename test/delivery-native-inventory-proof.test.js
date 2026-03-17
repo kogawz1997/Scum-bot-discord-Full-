@@ -22,8 +22,8 @@ function createTempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'native-proof-'));
 }
 
-function writeSqliteFixtureDatabase(dbPath) {
-  const sqlite = findSqliteExecutable(process.env);
+async function writeSqliteFixtureDatabase(dbPath) {
+  const sqlite = await findSqliteExecutable(process.env);
   if (!sqlite) {
     return false;
   }
@@ -170,7 +170,7 @@ test('runScumSavefileInventoryProof reads a live-style SCUM sqlite savefile', as
   const tempDir = createTempDir();
   t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
   const dbPath = path.join(tempDir, 'SCUM.db');
-  const sqliteAvailable = writeSqliteFixtureDatabase(dbPath);
+  const sqliteAvailable = await writeSqliteFixtureDatabase(dbPath);
   if (!sqliteAvailable) {
     t.skip('sqlite3 executable is not available');
     return;

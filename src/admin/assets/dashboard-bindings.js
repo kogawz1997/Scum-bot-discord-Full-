@@ -2,9 +2,19 @@
  * Browser-side event binding and startup wiring for the admin dashboard.
  * Extracted from the former dashboard monolith so binding/init code is isolated.
  */
+const DASHBOARD_MESSAGES = Object.freeze({
+  authRequired: 'ต้องเข้าสู่ระบบก่อน',
+  ownerOnly: 'ต้องใช้สิทธิ์ owner',
+  refreshing: 'กำลังรีเฟรช...',
+  saving: 'กำลังบันทึก...',
+  deleting: 'กำลังลบ...',
+  exporting: 'กำลังส่งออก...',
+  failed: 'ดำเนินการไม่สำเร็จ',
+});
+
 logoutBtn.addEventListener('click', async () => {
       try {
-        await runWithButtonState(logoutBtn, '???????????????...', async () => {
+        await runWithButtonState(logoutBtn, 'กำลังออกจากระบบ...', async () => {
           await logout();
         });
       } catch (err) {
@@ -17,12 +27,12 @@ logoutBtn.addEventListener('click', async () => {
         return checkSession();
       }
       try {
-        await runWithButtonState(refreshBtn, '???????????...', async () => {
+        await runWithButtonState(refreshBtn, DASHBOARD_MESSAGES.refreshing, async () => {
           await refreshSnapshot({ forceCardsRefresh: true });
         });
-        toast('????????????????');
+        toast('รีเฟรชข้อมูลแล้ว');
       } catch (err) {
-        setStatus('?????????????', '#ff6b7b');
+        setStatus('รีเฟรชไม่สำเร็จ', '#ff6b7b');
         toast(err.message);
       }
     });
@@ -45,19 +55,19 @@ logoutBtn.addEventListener('click', async () => {
         setStatus(
           `LIVE ${Math.round(liveIntervalMs / 1000)}s`,
           '#43dd86',
-          '???????????????????????????',
+          'เชื่อมต่อ live updates แล้ว',
           'ok',
         );
         return;
       }
       stopLiveUpdates();
-      setStatus('???????????????', '#ffb84d', '??????????????????????', 'warn');
+      setStatus('ปิดอัปเดตสดแล้ว', '#ffb84d', 'จะใช้การรีเฟรชแบบ manual/polling แทน', 'warn');
     });
 
     if (themeSelect) {
       themeSelect.addEventListener('change', () => {
         const selected = applyTheme(themeSelect.value, true);
-        toast(`?????????????? ${selected === 'neon' ? 'Neon Cyber' : 'Military Tactical'}`);
+        toast(`เปลี่ยนธีมเป็น ${selected === 'neon' ? 'Neon Cyber' : 'Military Tactical'}`);
       });
     }
 
@@ -220,7 +230,7 @@ logoutBtn.addEventListener('click', async () => {
         try {
           await exportAuditRows('csv');
         } catch (error) {
-          toast(error.message || '?????? CSV ?????????');
+          toast(error.message || 'ส่งออก CSV ไม่สำเร็จ');
         }
       });
     }
@@ -229,7 +239,7 @@ logoutBtn.addEventListener('click', async () => {
         try {
           await exportAuditRows('json');
         } catch (error) {
-          toast(error.message || '?????? JSON ?????????');
+          toast(error.message || 'ส่งออก JSON ไม่สำเร็จ');
         }
       });
     }
@@ -272,7 +282,7 @@ logoutBtn.addEventListener('click', async () => {
         try {
           applyAuditPresetById(String(auditPresetSelect?.value || '').trim());
         } catch (error) {
-          toast(error.message || '??? preset ?????????');
+          toast(error.message || 'ใช้ preset ไม่สำเร็จ');
         }
       });
     }
@@ -280,11 +290,11 @@ logoutBtn.addEventListener('click', async () => {
       auditPresetSaveBtn.addEventListener('click', async () => {
         const draft = buildCurrentAuditPreset();
         if (!draft) {
-          toast('????????????? preset ??????????');
+          toast('กรุณาตั้งชื่อ preset ก่อนบันทึก');
           return;
         }
         try {
-          await runWithButtonState(auditPresetSaveBtn, '??????????? preset...', async () => {
+          await runWithButtonState(auditPresetSaveBtn, 'กำลังบันทึก preset...', async () => {
             const selectedId = String(auditPresetSelect?.value || currentAuditPresetId || '').trim();
             const selectedPreset = auditPresets.find((entry) => entry.id === selectedId);
             const res = await api('/admin/api/audit/presets', 'POST', {
@@ -301,9 +311,9 @@ logoutBtn.addEventListener('click', async () => {
             }
           });
           const savedName = String(auditPresetNameInput?.value || draft.name || '').trim();
-          toast(`?????? preset: ${savedName}`);
+          toast(`บันทึก preset แล้ว: ${savedName}`);
         } catch (error) {
-          toast(error.message || '?????? preset ?????????');
+          toast(error.message || 'บันทึก preset ไม่สำเร็จ');
         }
       });
     }
@@ -312,18 +322,18 @@ logoutBtn.addEventListener('click', async () => {
         const selectedId = String(auditPresetSelect?.value || '').trim();
         const preset = auditPresets.find((entry) => entry.id === selectedId);
         if (!preset) {
-          toast('?????????? preset ??????');
+          toast('ยังไม่ได้เลือก preset');
           return;
         }
         if (preset.canDelete === false) {
-          toast('preset ???????????????????????? owner');
+          toast('preset นี้ลบได้เฉพาะ owner');
           return;
         }
-        if (!window.confirm(`?? preset "${preset.name}" ?`)) {
+        if (!window.confirm(`ลบ preset "${preset.name}" ?`)) {
           return;
         }
         try {
-          await runWithButtonState(auditPresetDeleteBtn, '??????? preset...', async () => {
+          await runWithButtonState(auditPresetDeleteBtn, 'กำลังลบ preset...', async () => {
             await api('/admin/api/audit/presets/delete', 'POST', { id: selectedId });
             if (currentAuditPresetId === selectedId) {
               currentAuditPresetId = '';
@@ -333,9 +343,9 @@ logoutBtn.addEventListener('click', async () => {
               auditPresetNameInput.value = '';
             }
           });
-          toast(`?? preset: ${preset.name}`);
+          toast(`ลบ preset แล้ว: ${preset.name}`);
         } catch (error) {
-          toast(error.message || '?? preset ?????????');
+          toast(error.message || 'ลบ preset ไม่สำเร็จ');
         }
       });
     }
@@ -357,20 +367,20 @@ logoutBtn.addEventListener('click', async () => {
           Number(metricsWindowSelect?.value || currentMetricsWindowMs),
         );
         if (!isAuthed) {
-          toast('????????????????????');
+          toast(DASHBOARD_MESSAGES.authRequired);
           return;
         }
         try {
           await runWithButtonState(
             metricsApplyWindowBtn,
-            '????????? metrics...',
+            'กำลังโหลด metrics...',
             async () => {
               await refreshObservabilitySnapshot({ silent: true });
             },
           );
-          toast('?????????????????????????');
+          toast('อัปเดต metrics แล้ว');
         } catch (error) {
-          toast(error.message || '???? metrics ?????????');
+          toast(error.message || 'โหลด metrics ไม่สำเร็จ');
         }
       });
     }
@@ -379,7 +389,7 @@ logoutBtn.addEventListener('click', async () => {
         try {
           await exportObservability('csv');
         } catch (error) {
-          toast(error.message || '?????? metrics CSV ?????????');
+          toast(error.message || 'ส่งออก metrics CSV ไม่สำเร็จ');
         }
       });
     }
@@ -388,7 +398,7 @@ logoutBtn.addEventListener('click', async () => {
         try {
           await exportObservability('json');
         } catch (error) {
-          toast(error.message || '?????? metrics JSON ?????????');
+          toast(error.message || 'ส่งออก metrics JSON ไม่สำเร็จ');
         }
       });
     }
@@ -435,17 +445,17 @@ logoutBtn.addEventListener('click', async () => {
     if (shopQuickAddBtn) {
       shopQuickAddBtn.addEventListener('click', async () => {
         if (!isAuthed) {
-          toast('????????????????????');
+          toast(DASHBOARD_MESSAGES.authRequired);
           return;
         }
         try {
-          await runWithButtonState(shopQuickAddBtn, '????????????????...', async () => {
+          await runWithButtonState(shopQuickAddBtn, 'กำลังเพิ่มสินค้า...', async () => {
             if (String(shopKindSelect?.value || 'item') !== 'item') {
               shopKindSelect.value = 'item';
               updateShopKindUi();
             }
             if (!Array.isArray(shopDeliveryItems) || shopDeliveryItems.length === 0) {
-              throw new Error('???????????????????????? Wiki/?????????');
+              throw new Error('ยังไม่ได้เลือกไอเทมจาก Wiki/รายการ');
             }
             if (!String(shopAddIdInput?.value || '').trim()) {
               const selected = String(shopDeliveryItems[0]?.gameItemId || '').trim();
@@ -462,13 +472,13 @@ logoutBtn.addEventListener('click', async () => {
               }
             }
             if (!String(new FormData(shopAddForm).get('price') || '').trim()) {
-              throw new Error('???????????????????????????????????');
+              throw new Error('กรุณาใส่ราคาสินค้าก่อนส่ง');
             }
             await submitForm(shopAddForm);
           });
         } catch (error) {
-          setStatus('???????????????', '#ff6b7b');
-          toast(error.message || '????????????????????');
+          setStatus('เพิ่มสินค้าไม่สำเร็จ', '#ff6b7b');
+          toast(error.message || 'เพิ่มสินค้าไม่สำเร็จ');
         }
       });
     }
@@ -488,9 +498,9 @@ logoutBtn.addEventListener('click', async () => {
     copyJsonBtn.addEventListener('click', async () => {
       try {
         await navigator.clipboard.writeText(rawView.textContent || '');
-        toast('?????? JSON ????');
+        toast('คัดลอก JSON แล้ว');
       } catch {
-        toast('??????????????????');
+        toast('คัดลอก JSON ไม่สำเร็จ');
       }
     });
 
@@ -498,7 +508,7 @@ logoutBtn.addEventListener('click', async () => {
       snapshotExportBtn.addEventListener('click', async () => {
         try {
           if (!isAuthed) {
-            toast('????????????????????');
+            toast(DASHBOARD_MESSAGES.authRequired);
             return;
           }
           const { blob, filename } = await apiBlob('/admin/api/snapshot/export');
@@ -506,9 +516,9 @@ logoutBtn.addEventListener('click', async () => {
             filename || `snapshot-${new Date().toISOString().replace(/[:.]/g, '-')}.json`,
             blob,
           );
-          toast('????????? snapshot ????');
+          toast('ดาวน์โหลด snapshot แล้ว');
         } catch (error) {
-          toast(error.message || '????????? snapshot ?????????');
+          toast(error.message || 'ดาวน์โหลด snapshot ไม่สำเร็จ');
         }
       });
     }
@@ -516,16 +526,16 @@ logoutBtn.addEventListener('click', async () => {
     if (deliveryRuntimeRefreshBtn) {
       deliveryRuntimeRefreshBtn.addEventListener('click', async () => {
         if (!isAuthed) {
-          toast('????????????????????');
+          toast(DASHBOARD_MESSAGES.authRequired);
           return;
         }
         try {
-          await runWithButtonState(deliveryRuntimeRefreshBtn, '?????????...', async () => {
+          await runWithButtonState(deliveryRuntimeRefreshBtn, DASHBOARD_MESSAGES.refreshing, async () => {
             await refreshDeliveryRuntime();
           });
-          toast('?????????????????????');
+          toast('รีเฟรช Delivery Runtime แล้ว');
         } catch (error) {
-          toast(error.message || '????????????????????????');
+          toast(error.message || 'รีเฟรช Delivery Runtime ไม่สำเร็จ');
         }
       });
     }
@@ -533,16 +543,16 @@ logoutBtn.addEventListener('click', async () => {
     if (runtimeSupervisorRefreshBtn) {
       runtimeSupervisorRefreshBtn.addEventListener('click', async () => {
         if (!isAuthed) {
-          toast('????????????????????');
+          toast(DASHBOARD_MESSAGES.authRequired);
           return;
         }
         try {
-          await runWithButtonState(runtimeSupervisorRefreshBtn, '?????????...', async () => {
+          await runWithButtonState(runtimeSupervisorRefreshBtn, DASHBOARD_MESSAGES.refreshing, async () => {
             await refreshRuntimeSupervisor();
           });
-          toast('?????? topology runtime ????');
+          toast('โหลด topology runtime แล้ว');
         } catch (error) {
-          toast(error.message || '???? topology runtime ?????????');
+          toast(error.message || 'โหลด topology runtime ไม่สำเร็จ');
         }
       });
     }
@@ -550,16 +560,16 @@ logoutBtn.addEventListener('click', async () => {
     if (backupRestoreStateRefreshBtn) {
       backupRestoreStateRefreshBtn.addEventListener('click', async () => {
         if (!isAuthed) {
-          toast('????????????????????');
+          toast(DASHBOARD_MESSAGES.authRequired);
           return;
         }
         try {
-          await runWithButtonState(backupRestoreStateRefreshBtn, '?????????...', async () => {
+          await runWithButtonState(backupRestoreStateRefreshBtn, DASHBOARD_MESSAGES.refreshing, async () => {
             await refreshBackupRestoreState();
           });
-          toast('??????????? restore ????');
+          toast('โหลดสถานะ restore แล้ว');
         } catch (error) {
-          toast(error.message || '????????? restore ?????????');
+          toast(error.message || 'โหลดสถานะ restore ไม่สำเร็จ');
         }
       });
     }
@@ -567,16 +577,16 @@ logoutBtn.addEventListener('click', async () => {
     if (authSecurityRefreshBtn) {
       authSecurityRefreshBtn.addEventListener('click', async () => {
         if (!isAuthed) {
-          toast('????????????????????');
+          toast(DASHBOARD_MESSAGES.authRequired);
           return;
         }
         try {
-          await runWithButtonState(authSecurityRefreshBtn, '?????????...', async () => {
+          await runWithButtonState(authSecurityRefreshBtn, DASHBOARD_MESSAGES.refreshing, async () => {
             await refreshSnapshot({ silent: true, syncConfigInputs: false });
           });
-          toast('???????????? auth ????');
+          toast('โหลดข้อมูล auth แล้ว');
         } catch (error) {
-          toast(error.message || '???????????? auth ?????????');
+          toast(error.message || 'โหลดข้อมูล auth ไม่สำเร็จ');
         }
       });
     }
@@ -595,7 +605,7 @@ logoutBtn.addEventListener('click', async () => {
           authAnomalyOnly: currentAuthAnomalyOnly ? 'true' : '',
         });
         renderAuthSecurityCenter();
-        toast('?????? auth filter ????');
+        toast('ใช้ auth filter แล้ว');
       });
     }
 
@@ -609,27 +619,27 @@ logoutBtn.addEventListener('click', async () => {
           authAnomalyOnly: '',
         });
         renderAuthSecurityCenter();
-        toast('???? auth filter ????');
+        toast('รีเซ็ต auth filter แล้ว');
       });
     }
 
     if (authSecurityExportCsvBtn) {
       authSecurityExportCsvBtn.addEventListener('click', async () => {
         if (!isAuthed) {
-          toast('????????????????????');
+          toast(DASHBOARD_MESSAGES.authRequired);
           return;
         }
         try {
-          await runWithButtonState(authSecurityExportCsvBtn, '????? export...', async () => {
+          await runWithButtonState(authSecurityExportCsvBtn, DASHBOARD_MESSAGES.exporting, async () => {
             const { blob, filename } = await apiBlob(buildAuthSecurityExportPath('csv'));
             downloadBlob(
               filename || `admin-security-events-${new Date().toISOString().replace(/[:.]/g, '-')}.csv`,
               blob,
             );
           });
-          toast('export security events ???? CSV ????');
+          toast('export security events เป็น CSV แล้ว');
         } catch (error) {
-          toast(error.message || 'export security events ?????????');
+          toast(error.message || 'export security events ไม่สำเร็จ');
         }
       });
     }
@@ -637,20 +647,20 @@ logoutBtn.addEventListener('click', async () => {
     if (authSecurityExportJsonBtn) {
       authSecurityExportJsonBtn.addEventListener('click', async () => {
         if (!isAuthed) {
-          toast('????????????????????');
+          toast(DASHBOARD_MESSAGES.authRequired);
           return;
         }
         try {
-          await runWithButtonState(authSecurityExportJsonBtn, '????? export...', async () => {
+          await runWithButtonState(authSecurityExportJsonBtn, DASHBOARD_MESSAGES.exporting, async () => {
             const { blob, filename } = await apiBlob(buildAuthSecurityExportPath('json'));
             downloadBlob(
               filename || `admin-security-events-${new Date().toISOString().replace(/[:.]/g, '-')}.json`,
               blob,
             );
           });
-          toast('export security events ???? JSON ????');
+          toast('export security events เป็น JSON แล้ว');
         } catch (error) {
-          toast(error.message || 'export security events ?????????');
+          toast(error.message || 'export security events ไม่สำเร็จ');
         }
       });
     }
@@ -659,11 +669,11 @@ logoutBtn.addEventListener('click', async () => {
       authSessionRevokeForm.addEventListener('submit', async (event) => {
         event.preventDefault();
         if (!isAuthed) {
-          toast('????????????????????');
+          toast(DASHBOARD_MESSAGES.authRequired);
           return;
         }
         if (!hasRoleAtLeast(currentUserRole, 'owner')) {
-          toast('???????????? owner');
+          toast(DASHBOARD_MESSAGES.ownerOnly);
           return;
         }
         const submitButton = getSubmitButton(authSessionRevokeForm, event);
@@ -676,12 +686,12 @@ logoutBtn.addEventListener('click', async () => {
           || (payload.sessionId && payload.sessionId === currentSessionId)
           || (payload.targetUser && payload.targetUser === currentUserName);
         try {
-          await runWithButtonState(submitButton, '????? revoke...', async () => {
+          await runWithButtonState(submitButton, 'กำลัง revoke...', async () => {
             await api('/admin/api/auth/session/revoke', 'POST', payload);
           });
           if (revokesCurrent) {
             setAuthState(false);
-            toast('revoke current session ???? ??????????????? login');
+            toast('revoke current session แล้ว กำลังกลับไปหน้า login');
             window.setTimeout(() => {
               window.location.replace('/admin/login');
             }, 150);
@@ -689,9 +699,9 @@ logoutBtn.addEventListener('click', async () => {
           }
           authSessionRevokeForm.reset();
           await refreshSnapshot({ silent: true, syncConfigInputs: false });
-          toast('revoke session ????');
+          toast('revoke session แล้ว');
         } catch (error) {
-          toast(error.message || 'revoke session ?????????');
+          toast(error.message || 'revoke session ไม่สำเร็จ');
         }
       });
     }
@@ -701,21 +711,21 @@ logoutBtn.addEventListener('click', async () => {
         const button = event.target.closest('button[data-auth-session-revoke]');
         if (!button) return;
         if (!isAuthed) {
-          toast('????????????????????');
+          toast(DASHBOARD_MESSAGES.authRequired);
           return;
         }
         if (!hasRoleAtLeast(currentUserRole, 'owner')) {
-          toast('???????????? owner');
+          toast(DASHBOARD_MESSAGES.ownerOnly);
           return;
         }
         const sessionId = String(button.getAttribute('data-auth-session-revoke') || '').trim();
         const isCurrent = String(button.getAttribute('data-auth-session-current') || '').trim() === 'true';
         if (!sessionId) {
-          toast('????? session ????????');
+          toast('ไม่พบ session ที่ต้องการ');
           return;
         }
         try {
-          await runWithButtonState(button, '????? revoke...', async () => {
+          await runWithButtonState(button, 'กำลัง revoke...', async () => {
             await api('/admin/api/auth/session/revoke', 'POST', {
               sessionId,
               reason: isCurrent ? 'manual-revoke-current' : 'manual-revoke-session',
@@ -723,16 +733,16 @@ logoutBtn.addEventListener('click', async () => {
           });
           if (isCurrent) {
             setAuthState(false);
-            toast('revoke current session ???? ??????????????? login');
+            toast('revoke current session แล้ว กำลังกลับไปหน้า login');
             window.setTimeout(() => {
               window.location.replace('/admin/login');
             }, 150);
             return;
           }
           await refreshSnapshot({ silent: true, syncConfigInputs: false });
-          toast(`revoke session ????: ${sessionId}`);
+          toast(`revoke session แล้ว: ${sessionId}`);
         } catch (error) {
-          toast(error.message || 'revoke session ?????????');
+          toast(error.message || 'revoke session ไม่สำเร็จ');
         }
       });
     }
@@ -740,16 +750,16 @@ logoutBtn.addEventListener('click', async () => {
     if (controlPanelRefreshBtn) {
       controlPanelRefreshBtn.addEventListener('click', async () => {
         if (!isAuthed) {
-          toast('????????????????????');
+          toast(DASHBOARD_MESSAGES.authRequired);
           return;
         }
         try {
-          await runWithButtonState(controlPanelRefreshBtn, '?????????...', async () => {
+          await runWithButtonState(controlPanelRefreshBtn, DASHBOARD_MESSAGES.refreshing, async () => {
             await refreshSnapshot({ silent: true, syncConfigInputs: true, forceCardsRefresh: true });
           });
-          toast('?????? Control Panel ????');
+          toast('โหลด Control Panel แล้ว');
         } catch (error) {
-          toast(error.message || '?????? Control Panel ?????????');
+          toast(error.message || 'โหลด Control Panel ไม่สำเร็จ');
         }
       });
     }
@@ -757,25 +767,25 @@ logoutBtn.addEventListener('click', async () => {
     if (controlRestartNowBtn) {
       controlRestartNowBtn.addEventListener('click', async () => {
         if (!isAuthed) {
-          toast('????????????????????');
+          toast(DASHBOARD_MESSAGES.authRequired);
           return;
         }
         if (!hasRoleAtLeast(currentUserRole, 'owner')) {
-          toast('???????????? owner');
+          toast(DASHBOARD_MESSAGES.ownerOnly);
           return;
         }
         const target = getSelectedControlRestartTarget();
         if (!target) {
-          toast('????? service ?????????? restart ????');
+          toast('เลือก service ที่ต้องการ restart ก่อน');
           return;
         }
         try {
-          await runWithButtonState(controlRestartNowBtn, '????? restart...', async () => {
+          await runWithButtonState(controlRestartNowBtn, 'กำลัง restart...', async () => {
             await restartManagedServiceSelection(target, 'runtime service');
           });
           await refreshSnapshot({ silent: true, syncConfigInputs: true, forceCardsRefresh: true });
         } catch (error) {
-          toast(error.message || 'restart service ?????????');
+          toast(error.message || 'restart service ไม่สำเร็จ');
         }
       });
     }
@@ -793,13 +803,13 @@ logoutBtn.addEventListener('click', async () => {
       controlDiscordForm.addEventListener('submit', async (event) => {
         event.preventDefault();
         if (!isAuthed) {
-          toast('????????????????????');
+          toast(DASHBOARD_MESSAGES.authRequired);
           return;
         }
         const submitButton = getSubmitButton(controlDiscordForm, event);
         const restartTarget = getSelectedControlRestartTarget();
         try {
-          await runWithButtonState(submitButton, '???????????...', async () => {
+          await runWithButtonState(submitButton, DASHBOARD_MESSAGES.saving, async () => {
             await api('/admin/api/config/patch', 'POST', {
               patch: buildControlDiscordPatch(),
             });
@@ -815,9 +825,9 @@ logoutBtn.addEventListener('click', async () => {
             }
           });
           await refreshSnapshot({ silent: true, syncConfigInputs: true });
-          toast('?????? Discord / Access ????');
+          toast('บันทึก Discord / Access แล้ว');
         } catch (error) {
-          toast(error.message || '?????? Discord / Access ?????????');
+          toast(error.message || 'บันทึก Discord / Access ไม่สำเร็จ');
         }
       });
     }
@@ -826,20 +836,20 @@ logoutBtn.addEventListener('click', async () => {
       controlCommandForm.addEventListener('submit', async (event) => {
         event.preventDefault();
         if (!isAuthed) {
-          toast('????????????????????');
+          toast(DASHBOARD_MESSAGES.authRequired);
           return;
         }
         const submitButton = getSubmitButton(controlCommandForm, event);
         try {
-          await runWithButtonState(submitButton, '???????????...', async () => {
+          await runWithButtonState(submitButton, DASHBOARD_MESSAGES.saving, async () => {
             await api('/admin/api/config/patch', 'POST', {
               patch: buildControlCommandPatch(),
             });
           });
           await refreshSnapshot({ silent: true, syncConfigInputs: true });
-          toast('?????????????????????');
+          toast('บันทึก command permissions แล้ว');
         } catch (error) {
-          toast(error.message || '??????????????????????????');
+          toast(error.message || 'บันทึก command permissions ไม่สำเร็จ');
         }
       });
     }
@@ -848,20 +858,20 @@ logoutBtn.addEventListener('click', async () => {
       controlDeliveryForm.addEventListener('submit', async (event) => {
         event.preventDefault();
         if (!isAuthed) {
-          toast('????????????????????');
+          toast(DASHBOARD_MESSAGES.authRequired);
           return;
         }
         const submitButton = getSubmitButton(controlDeliveryForm, event);
         try {
-          await runWithButtonState(submitButton, '???????????...', async () => {
+          await runWithButtonState(submitButton, DASHBOARD_MESSAGES.saving, async () => {
             await api('/admin/api/config/patch', 'POST', {
               patch: buildControlDeliveryPatch(),
             });
           });
           await refreshSnapshot({ silent: true, syncConfigInputs: true });
-          toast('?????? Delivery Flow ????');
+          toast('บันทึก Delivery Flow แล้ว');
         } catch (error) {
-          toast(error.message || '?????? Delivery Flow ?????????');
+          toast(error.message || 'บันทึก Delivery Flow ไม่สำเร็จ');
         }
       });
     }
@@ -870,26 +880,26 @@ logoutBtn.addEventListener('click', async () => {
       controlEnvRuntimeForm.addEventListener('submit', async (event) => {
         event.preventDefault();
         if (!isAuthed) {
-          toast('????????????????????');
+          toast(DASHBOARD_MESSAGES.authRequired);
           return;
         }
         if (!hasRoleAtLeast(currentUserRole, 'owner')) {
-          toast('???????????? owner');
+          toast(DASHBOARD_MESSAGES.ownerOnly);
           return;
         }
         const submitButton = getSubmitButton(controlEnvRuntimeForm, event);
         const restartTarget = getSelectedControlRestartTarget();
         try {
-          await runWithButtonState(submitButton, '???????????...', async () => {
+          await runWithButtonState(submitButton, DASHBOARD_MESSAGES.saving, async () => {
             await api('/admin/api/control-panel/env', 'POST', buildRuntimeEnvPatch());
             if (restartTarget) {
               await restartManagedServiceSelection(restartTarget, 'Runtime Flags');
             }
           });
           await refreshSnapshot({ silent: true, syncConfigInputs: true });
-          toast('?????? Runtime Flags ????');
+          toast('บันทึก Runtime Flags แล้ว');
         } catch (error) {
-          toast(error.message || '?????? Runtime Flags ?????????');
+          toast(error.message || 'บันทึก Runtime Flags ไม่สำเร็จ');
         }
       });
     }
@@ -898,26 +908,26 @@ logoutBtn.addEventListener('click', async () => {
       controlRconAgentForm.addEventListener('submit', async (event) => {
         event.preventDefault();
         if (!isAuthed) {
-          toast('????????????????????');
+          toast(DASHBOARD_MESSAGES.authRequired);
           return;
         }
         if (!hasRoleAtLeast(currentUserRole, 'owner')) {
-          toast('???????????? owner');
+          toast(DASHBOARD_MESSAGES.ownerOnly);
           return;
         }
         const submitButton = getSubmitButton(controlRconAgentForm, event);
         const restartTarget = getSelectedControlRestartTarget();
         try {
-          await runWithButtonState(submitButton, '???????????...', async () => {
+          await runWithButtonState(submitButton, DASHBOARD_MESSAGES.saving, async () => {
             await api('/admin/api/control-panel/env', 'POST', buildRconAgentEnvPatch());
             if (restartTarget) {
               await restartManagedServiceSelection(restartTarget, 'RCON / Agent');
             }
           });
           await refreshSnapshot({ silent: true, syncConfigInputs: true });
-          toast('?????? RCON / Agent ????');
+          toast('บันทึก RCON / Agent แล้ว');
         } catch (error) {
-          toast(error.message || '?????? RCON / Agent ?????????');
+          toast(error.message || 'บันทึก RCON / Agent ไม่สำเร็จ');
         }
       });
     }
@@ -926,26 +936,26 @@ logoutBtn.addEventListener('click', async () => {
       controlWatcherForm.addEventListener('submit', async (event) => {
         event.preventDefault();
         if (!isAuthed) {
-          toast('????????????????????');
+          toast(DASHBOARD_MESSAGES.authRequired);
           return;
         }
         if (!hasRoleAtLeast(currentUserRole, 'owner')) {
-          toast('???????????? owner');
+          toast(DASHBOARD_MESSAGES.ownerOnly);
           return;
         }
         const submitButton = getSubmitButton(controlWatcherForm, event);
         const restartTarget = getSelectedControlRestartTarget();
         try {
-          await runWithButtonState(submitButton, '???????????...', async () => {
+          await runWithButtonState(submitButton, DASHBOARD_MESSAGES.saving, async () => {
             await api('/admin/api/control-panel/env', 'POST', buildWatcherPortalEnvPatch());
             if (restartTarget) {
               await restartManagedServiceSelection(restartTarget, 'Watcher / Portal');
             }
           });
           await refreshSnapshot({ silent: true, syncConfigInputs: true });
-          toast('?????? Watcher / Portal ????');
+          toast('บันทึก Watcher / Portal แล้ว');
         } catch (error) {
-          toast(error.message || '?????? Watcher / Portal ?????????');
+          toast(error.message || 'บันทึก Watcher / Portal ไม่สำเร็จ');
         }
       });
     }
@@ -954,16 +964,16 @@ logoutBtn.addEventListener('click', async () => {
       controlAdminUserForm.addEventListener('submit', async (event) => {
         event.preventDefault();
         if (!isAuthed) {
-          toast('????????????????????');
+          toast(DASHBOARD_MESSAGES.authRequired);
           return;
         }
         if (!hasRoleAtLeast(currentUserRole, 'owner')) {
-          toast('???????????? owner');
+          toast(DASHBOARD_MESSAGES.ownerOnly);
           return;
         }
         const submitButton = getSubmitButton(controlAdminUserForm, event);
         try {
-          await runWithButtonState(submitButton, '???????????...', async () => {
+          await runWithButtonState(submitButton, DASHBOARD_MESSAGES.saving, async () => {
             await api('/admin/api/auth/user', 'POST', {
               username: String(cpAdminUserName?.value || '').trim(),
               role: String(cpAdminUserRole?.value || 'mod').trim() || 'mod',
@@ -975,9 +985,45 @@ logoutBtn.addEventListener('click', async () => {
             cpAdminUserPassword.value = '';
           }
           await refreshSnapshot({ silent: true, syncConfigInputs: true });
-          toast('?????? Admin User ????');
+          toast('บันทึก Admin User แล้ว');
         } catch (error) {
-          toast(error.message || '?????? Admin User ?????????');
+          toast(error.message || 'บันทึก Admin User ไม่สำเร็จ');
+        }
+      });
+    }
+
+    if (controlEnvCatalogWrap) {
+      controlEnvCatalogWrap.addEventListener('click', async (event) => {
+        const button = event.target.closest('button[data-control-env-save]');
+        if (!button) return;
+        if (!isAuthed) {
+          toast(DASHBOARD_MESSAGES.authRequired);
+          return;
+        }
+        if (!hasRoleAtLeast(currentUserRole, 'owner')) {
+          toast(DASHBOARD_MESSAGES.ownerOnly);
+          return;
+        }
+        const patch = buildControlEnvCatalogPatch();
+        if (
+          Object.keys(patch.root || {}).length === 0
+          && Object.keys(patch.portal || {}).length === 0
+        ) {
+          toast('ยังไม่มี env key ที่เปลี่ยนแปลง');
+          return;
+        }
+        const restartTarget = getSelectedControlRestartTarget();
+        try {
+          await runWithButtonState(button, DASHBOARD_MESSAGES.saving, async () => {
+            await api('/admin/api/control-panel/env', 'POST', patch);
+            if (restartTarget) {
+              await restartManagedServiceSelection(restartTarget, 'env catalog');
+            }
+          });
+          await refreshSnapshot({ silent: true, syncConfigInputs: true, forceCardsRefresh: true });
+          toast('บันทึก env catalog แล้ว');
+        } catch (error) {
+          toast(error.message || 'บันทึก env catalog ไม่สำเร็จ');
         }
       });
     }
@@ -1017,16 +1063,16 @@ logoutBtn.addEventListener('click', async () => {
     if (deliveryCapabilityPresetRefreshBtn) {
       deliveryCapabilityPresetRefreshBtn.addEventListener('click', async () => {
         if (!isAuthed) {
-          toast('????????????????????');
+          toast(DASHBOARD_MESSAGES.authRequired);
           return;
         }
         try {
-          await runWithButtonState(deliveryCapabilityPresetRefreshBtn, '?????????...', async () => {
+          await runWithButtonState(deliveryCapabilityPresetRefreshBtn, DASHBOARD_MESSAGES.refreshing, async () => {
             await refreshDeliveryCapabilities();
           });
-          toast('?????? command catalog ????');
+          toast('โหลด command catalog แล้ว');
         } catch (error) {
-          toast(error.message || '???? command catalog ?????????');
+          toast(error.message || 'โหลด command catalog ไม่สำเร็จ');
         }
       });
     }
@@ -1069,33 +1115,33 @@ logoutBtn.addEventListener('click', async () => {
     if (deliveryCapabilityPresetDeleteBtn && deliveryCapabilityPresetManageSelect) {
       deliveryCapabilityPresetDeleteBtn.addEventListener('click', async () => {
         if (!isAuthed) {
-          toast('????????????????????');
+          toast(DASHBOARD_MESSAGES.authRequired);
           return;
         }
         const presetId = String(deliveryCapabilityPresetManageSelect.value || '').trim();
         if (!presetId) {
-          toast('????? preset ??????');
+          toast('กรุณาเลือก preset');
           return;
         }
         const selected = findDeliveryCapabilityById(presetId, 'preset');
         if (!selected) {
-          toast('????? preset ????????');
+          toast('ไม่พบ preset ที่เลือก');
           return;
         }
-        if (!window.confirm(`?? preset "${selected.name}" ?`)) {
+        if (!window.confirm(`ลบ preset "${selected.name}" ?`)) {
           return;
         }
         try {
-          await runWithButtonState(deliveryCapabilityPresetDeleteBtn, '???????...', async () => {
+          await runWithButtonState(deliveryCapabilityPresetDeleteBtn, DASHBOARD_MESSAGES.deleting, async () => {
             await api('/admin/api/delivery/capability-preset/delete', 'POST', { presetId });
           });
           await refreshDeliveryCapabilities();
           if (deliveryCapabilityPresetForm) {
             deliveryCapabilityPresetForm.reset();
           }
-          toast(`?? preset: ${selected.name}`);
+          toast(`ลบ preset แล้ว: ${selected.name}`);
         } catch (error) {
-          toast(error.message || '?? preset ?????????');
+          toast(error.message || 'ลบ preset ไม่สำเร็จ');
         }
       });
     }
@@ -1103,16 +1149,16 @@ logoutBtn.addEventListener('click', async () => {
     if (adminNotificationRefreshBtn) {
       adminNotificationRefreshBtn.addEventListener('click', async () => {
         if (!isAuthed) {
-          toast('????????????????????');
+          toast(DASHBOARD_MESSAGES.authRequired);
           return;
         }
         try {
-          await runWithButtonState(adminNotificationRefreshBtn, '?????????...', async () => {
+          await runWithButtonState(adminNotificationRefreshBtn, DASHBOARD_MESSAGES.refreshing, async () => {
             await refreshAdminNotifications();
           });
-          toast('?????? notification ????');
+          toast('โหลด notification แล้ว');
         } catch (error) {
-          toast(error.message || '?????? notification ?????????');
+          toast(error.message || 'โหลด notification ไม่สำเร็จ');
         }
       });
     }
@@ -1120,7 +1166,7 @@ logoutBtn.addEventListener('click', async () => {
     if (adminNotificationAckBtn) {
       adminNotificationAckBtn.addEventListener('click', async () => {
         if (!isAuthed) {
-          toast('????????????????????');
+          toast(DASHBOARD_MESSAGES.authRequired);
           return;
         }
         const selectedIds = getSelectedAdminNotificationIds();
@@ -1131,17 +1177,17 @@ logoutBtn.addEventListener('click', async () => {
             .map((row) => String(row?.id || '').trim())
             .filter(Boolean);
         if (ids.length === 0) {
-          toast('????? notification ??????????????');
+          toast('ไม่มี notification ที่ต้อง acknowledge');
           return;
         }
         try {
-          await runWithButtonState(adminNotificationAckBtn, '????????????...', async () => {
+          await runWithButtonState(adminNotificationAckBtn, 'กำลัง acknowledge...', async () => {
             await api('/admin/api/notifications/ack', 'POST', { ids });
           });
           await refreshAdminNotifications();
-          toast(`??????????? ${ids.length} ??????`);
+          toast(`acknowledge แล้ว ${ids.length} รายการ`);
         } catch (error) {
-          toast(error.message || '??????? notification ?????????');
+          toast(error.message || 'acknowledge notification ไม่สำเร็จ');
         }
       });
     }
@@ -1149,17 +1195,17 @@ logoutBtn.addEventListener('click', async () => {
     if (adminNotificationClearBtn) {
       adminNotificationClearBtn.addEventListener('click', async () => {
         if (!isAuthed) {
-          toast('????????????????????');
+          toast(DASHBOARD_MESSAGES.authRequired);
           return;
         }
         try {
-          await runWithButtonState(adminNotificationClearBtn, '???????...', async () => {
+          await runWithButtonState(adminNotificationClearBtn, 'กำลังล้าง...', async () => {
             await api('/admin/api/notifications/clear', 'POST', { acknowledgedOnly: true });
           });
           await refreshAdminNotifications();
-          toast('?? notification ??????????????');
+          toast('ล้าง notification ที่ acknowledge แล้ว');
         } catch (error) {
-          toast(error.message || '?? notification ?????????');
+          toast(error.message || 'ล้าง notification ไม่สำเร็จ');
         }
       });
     }
@@ -1184,17 +1230,17 @@ logoutBtn.addEventListener('click', async () => {
       deliveryQueueRetryManyBtn.addEventListener('click', async () => {
         const codes = getSelectedDeliveryCodes(deliveryQueueTableWrap, 'data-delivery-select');
         if (codes.length === 0) {
-          toast('????????????? retry ????');
+          toast('เลือกคำสั่งซื้อที่ต้อง retry ก่อน');
           return;
         }
         try {
-          await runWithButtonState(deliveryQueueRetryManyBtn, '????? retry ??????????...', async () => {
+          await runWithButtonState(deliveryQueueRetryManyBtn, 'กำลัง retry ที่เลือก...', async () => {
             await api('/admin/api/delivery/retry-many', 'POST', { codes });
           });
           await refreshSnapshot({ silent: true, syncConfigInputs: false });
-          toast(`???? retry ???? ${codes.length} ??????`);
+          toast(`ส่ง retry แล้ว ${codes.length} รายการ`);
         } catch (error) {
-          toast(error.message || 'retry ???????????????????');
+          toast(error.message || 'retry หลายรายการไม่สำเร็จ');
         }
       });
     }
@@ -1203,17 +1249,17 @@ logoutBtn.addEventListener('click', async () => {
       deliveryDeadRetryManyBtn.addEventListener('click', async () => {
         const codes = getSelectedDeliveryCodes(deliveryDeadLetterTableWrap, 'data-delivery-dead-select');
         if (codes.length === 0) {
-          toast('??????????? dead-letter ???? requeue');
+          toast('เลือก dead-letter ที่ต้อง requeue ก่อน');
           return;
         }
         try {
-          await runWithButtonState(deliveryDeadRetryManyBtn, '????? requeue ??????????...', async () => {
+          await runWithButtonState(deliveryDeadRetryManyBtn, 'กำลัง requeue ที่เลือก...', async () => {
             await api('/admin/api/delivery/dead-letter/retry-many', 'POST', { codes });
           });
           await refreshSnapshot({ silent: true, syncConfigInputs: false });
-          toast(`requeue ???? ${codes.length} ??????`);
+          toast(`requeue แล้ว ${codes.length} รายการ`);
         } catch (error) {
-          toast(error.message || 'requeue ???????????????????');
+          toast(error.message || 'requeue หลายรายการไม่สำเร็จ');
         }
       });
     }
@@ -1222,21 +1268,21 @@ logoutBtn.addEventListener('click', async () => {
       deliveryPreflightForm.addEventListener('submit', async (event) => {
         event.preventDefault();
         if (!isAuthed) {
-          toast('????????????????????');
+          toast(DASHBOARD_MESSAGES.authRequired);
           return;
         }
         const submitButton = getSubmitButton(deliveryPreflightForm, event);
         const payload = buildPayloadFromForm(deliveryPreflightForm);
         try {
-          await runWithButtonState(submitButton, '?????????...', async () => {
+          await runWithButtonState(submitButton, 'กำลังตรวจ...', async () => {
             await runDeliveryPreflightRequest(payload);
           });
-          toast('???? preflight ????');
+          toast('รัน preflight แล้ว');
         } catch (error) {
           if (deliveryPreflightView) {
             deliveryPreflightView.textContent = String(error.message || error);
           }
-          toast(error.message || '???? preflight ?????????');
+          toast(error.message || 'รัน preflight ไม่สำเร็จ');
         }
       });
     }
@@ -1245,21 +1291,21 @@ logoutBtn.addEventListener('click', async () => {
       deliveryPreviewForm.addEventListener('submit', async (event) => {
         event.preventDefault();
         if (!isAuthed) {
-          toast('????????????????????');
+          toast(DASHBOARD_MESSAGES.authRequired);
           return;
         }
         const submitButton = getSubmitButton(deliveryPreviewForm, event);
         const payload = buildPayloadFromForm(deliveryPreviewForm);
         try {
-          await runWithButtonState(submitButton, '???????????...', async () => {
+          await runWithButtonState(submitButton, 'กำลังพรีวิว...', async () => {
             await previewDeliveryCommand(payload);
           });
-          toast('?????????????????????');
+          toast('พรีวิว delivery แล้ว');
         } catch (error) {
           if (deliveryPreviewView) {
             deliveryPreviewView.textContent = String(error.message || error);
           }
-          toast(error.message || '?????????????????????');
+          toast(error.message || 'พรีวิว delivery ไม่สำเร็จ');
         }
       });
     }
@@ -1268,21 +1314,21 @@ logoutBtn.addEventListener('click', async () => {
       deliverySimulateForm.addEventListener('submit', async (event) => {
         event.preventDefault();
         if (!isAuthed) {
-          toast('????????????????????');
+          toast(DASHBOARD_MESSAGES.authRequired);
           return;
         }
         const submitButton = getSubmitButton(deliverySimulateForm, event);
         const payload = buildPayloadFromForm(deliverySimulateForm);
         try {
-          await runWithButtonState(submitButton, '??????????...', async () => {
+          await runWithButtonState(submitButton, 'กำลังจำลอง...', async () => {
             await simulateDelivery(payload);
           });
-          toast('????? delivery plan ????');
+          toast('จำลอง delivery plan แล้ว');
         } catch (error) {
           if (deliverySimulateView) {
             deliverySimulateView.textContent = String(error.message || error);
           }
-          toast(error.message || 'simulate delivery ?????????');
+          toast(error.message || 'simulate delivery ไม่สำเร็จ');
         }
       });
     }
@@ -1290,20 +1336,20 @@ logoutBtn.addEventListener('click', async () => {
     if (deliveryCommandTemplateLoadBtn && deliveryCommandTemplateForm) {
       deliveryCommandTemplateLoadBtn.addEventListener('click', async () => {
         if (!isAuthed) {
-          toast('????????????????????');
+          toast(DASHBOARD_MESSAGES.authRequired);
           return;
         }
         const payload = buildPayloadFromForm(deliveryCommandTemplateForm);
         try {
-          await runWithButtonState(deliveryCommandTemplateLoadBtn, '?????????...', async () => {
+          await runWithButtonState(deliveryCommandTemplateLoadBtn, DASHBOARD_MESSAGES.refreshing, async () => {
             await loadDeliveryCommandTemplate(payload);
           });
-          toast('???? command template ????');
+          toast('โหลด command template แล้ว');
         } catch (error) {
           if (deliveryCommandTemplateView) {
             deliveryCommandTemplateView.textContent = String(error.message || error);
           }
-          toast(error.message || '???? command template ?????????');
+          toast(error.message || 'โหลด command template ไม่สำเร็จ');
         }
       });
     }
@@ -1311,12 +1357,12 @@ logoutBtn.addEventListener('click', async () => {
     if (deliveryCommandTemplateDeleteBtn && deliveryCommandTemplateForm) {
       deliveryCommandTemplateDeleteBtn.addEventListener('click', async () => {
         if (!isAuthed) {
-          toast('????????????????????');
+          toast(DASHBOARD_MESSAGES.authRequired);
           return;
         }
         const payload = buildPayloadFromForm(deliveryCommandTemplateForm);
         try {
-          await runWithButtonState(deliveryCommandTemplateDeleteBtn, '???????...', async () => {
+          await runWithButtonState(deliveryCommandTemplateDeleteBtn, DASHBOARD_MESSAGES.deleting, async () => {
             const res = await api('/admin/api/delivery/command-template', 'POST', {
               ...payload,
               clear: true,
@@ -1324,12 +1370,12 @@ logoutBtn.addEventListener('click', async () => {
             renderDeliveryCommandTemplate(res?.data || null);
           });
           await refreshAdminNotifications().catch(() => null);
-          toast('?? command template override ????');
+          toast('ลบ command template override แล้ว');
         } catch (error) {
           if (deliveryCommandTemplateView) {
             deliveryCommandTemplateView.textContent = String(error.message || error);
           }
-          toast(error.message || '?? command template ?????????');
+          toast(error.message || 'ลบ command template ไม่สำเร็จ');
         }
       });
     }
@@ -1338,7 +1384,7 @@ logoutBtn.addEventListener('click', async () => {
       deliveryCommandTemplateForm.addEventListener('submit', async (event) => {
         event.preventDefault();
         if (!isAuthed) {
-          toast('????????????????????');
+          toast(DASHBOARD_MESSAGES.authRequired);
           return;
         }
         const submitButton = getSubmitButton(deliveryCommandTemplateForm, event);
@@ -1350,17 +1396,17 @@ logoutBtn.addEventListener('click', async () => {
             .filter(Boolean);
         }
         try {
-          await runWithButtonState(submitButton, '???????????...', async () => {
+          await runWithButtonState(submitButton, DASHBOARD_MESSAGES.saving, async () => {
             const res = await api('/admin/api/delivery/command-template', 'POST', payload);
             renderDeliveryCommandTemplate(res?.data || null);
           });
           await refreshAdminNotifications().catch(() => null);
-          toast('?????? command template ????');
+          toast('บันทึก command template แล้ว');
         } catch (error) {
           if (deliveryCommandTemplateView) {
             deliveryCommandTemplateView.textContent = String(error.message || error);
           }
-          toast(error.message || '?????? command template ?????????');
+          toast(error.message || 'บันทึก command template ไม่สำเร็จ');
         }
       });
     }
@@ -1369,13 +1415,13 @@ logoutBtn.addEventListener('click', async () => {
       deliveryTestSendForm.addEventListener('submit', async (event) => {
         event.preventDefault();
         if (!isAuthed) {
-          toast('????????????????????');
+          toast(DASHBOARD_MESSAGES.authRequired);
           return;
         }
         const submitButton = getSubmitButton(deliveryTestSendForm, event);
         const payload = buildPayloadFromForm(deliveryTestSendForm);
         try {
-          await runWithButtonState(submitButton, '???????? test item...', async () => {
+          await runWithButtonState(submitButton, 'กำลังส่ง test item...', async () => {
             const res = await api('/admin/api/delivery/test-send', 'POST', payload);
             if (deliveryTestSendView) {
               deliveryTestSendView.textContent = JSON.stringify(res?.data || {}, null, 2);
@@ -1388,12 +1434,12 @@ logoutBtn.addEventListener('click', async () => {
             });
           }
           await refreshSnapshot({ silent: true, syncConfigInputs: false });
-          toast('??? test item ????');
+          toast('ส่ง test item แล้ว');
         } catch (error) {
           if (deliveryTestSendView) {
             deliveryTestSendView.textContent = String(error.message || error);
           }
-          toast(error.message || '??? test item ?????????');
+          toast(error.message || 'ส่ง test item ไม่สำเร็จ');
         }
       });
     }
@@ -1402,23 +1448,23 @@ logoutBtn.addEventListener('click', async () => {
       deliveryCapabilityTestForm.addEventListener('submit', async (event) => {
         event.preventDefault();
         if (!isAuthed) {
-          toast('????????????????????');
+          toast(DASHBOARD_MESSAGES.authRequired);
           return;
         }
         const submitButton = getSubmitButton(deliveryCapabilityTestForm, event);
         const payload = buildPayloadFromForm(deliveryCapabilityTestForm);
         payload.dryRun = String(payload.dryRun || '').toLowerCase() === 'true';
         try {
-          await runWithButtonState(submitButton, payload.dryRun ? '??????????...' : '????? execute...', async () => {
+          await runWithButtonState(submitButton, payload.dryRun ? 'กำลังตรวจ dry-run...' : 'กำลัง execute...', async () => {
             const res = await api('/admin/api/delivery/capability-test', 'POST', payload);
             renderDeliveryCapabilityResult(res?.data || null);
           });
-          toast(payload.dryRun ? '????? capability dry run ????' : '??? capability test ????');
+          toast(payload.dryRun ? 'รัน capability dry run แล้ว' : 'รัน capability test แล้ว');
         } catch (error) {
           if (deliveryCapabilityView) {
             deliveryCapabilityView.textContent = String(error.message || error);
           }
-          toast(error.message || '??? capability test ?????????');
+          toast(error.message || 'รัน capability test ไม่สำเร็จ');
         }
       });
     }
@@ -1427,7 +1473,7 @@ logoutBtn.addEventListener('click', async () => {
       deliveryCapabilityPresetForm.addEventListener('submit', async (event) => {
         event.preventDefault();
         if (!isAuthed) {
-          toast('????????????????????');
+          toast(DASHBOARD_MESSAGES.authRequired);
           return;
         }
         const submitButton = getSubmitButton(deliveryCapabilityPresetForm, event);
@@ -1445,7 +1491,7 @@ logoutBtn.addEventListener('click', async () => {
             .filter(Boolean);
         }
         try {
-          await runWithButtonState(submitButton, '??????????? preset...', async () => {
+          await runWithButtonState(submitButton, 'กำลังบันทึก preset...', async () => {
             const res = await api('/admin/api/delivery/capability-preset', 'POST', payload);
             if (deliveryCapabilityPresetView) {
               deliveryCapabilityPresetView.textContent = JSON.stringify(res?.data || {}, null, 2);
@@ -1457,12 +1503,12 @@ logoutBtn.addEventListener('click', async () => {
           if (selected) {
             applyDeliveryCapabilityToForms(selected);
           }
-          toast('?????? capability preset ????');
+          toast('บันทึก capability preset แล้ว');
         } catch (error) {
           if (deliveryCapabilityPresetView) {
             deliveryCapabilityPresetView.textContent = String(error.message || error);
           }
-          toast(error.message || '?????? capability preset ?????????');
+          toast(error.message || 'บันทึก capability preset ไม่สำเร็จ');
         }
       });
     }
@@ -1470,20 +1516,20 @@ logoutBtn.addEventListener('click', async () => {
     if (deliveryOpsRefreshBtn) {
       deliveryOpsRefreshBtn.addEventListener('click', async () => {
         if (!isAuthed) {
-          toast('????????????????????');
+          toast(DASHBOARD_MESSAGES.authRequired);
           return;
         }
         try {
           await runWithButtonState(
             deliveryOpsRefreshBtn,
-            '????????????????...',
+            'กำลังรีเฟรชข้อมูล...',
             async () => {
               await refreshSnapshot({ silent: true, syncConfigInputs: false });
             },
           );
-          toast('?????????????????????');
+          toast('รีเฟรช Delivery Ops แล้ว');
         } catch (error) {
-          toast(error.message || '??????????????????????????');
+          toast(error.message || 'รีเฟรช Delivery Ops ไม่สำเร็จ');
         }
       });
     }
@@ -1491,11 +1537,11 @@ logoutBtn.addEventListener('click', async () => {
     if (platformRefreshBtn) {
       platformRefreshBtn.addEventListener('click', async () => {
         if (!isAuthed) {
-          toast('????????????????????');
+          toast(DASHBOARD_MESSAGES.authRequired);
           return;
         }
         try {
-          await runWithButtonState(platformRefreshBtn, '???????????...', async () => {
+          await runWithButtonState(platformRefreshBtn, DASHBOARD_MESSAGES.refreshing, async () => {
             await refreshSnapshot({ silent: true, syncConfigInputs: false, forceCardsRefresh: true });
             await refreshPlatformCenter({
               forceOverview: true,
@@ -1503,9 +1549,9 @@ logoutBtn.addEventListener('click', async () => {
               fetchOpsState: true,
             });
           });
-          toast('?????? Platform Center ????');
+          toast('โหลด Platform Center แล้ว');
         } catch (error) {
-          toast(error.message || '?????? Platform Center ?????????');
+          toast(error.message || 'โหลด Platform Center ไม่สำเร็จ');
         }
       });
     }
@@ -1513,11 +1559,11 @@ logoutBtn.addEventListener('click', async () => {
     if (platformRunMonitoringBtn) {
       platformRunMonitoringBtn.addEventListener('click', async () => {
         if (!isAuthed) {
-          toast('????????????????????');
+          toast(DASHBOARD_MESSAGES.authRequired);
           return;
         }
         try {
-          await runWithButtonState(platformRunMonitoringBtn, '????????...', async () => {
+          await runWithButtonState(platformRunMonitoringBtn, 'กำลังรัน...', async () => {
             const res = await api('/admin/api/platform/monitoring/run', 'POST', {});
             currentPlatformMonitoringReport = res?.data || null;
             await refreshSnapshot({ silent: true, syncConfigInputs: false });
@@ -1527,9 +1573,9 @@ logoutBtn.addEventListener('click', async () => {
               fetchOpsState: true,
             });
           });
-          toast('??? platform monitoring ????');
+          toast('รัน platform monitoring แล้ว');
         } catch (error) {
-          toast(error.message || '??? platform monitoring ?????????');
+          toast(error.message || 'รัน platform monitoring ไม่สำเร็จ');
         }
       });
     }
@@ -1537,11 +1583,11 @@ logoutBtn.addEventListener('click', async () => {
     if (platformRunReconcileBtn) {
       platformRunReconcileBtn.addEventListener('click', async () => {
         if (!isAuthed) {
-          toast('????????????????????');
+          toast(DASHBOARD_MESSAGES.authRequired);
           return;
         }
         try {
-          await runWithButtonState(platformRunReconcileBtn, '????? reconcile...', async () => {
+          await runWithButtonState(platformRunReconcileBtn, 'กำลัง reconcile...', async () => {
             const res = await api('/admin/api/platform/reconcile');
             currentPlatformReconcile = res?.data || null;
             await refreshPlatformCenter({
@@ -1550,9 +1596,9 @@ logoutBtn.addEventListener('click', async () => {
               fetchOpsState: true,
             });
           });
-          toast('??? delivery reconcile ????');
+          toast('รัน delivery reconcile แล้ว');
         } catch (error) {
-          toast(error.message || '??? delivery reconcile ?????????');
+          toast(error.message || 'รัน delivery reconcile ไม่สำเร็จ');
         }
       });
     }
@@ -1561,16 +1607,16 @@ logoutBtn.addEventListener('click', async () => {
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
         if (!isAuthed) {
-          toast('????????????????????');
+          toast(DASHBOARD_MESSAGES.authRequired);
           return;
         }
         const submitButton = getSubmitButton(form, event);
         try {
-          await runWithButtonState(submitButton, '????????...', async () => {
+          await runWithButtonState(submitButton, 'กำลังส่งคำสั่ง...', async () => {
             await submitForm(form);
           });
         } catch (err) {
-          setStatus('???????????????', '#ff6b7b');
+          setStatus(DASHBOARD_MESSAGES.failed, '#ff6b7b');
           toast(err.message);
         }
       });
@@ -1578,70 +1624,70 @@ logoutBtn.addEventListener('click', async () => {
 
     configLoadBtn.addEventListener('click', async () => {
       if (!isAuthed) {
-        toast('????????????????????');
+        toast(DASHBOARD_MESSAGES.authRequired);
         return;
       }
       if (!snapshot) {
-        await runWithButtonState(configLoadBtn, '?????????...', async () => {
+        await runWithButtonState(configLoadBtn, DASHBOARD_MESSAGES.refreshing, async () => {
           await refreshSnapshot();
         });
       }
       fillConfigEditorFromSnapshot();
-      toast('???? config ????????????');
+      toast('โหลด config ปัจจุบันแล้ว');
     });
 
     configPatchBtn.addEventListener('click', async () => {
       if (!isAuthed) {
-        toast('????????????????????');
+        toast(DASHBOARD_MESSAGES.authRequired);
         return;
       }
       try {
-        await runWithButtonState(configPatchBtn, '????? patch...', async () => {
+        await runWithButtonState(configPatchBtn, 'กำลัง patch...', async () => {
           const patch = parseConfigEditorValue();
           await api('/admin/api/config/patch', 'POST', { patch });
         });
-        toast('????????? patch ????');
+        toast('บันทึก config patch แล้ว');
         await refreshSnapshot();
       } catch (err) {
-        setStatus('???????????????', '#ff6b7b');
+        setStatus(DASHBOARD_MESSAGES.failed, '#ff6b7b');
         toast(err.message);
       }
     });
 
     simpleLoadBtn.addEventListener('click', async () => {
       if (!isAuthed) {
-        toast('????????????????????');
+        toast(DASHBOARD_MESSAGES.authRequired);
         return;
       }
-      await runWithButtonState(simpleLoadBtn, '?????????...', async () => {
+      await runWithButtonState(simpleLoadBtn, DASHBOARD_MESSAGES.refreshing, async () => {
         if (!snapshot) {
           await refreshSnapshot();
         } else {
           fillSimpleConfigFromSnapshot();
         }
       });
-      toast('??????????????????????');
+      toast('โหลดค่าตั้งค่าง่ายแล้ว');
     });
 
     simpleConfigForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       if (!isAuthed) {
-        toast('????????????????????');
+        toast(DASHBOARD_MESSAGES.authRequired);
         return;
       }
       const submitButton = getSubmitButton(simpleConfigForm, event);
       try {
-        await runWithButtonState(submitButton, '???????????...', async () => {
+        await runWithButtonState(submitButton, DASHBOARD_MESSAGES.saving, async () => {
           const patch = buildSimpleConfigPatch();
           if (Object.keys(patch).length === 0) {
-            throw new Error('??????????????????????');
+            throw new Error('ยังไม่ได้แก้ค่าที่ต้องบันทึก');
           }
           await api('/admin/api/config/patch', 'POST', { patch });
         });
-        toast('???????????????????????');
+        toast('บันทึกตั้งค่าง่ายแล้ว');
         await refreshSnapshot();
       } catch (err) {
-        setStatus('???????????????', '#ff6b7b');
+        setStatus(DASHBOARD_MESSAGES.failed, '#ff6b7b');
         toast(err.message);
       }
     });
@@ -1649,40 +1695,40 @@ logoutBtn.addEventListener('click', async () => {
     configEditorForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       if (!isAuthed) {
-        toast('????????????????????');
+        toast(DASHBOARD_MESSAGES.authRequired);
         return;
       }
       const submitButton = getSubmitButton(configEditorForm, event);
       try {
-        await runWithButtonState(submitButton, '???????????...', async () => {
+        await runWithButtonState(submitButton, DASHBOARD_MESSAGES.saving, async () => {
           const nextConfig = parseConfigEditorValue();
           await api('/admin/api/config/set', 'POST', { config: nextConfig });
         });
-        toast('?????? config ????');
+        toast('บันทึก config ทั้งชุดแล้ว');
         await refreshSnapshot();
       } catch (err) {
-        setStatus('???????????????', '#ff6b7b');
+        setStatus(DASHBOARD_MESSAGES.failed, '#ff6b7b');
         toast(err.message);
       }
     });
 
     configResetBtn.addEventListener('click', async () => {
       if (!isAuthed) {
-        toast('????????????????????');
+        toast(DASHBOARD_MESSAGES.authRequired);
         return;
       }
-      if (!window.confirm('?????????????????????????????????????????')) {
+      if (!window.confirm('ยืนยันรีเซ็ตคอนฟิกทั้งหมดกลับค่าเริ่มต้น?')) {
         return;
       }
       try {
-        await runWithButtonState(configResetBtn, '???????????...', async () => {
+        await runWithButtonState(configResetBtn, DASHBOARD_MESSAGES.saving, async () => {
           await api('/admin/api/config/reset', 'POST', {});
         });
-        toast('?????? config ????');
+        toast('รีเซ็ต config แล้ว');
         await refreshSnapshot();
         fillConfigEditorFromSnapshot();
       } catch (err) {
-        setStatus('???????????????', '#ff6b7b');
+        setStatus(DASHBOARD_MESSAGES.failed, '#ff6b7b');
         toast(err.message);
       }
     });

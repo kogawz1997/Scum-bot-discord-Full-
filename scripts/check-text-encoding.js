@@ -27,10 +27,11 @@ const allowedExt = new Set([
 
 // Keep markers in escaped form so this checker file itself stays clean.
 const suspectPatterns = [
-  '\u00C3\u00A0\u00C2', // common Thai mojibake prefix
-  '\u00C3\u00A2\u00E2\u0082\u00AC', // smart quote/dash mojibake prefix
-  '\u00C3\u00B0\u00C5\u00B8', // emoji mojibake prefix
-  '\u00C3\u00AF\u00C2', // UTF decode mismatch prefix
+  '\u00E0\u00B8', // common Thai mojibake prefix
+  '\u00E0\u00B9', // alternate Thai mojibake prefix
+  '\u00E2\u20AC', // smart quote/dash mojibake prefix
+  '\u00F0\u0178', // emoji mojibake prefix
+  '\u00EF\u00BF\u00BD', // replacement-char mojibake sequence
 ];
 
 function walk(dirPath, outFiles) {

@@ -211,6 +211,48 @@ function normalizeConfig() {
   };
 }
 
+function primeSnapshotStoreReaders() {
+  listTickets();
+  listBounties();
+  listEvents();
+  listLinks();
+  listMemberships();
+  listWeaponStats();
+  listAllStats();
+  listGiveaways();
+  listAllPunishments();
+  listCodes();
+  listClaimed();
+  listTopPanels();
+  listAllCarts();
+  getStatus();
+  listDeliveryQueue(1);
+  listDeliveryDeadLetters(1);
+  listDeliveryAudit(1);
+}
+
+async function flushSnapshotStoreState() {
+  primeSnapshotStoreReaders();
+  await Promise.all([
+    flushTicketStoreWrites(),
+    flushBountyStoreWrites(),
+    flushEventStoreWrites(),
+    flushLinkStoreWrites(),
+    flushVipStoreWrites(),
+    flushWeaponStatsStoreWrites(),
+    flushStatsStoreWrites(),
+    flushGiveawayStoreWrites(),
+    flushModerationStoreWrites(),
+    flushRedeemStoreWrites(),
+    flushWelcomePackStoreWrites(),
+    flushTopPanelStoreWrites(),
+    flushCartStoreWrites(),
+    flushScumStoreWrites(),
+    flushDeliveryAuditStoreWrites(),
+    flushDeliveryPersistenceWrites(),
+  ]);
+}
+
 // Backups are file-based on purpose so admins can inspect/export them without needing
 // a separate artifact store during recovery work.
 function ensureBackupDir() {
@@ -1052,6 +1094,7 @@ async function buildAdminSnapshot(options = {}) {
     observabilitySnapshot = null,
     includePlatformSecrets = false,
   } = options;
+  await flushSnapshotStoreState();
   const [
     shopItems,
     wallets,
@@ -1293,7 +1336,7 @@ async function restoreAdminBackup(backupName, options = {}) {
 
   let currentSnapshot = null;
   let rollbackBackup = null;
-  let restoreApplied = false;
+  let restoreStarted = false;
   let preview = null;
 
   setAdminRestoreState({
@@ -1386,8 +1429,8 @@ async function restoreAdminBackup(backupName, options = {}) {
       warnings: runningState.warnings,
     });
 
+    restoreStarted = true;
     await restoreAdminSnapshotData(snapshot);
-    restoreApplied = true;
 
     const endedAt = new Date().toISOString();
     const durationMs = Math.max(0, new Date(endedAt) - new Date(startedAt));
@@ -1442,10 +1485,10 @@ async function restoreAdminBackup(backupName, options = {}) {
       warnings: preview.warnings,
     };
   } catch (error) {
-    let rollbackStatus = restoreApplied ? 'failed' : 'not-needed';
+    let rollbackStatus = restoreStarted ? 'failed' : 'not-needed';
     let rollbackError = null;
 
-    if (restoreApplied && currentSnapshot) {
+    if (restoreStarted && currentSnapshot) {
       try {
         await restoreAdminSnapshotData(currentSnapshot);
         rollbackStatus = 'succeeded';

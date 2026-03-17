@@ -141,6 +141,190 @@
       renderRowsToContainer(controlAdminUsersWrap, rows, 'เฉพาะ owner จะเห็นรายชื่อแอดมิน');
     }
 
+    function getControlPanelEnvCatalogRows() {
+      const scopes = ['root', 'portal'];
+      const rows = [];
+      for (const scope of scopes) {
+        const catalog = Array.isArray(controlPanelSettings?.envCatalog?.[scope])
+          ? controlPanelSettings.envCatalog[scope]
+          : [];
+        for (const field of catalog) {
+          const entry = getControlPanelEnvEntry(scope, field.key) || {};
+          rows.push({
+            scope,
+            key: String(field.key || '').trim(),
+            type: field.type || entry.type || 'text',
+            policy: field.policy || entry.policy || 'admin-editable',
+            applyMode: field.applyMode || entry.applyMode || 'restart-required',
+            editable: field.editable !== false && entry.editable !== false,
+            secret: field.secret === true || entry.secret === true,
+            description: field.description || entry.description || '',
+            configured: entry.configured === true,
+            value: entry.value,
+          });
+        }
+      }
+      return rows;
+    }
+
+    function formatControlPanelEnvValue(row) {
+      if (!row) return '';
+      if (row.secret) return '';
+      if (row.type === 'boolean') {
+        return row.value ? 'true' : 'false';
+      }
+      if (row.value == null) return '';
+      return String(row.value);
+    }
+
+    function buildControlEnvCatalogInput(row) {
+      const inputId = `control-env-${row.scope}-${row.key}`;
+      const commonAttrs =
+        `id="${escapeHtml(inputId)}" data-control-env-input="true" data-file="${escapeHtml(row.scope)}" `
+        + `data-key="${escapeHtml(row.key)}" data-type="${escapeHtml(row.type)}"`;
+      const disabled = row.editable ? '' : ' disabled';
+      if (row.type === 'boolean') {
+        const currentValue = String(formatControlPanelEnvValue(row) || 'false').toLowerCase() === 'true';
+        return `
+          <select ${commonAttrs}${disabled}>
+            <option value="false" ${currentValue ? '' : 'selected'}>false</option>
+            <option value="true" ${currentValue ? 'selected' : ''}>true</option>
+          </select>
+        `;
+      }
+      if (row.secret) {
+        return `
+          <input
+            ${commonAttrs}
+            type="password"
+            value=""
+            ${disabled}
+            placeholder="${row.configured ? 'configured (leave blank to keep)' : 'set secret'}"
+          >
+        `;
+      }
+      const inputType = row.type === 'number' ? 'number' : 'text';
+      return `
+        <input
+          ${commonAttrs}
+          type="${inputType}"
+          value="${escapeHtml(formatControlPanelEnvValue(row))}"
+          ${disabled}
+          placeholder="${row.configured ? '' : 'unset'}"
+        >
+      `;
+    }
+
+    function renderControlEnvCatalog() {
+      if (!controlEnvCatalogWrap) return;
+      const rows = getControlPanelEnvCatalogRows();
+      if (rows.length === 0) {
+        controlEnvCatalogWrap.innerHTML = `
+          <div style="padding:12px; color:#9eb0d9;">
+            Env catalog แสดงเฉพาะ admin ที่ไม่ถูก tenant-scope เพื่อป้องกันการแก้ runtime ข้าม tenant
+          </div>
+        `;
+        return;
+      }
+
+      const configuredCount = rows.filter((row) => row.configured).length;
+      const editableCount = rows.filter((row) => row.editable).length;
+      const runtimeOnlyCount = rows.filter((row) => row.policy === 'runtime-only').length;
+      const reloadSafeCount = rows.filter((row) => row.applyMode === 'reload-safe').length;
+      const rootCount = rows.filter((row) => row.scope === 'root').length;
+      const portalCount = rows.filter((row) => row.scope === 'portal').length;
+      const tableRows = rows.map((row) => `
+        <tr>
+          <td>${escapeHtml(row.scope)}</td>
+          <td><code>${escapeHtml(row.key)}</code></td>
+          <td>${buildControlEnvCatalogInput(row)}</td>
+          <td>${escapeHtml(row.type)}</td>
+          <td>${escapeHtml(row.policy)}</td>
+          <td>${escapeHtml(row.applyMode)}</td>
+          <td>${row.configured ? '<span class="badge-text ok">configured</span>' : '<span class="badge-text danger">unset</span>'}</td>
+          <td>${row.editable ? '<span class="badge-text ok">editable</span>' : '<span class="badge-text danger">read-only</span>'}</td>
+          <td>${escapeHtml(row.description || '-')}</td>
+        </tr>
+      `).join('');
+      const rootFile = String(controlPanelSettings?.files?.root || '-');
+      const portalFile = String(controlPanelSettings?.files?.portal || '-');
+
+      controlEnvCatalogWrap.innerHTML = `
+        <div class="summary" style="margin-bottom:12px;">
+          <div class="metric"><div class="k">env keys</div><div class="v">${rows.length}</div></div>
+          <div class="metric"><div class="k">configured</div><div class="v">${configuredCount}</div></div>
+          <div class="metric"><div class="k">editable</div><div class="v">${editableCount}</div></div>
+          <div class="metric"><div class="k">runtime-only</div><div class="v">${runtimeOnlyCount}</div></div>
+          <div class="metric"><div class="k">reload-safe</div><div class="v">${reloadSafeCount}</div></div>
+          <div class="metric"><div class="k">files</div><div class="v">root ${rootCount} / portal ${portalCount}</div></div>
+        </div>
+        <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:12px; color:#9eb0d9;">
+          <div><strong>root</strong>: ${escapeHtml(rootFile)}</div>
+          <div><strong>portal</strong>: ${escapeHtml(portalFile)}</div>
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+          <button type="button" class="ghost" data-control-env-save="true">Apply env catalog edits</button>
+          <span style="color:#9eb0d9; align-self:center;">
+            คีย์ที่เป็น <code>runtime-only</code> จะถูกแสดงเป็น read-only และคีย์ secret เว้นว่างไว้ได้เพื่อคงค่าเดิม
+          </span>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>File</th>
+              <th>Key</th>
+              <th>Value</th>
+              <th>Type</th>
+              <th>Policy</th>
+              <th>Apply</th>
+              <th>State</th>
+              <th>Access</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+      `;
+    }
+
+    function buildControlEnvCatalogPatch() {
+      const patch = {
+        root: {},
+        portal: {},
+      };
+      const inputs = Array.from(document.querySelectorAll('[data-control-env-input="true"]'));
+      for (const input of inputs) {
+        if (input.disabled) continue;
+        const fileKey = String(input.getAttribute('data-file') || '').trim();
+        const envKey = String(input.getAttribute('data-key') || '').trim();
+        const type = String(input.getAttribute('data-type') || 'text').trim();
+        if (!fileKey || !envKey || !(fileKey in patch)) continue;
+        const entry = getControlPanelEnvEntry(fileKey, envKey);
+        if (!entry) continue;
+
+        let nextValue = String(input.value || '');
+        if (type === 'boolean') {
+          nextValue = String(input.value || 'false').trim().toLowerCase() === 'true' ? 'true' : 'false';
+        } else {
+          nextValue = String(input.value || '').trim();
+        }
+
+        if (entry.secret) {
+          if (!nextValue) continue;
+          patch[fileKey][envKey] = nextValue;
+          continue;
+        }
+
+        const currentValue = formatControlPanelEnvValue({
+          ...entry,
+          type,
+        });
+        if (nextValue === currentValue) continue;
+        patch[fileKey][envKey] = nextValue;
+      }
+      return patch;
+    }
+
     function renderControlPanelSummary() {
       if (!controlPanelSummary) return;
       const commandCount = Array.isArray(controlPanelSettings?.commands)
@@ -194,6 +378,7 @@
       if (cpPortalMapUrl) cpPortalMapUrl.value = String(getControlPanelEnvValue('portal', 'WEB_PORTAL_MAP_EXTERNAL_URL', ''));
       renderControlPanelCommandRegistry();
       renderManagedServices();
+      renderControlEnvCatalog();
       renderControlAdminUsers();
       renderControlPanelSummary();
     }

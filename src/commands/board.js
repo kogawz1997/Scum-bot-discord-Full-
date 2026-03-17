@@ -51,7 +51,7 @@ module.exports = {
         wallets.map(async (wallet, index) => {
           const user = await interaction.client.users.fetch(wallet.userId).catch(() => null);
           const name = user ? user.tag : `<@${wallet.userId}>`;
-          return `${rankLabel(index)} **${name}** — ${economy.currencySymbol} ${Number(wallet.balance || 0).toLocaleString()}`;
+          return `${rankLabel(index)} **${name}** - ${economy.currencySymbol} ${Number(wallet.balance || 0).toLocaleString()}`;
         }),
       );
       title = 'กระดานเศรษฐกิจ';
@@ -68,7 +68,7 @@ module.exports = {
           stats.slice(0, limit).map(async (entry, index) => {
             const user = await interaction.client.users.fetch(entry.userId).catch(() => null);
             const name = user ? user.tag : `<@${entry.userId}>`;
-            return `${rankLabel(index)} **${name}** — ${Number(entry.kills || 0)} คิล`;
+            return `${rankLabel(index)} **${name}** - ${Number(entry.kills || 0)} คิล`;
           }),
         );
       } else if (type === 'playtime') {
@@ -80,7 +80,7 @@ module.exports = {
           stats.slice(0, limit).map(async (entry, index) => {
             const user = await interaction.client.users.fetch(entry.userId).catch(() => null);
             const name = user ? user.tag : `<@${entry.userId}>`;
-            return `${rankLabel(index)} **${name}** — ${Math.floor(Number(entry.playtimeMinutes || 0) / 60)} ชม.`;
+            return `${rankLabel(index)} **${name}** - ${Math.floor(Number(entry.playtimeMinutes || 0) / 60)} ชม.`;
           }),
         );
       } else {
@@ -101,7 +101,7 @@ module.exports = {
             const kd = Number(entry.deaths || 0) === 0
               ? Number(entry.kills || 0)
               : Number(entry.kills || 0) / Number(entry.deaths || 1);
-            return `${rankLabel(index)} **${name}** — K/D ${kd.toFixed(2)} (${Number(entry.kills || 0)}/${Number(entry.deaths || 0)})`;
+            return `${rankLabel(index)} **${name}** - K/D ${kd.toFixed(2)} (${Number(entry.kills || 0)}/${Number(entry.deaths || 0)})`;
           }),
         );
       }
