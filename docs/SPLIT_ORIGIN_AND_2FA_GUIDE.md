@@ -84,10 +84,14 @@ WEB_PORTAL_COOKIE_SAMESITE=Lax
 ## Validation commands
 
 ```bash
+npm run security:rotation:check
 npm run doctor
 npm run security:check
 npm run readiness:prod
 ```
+
+For a step-by-step production rotation flow, see
+[SECRET_ROTATION_RUNBOOK.md](./SECRET_ROTATION_RUNBOOK.md).
 
 ## What changed in code
 

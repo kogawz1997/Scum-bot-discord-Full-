@@ -34,6 +34,30 @@ function createAdminPageRuntime(options = {}) {
   let cachedOwnerConsoleHtml = null;
   let cachedTenantConsoleHtml = null;
   let cachedLoginHtml = null;
+  let cachedDashboardHtmlMtimeMs = 0;
+  let cachedOwnerConsoleHtmlMtimeMs = 0;
+  let cachedTenantConsoleHtmlMtimeMs = 0;
+  let cachedLoginHtmlMtimeMs = 0;
+
+  function readHtmlWithMtime(cacheValue, cacheMtimeMs, filePath) {
+    try {
+      const stat = fs.statSync(filePath);
+      if (!cacheValue || stat.mtimeMs !== cacheMtimeMs) {
+        return {
+          html: fs.readFileSync(filePath, 'utf8'),
+          mtimeMs: stat.mtimeMs,
+        };
+      }
+    } catch {
+      if (!cacheValue) {
+        throw new Error(`Unable to read HTML template: ${filePath}`);
+      }
+    }
+    return {
+      html: cacheValue,
+      mtimeMs: cacheMtimeMs,
+    };
+  }
 
   async function tryServeAdminStaticAsset(req, res, pathname) {
     if (String(req.method || '').toUpperCase() !== 'GET') return false;
@@ -133,30 +157,30 @@ function createAdminPageRuntime(options = {}) {
   }
 
   function getDashboardHtml() {
-    if (!cachedDashboardHtml) {
-      cachedDashboardHtml = fs.readFileSync(dashboardHtmlPath, 'utf8');
-    }
+    const result = readHtmlWithMtime(cachedDashboardHtml, cachedDashboardHtmlMtimeMs, dashboardHtmlPath);
+    cachedDashboardHtml = result.html;
+    cachedDashboardHtmlMtimeMs = result.mtimeMs;
     return cachedDashboardHtml;
   }
 
   function getOwnerConsoleHtml() {
-    if (!cachedOwnerConsoleHtml) {
-      cachedOwnerConsoleHtml = fs.readFileSync(ownerConsoleHtmlPath, 'utf8');
-    }
+    const result = readHtmlWithMtime(cachedOwnerConsoleHtml, cachedOwnerConsoleHtmlMtimeMs, ownerConsoleHtmlPath);
+    cachedOwnerConsoleHtml = result.html;
+    cachedOwnerConsoleHtmlMtimeMs = result.mtimeMs;
     return cachedOwnerConsoleHtml;
   }
 
   function getTenantConsoleHtml() {
-    if (!cachedTenantConsoleHtml) {
-      cachedTenantConsoleHtml = fs.readFileSync(tenantConsoleHtmlPath, 'utf8');
-    }
+    const result = readHtmlWithMtime(cachedTenantConsoleHtml, cachedTenantConsoleHtmlMtimeMs, tenantConsoleHtmlPath);
+    cachedTenantConsoleHtml = result.html;
+    cachedTenantConsoleHtmlMtimeMs = result.mtimeMs;
     return cachedTenantConsoleHtml;
   }
 
   function getLoginHtml() {
-    if (!cachedLoginHtml) {
-      cachedLoginHtml = fs.readFileSync(loginHtmlPath, 'utf8');
-    }
+    const result = readHtmlWithMtime(cachedLoginHtml, cachedLoginHtmlMtimeMs, loginHtmlPath);
+    cachedLoginHtml = result.html;
+    cachedLoginHtmlMtimeMs = result.mtimeMs;
     return cachedLoginHtml;
   }
 

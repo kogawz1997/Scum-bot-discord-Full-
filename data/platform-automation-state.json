@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-03-20T16:23:39.113Z",
+  "lastAutomationAt": null,
+  "lastForcedMonitoringAt": null,
+  "lastRecoveryAtByKey": {},
+  "recoveryWindowStartedAtByKey": {},
+  "recoveryAttemptsByKey": {},
+  "lastRecoveryResultByKey": {}
+}

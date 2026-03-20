@@ -3,7 +3,7 @@
 [![CI](https://github.com/kogawz1997/Scum-bot-discord-Full-/actions/workflows/ci.yml/badge.svg)](https://github.com/kogawz1997/Scum-bot-discord-Full-/actions/workflows/ci.yml)
 [![Release](https://github.com/kogawz1997/Scum-bot-discord-Full-/actions/workflows/release.yml/badge.svg)](https://github.com/kogawz1997/Scum-bot-discord-Full-/actions/workflows/release.yml)
 
-Last updated: **2026-03-18**
+Last updated: **2026-03-20**
 
 This document is the working status register for the repository. It should stay factual. Do not use it as a sales page.
 
@@ -62,6 +62,11 @@ This document is the working status register for the repository. It should stay 
 - This workstation has live native delivery proof from game state for `Water_05l`, `BakedBeans`, `Emergency_bandage`, `Weapon_M1911`, `Weapon_AK47`, `Magazine_M1911`, `Backpack_02_01`, `Cal_7_62x39mm_Ammobox`, and representative `teleport_spawn` / `announce_teleport_spawn` wrapper profiles
 - First-party native-proof scripts now exist at `scripts/delivery-native-proof-scum-savefile.js` and `scripts/delivery-native-proof-template.ps1`
 - Native-proof environment tracking now exists in `docs/assets/live-native-proof-environments.json` and `docs/assets/live-native-proof-coverage-summary.md`
+- Owner and tenant consoles now expose role-based quick actions, support toolkits, delivery-lifecycle action planning, tenant diagnostics export, and support-case bundles for common operational flows
+- Player portal now includes first-run guidance, clearer order trust/detail views, notification center, and a cleaner task-first layout on top of the existing runtime behavior
+- Short operator/bootstrap docs now include a 15-minute setup path, single-host production profile, restart announcement preset, runtime boundary explainer, and operator-oriented docs index
+- Secret rotation now has an explicit runbook, drift/reporting CLI, exportable owner-surface view, and post-rotation validation guidance
+- Delivery lifecycle reporting now has owner/tenant visibility plus operator-facing recommended actions instead of raw queue/dead-letter tables only
 - Admin browser shell/common helpers are extracted under `src/admin/assets/dashboard-shell.js`
 - Admin snapshot/session/form browser runtime is extracted under `src/admin/assets/dashboard-runtime.js`
 - Admin browser DOM refs, mutable state, and event binding/startup wiring are extracted under `src/admin/assets/dashboard-dom.js`, `src/admin/assets/dashboard-state.js`, and `src/admin/assets/dashboard-bindings.js`
@@ -72,6 +77,7 @@ This document is the working status register for the repository. It should stay 
 
 - Admin web still does not expose every env/config switch, even though env-catalog edits now carry per-key apply summary and restart guidance
 - Restore remains a controlled maintenance workflow with confirmation gates, even though it now persists post-restore verification and rollback state
+- Commercial/billing lifecycle is still only partly productized even though support-case packaging, plan/quota visibility, and onboarding docs are much stronger now
 - Exported diagrams, authenticated admin/player dashboard captures, and a simple demo GIF now exist under `docs/assets/`, but broader in-game evidence still depends on live runtime capture
 
 ### Runtime-dependent
@@ -124,7 +130,9 @@ Use [docs/WORKLIST.md](./docs/WORKLIST.md) as the only detailed backlog.
 
 Short form:
 
-- expand native delivery proof evidence beyond the current live workstation matrix and server configuration; the representative delivery-class matrix now includes `ammo` via `Cal_7_62x39mm_Ammobox`, and per-class guidance exists in `docs/DELIVERY_NATIVE_PROOF_COVERAGE.md`
+- there is no remaining required repo-local backlog at the current validation bar
+- the remaining required work is still runtime evidence expansion beyond the current live workstation matrix and server configuration
+- stricter product-ready hardening still remains outside the current repo validation bar, especially console-agent dependency on Windows/SCUM session reality and broader multi-environment proof
 
 ## Review Warnings
 
@@ -139,4 +147,4 @@ Short form:
 
 ## Summary
 
-The repository is in reviewable shape: PostgreSQL runtime is in place, this workstation now runs the tenant topology in live `schema-per-tenant` mode, validation commands are wired, and the main documentation set points back to evidence. The remaining work is concentrated in broader live native-proof coverage across more environments, not missing core infrastructure.
+The repository is in reviewable shape: PostgreSQL runtime is in place, this workstation runs the tenant topology in live `schema-per-tenant` mode, operator/support surfaces are materially stronger, and the documentation set points back to evidence and practical runbooks. The remaining required work is concentrated in broader live native-proof coverage across more environments, not missing repo-local infrastructure.

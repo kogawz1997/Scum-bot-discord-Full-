@@ -359,6 +359,14 @@ function printSummary(options) {
   console.log(`[rotate-production-secrets] portal cookie domain: ${options.playerCookieDomain || '(host-only)'}`);
 }
 
+function printFollowUpChecklist() {
+  // Keep this checklist close to the rotation script so operators get the
+  // next steps immediately after rotating secrets instead of searching docs.
+  console.log('[rotate-production-secrets] NEXT: import the new ADMIN_WEB_2FA_SECRET into your authenticator app before the next admin login.');
+  console.log('[rotate-production-secrets] NEXT: run `npm run security:rotation:check` to review reload targets and validation steps.');
+  console.log('[rotate-production-secrets] NEXT: run `npm run doctor`, `npm run security:check`, and `npm run readiness:prod` after reload.');
+}
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
   const rootLines = readLines(ROOT_ENV_PATH);
@@ -387,6 +395,7 @@ function main() {
     console.log(
       '[rotate-production-secrets] optional args: --discord-token --portal-discord-secret --admin-sso-discord-secret --admin-origin --player-origin --admin-path',
     );
+    printFollowUpChecklist();
     process.exit(0);
   }
 
@@ -422,9 +431,7 @@ function main() {
       '[rotate-production-secrets] ACTION REQUIRED: set ADMIN_WEB_SSO_DISCORD_CLIENT_SECRET or disable ADMIN_WEB_SSO_DISCORD_ENABLED.',
     );
   }
-  console.log(
-    '[rotate-production-secrets] ACTION REQUIRED: import the new ADMIN_WEB_2FA_SECRET into your authenticator app before the next admin login.',
-  );
+  printFollowUpChecklist();
 }
 
 main();

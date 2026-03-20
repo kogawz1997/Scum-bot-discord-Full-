@@ -67,6 +67,19 @@ function parseOriginOrEmpty(value) {
   }
 }
 
+function hostnameMatchesCookieDomain(hostname, cookieDomain) {
+  const normalizedHost = String(hostname || '').trim().toLowerCase();
+  const normalizedDomain = String(cookieDomain || '')
+    .trim()
+    .replace(/^\./, '')
+    .toLowerCase();
+  if (!normalizedHost || !normalizedDomain) return true;
+  return (
+    normalizedHost === normalizedDomain
+    || normalizedHost.endsWith(`.${normalizedDomain}`)
+  );
+}
+
 function checkMinLength(name, value, minLength, errors, warnings) {
   const text = String(value || '').trim();
   if (!text) {
@@ -163,6 +176,8 @@ function addSessionAndOriginHardeningWarnings(env, warnings) {
   const portalOrigin = parseOriginOrEmpty(env.WEB_PORTAL_BASE_URL);
   const adminOrigin = parseOriginOrEmpty(env.WEB_PORTAL_LEGACY_ADMIN_URL);
   const adminCookiePath = String(env.ADMIN_WEB_SESSION_COOKIE_PATH || '/admin').trim() || '/admin';
+  const adminCookieDomain = String(env.ADMIN_WEB_SESSION_COOKIE_DOMAIN || '').trim();
+  const portalCookieDomain = String(env.WEB_PORTAL_COOKIE_DOMAIN || '').trim();
   if (portalOrigin && adminOrigin && portalOrigin === adminOrigin) {
     warnings.push(
       'WEB_PORTAL_BASE_URL and WEB_PORTAL_LEGACY_ADMIN_URL share the same origin; split admin/player origins are recommended',
@@ -170,6 +185,28 @@ function addSessionAndOriginHardeningWarnings(env, warnings) {
     if (adminCookiePath === '/' || !adminCookiePath.startsWith('/admin')) {
       warnings.push(
         'ADMIN_WEB_SESSION_COOKIE_PATH=/admin is recommended when admin/player share the same origin',
+      );
+    }
+  }
+
+  if (adminCookieDomain && adminOrigins.length > 0) {
+    for (const origin of adminOrigins) {
+      const parsedOrigin = parseOriginOrEmpty(origin);
+      if (!parsedOrigin) continue;
+      const hostname = new URL(parsedOrigin).hostname;
+      if (!hostnameMatchesCookieDomain(hostname, adminCookieDomain)) {
+        warnings.push(
+          `ADMIN_WEB_SESSION_COOKIE_DOMAIN=${adminCookieDomain} does not match admin origin host ${hostname}`,
+        );
+      }
+    }
+  }
+
+  if (portalCookieDomain && portalOrigin) {
+    const hostname = new URL(portalOrigin).hostname;
+    if (!hostnameMatchesCookieDomain(hostname, portalCookieDomain)) {
+      warnings.push(
+        `WEB_PORTAL_COOKIE_DOMAIN=${portalCookieDomain} does not match player portal host ${hostname}`,
       );
     }
   }
@@ -341,6 +378,35 @@ function run() {
         );
       }
     }
+
+    const topologyMode = String(env.TENANT_DB_TOPOLOGY_MODE || 'shared')
+      .trim()
+      .toLowerCase() || 'shared';
+    if (
+      ['schema-per-tenant', 'database-per-tenant'].includes(topologyMode)
+      && dbRuntime.engine !== 'postgresql'
+    ) {
+      errors.push(
+        `TENANT_DB_TOPOLOGY_MODE=${topologyMode} requires PostgreSQL DATABASE_URL`,
+      );
+    }
+    if (isProduction && dbRuntime.engine !== 'postgresql') {
+      errors.push(
+        'Production requires PostgreSQL DATABASE_URL; SQLite remains for local dev/import/compatibility only',
+      );
+    }
+  }
+
+  const botDeliveryWorkerEnabled = isTruthy(
+    env.BOT_ENABLE_DELIVERY_WORKER == null ? 'true' : env.BOT_ENABLE_DELIVERY_WORKER,
+  );
+  const workerDeliveryEnabled = isTruthy(
+    env.WORKER_ENABLE_DELIVERY == null ? 'true' : env.WORKER_ENABLE_DELIVERY,
+  );
+  if (botDeliveryWorkerEnabled && workerDeliveryEnabled) {
+    errors.push(
+      'Do not enable delivery worker on both bot and worker at the same time (BOT_ENABLE_DELIVERY_WORKER + WORKER_ENABLE_DELIVERY).',
+    );
   }
 
   if (persistRequireDb && legacySnapshotsEnabled) {
@@ -426,6 +492,19 @@ function run() {
       }),
       createValidationCheck('database url configured', {
         ok: !errors.some((entry) => entry.includes('DATABASE_URL')),
+      }),
+      createValidationCheck('database deployment posture', {
+        status:
+          errors.some((entry) => entry.includes('PostgreSQL DATABASE_URL'))
+          || errors.some((entry) => entry.includes('TENANT_DB_TOPOLOGY_MODE'))
+            ? 'failed'
+            : 'pass',
+      }),
+      createValidationCheck('runtime ownership posture', {
+        status:
+          errors.some((entry) => entry.includes('BOT_ENABLE_DELIVERY_WORKER + WORKER_ENABLE_DELIVERY'))
+            ? 'failed'
+            : 'pass',
       }),
       createValidationCheck('admin web hardening baseline', {
         status: warnings.some((entry) => entry.includes('ADMIN_WEB_'))

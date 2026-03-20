@@ -6,7 +6,7 @@
 ![discord.js](https://img.shields.io/badge/discord.js-v14.25.1-5865F2?style=for-the-badge&logo=discord&logoColor=white)
 ![Prisma](https://img.shields.io/badge/Prisma-5.22.0-2D3748?style=for-the-badge&logo=prisma&logoColor=white)
 
-Last updated: **2026-03-18**
+Last updated: **2026-03-20**
 
 SCUM TH Platform is a control plane for a SCUM community stack built around:
 
@@ -22,17 +22,24 @@ If a statement in this repository is not backed by code, tests, CI artifacts, or
 ## Primary Documents
 
 - Docs index: [docs/README.md](./docs/README.md)
+- Operator quickstart: [docs/OPERATOR_QUICKSTART.md](./docs/OPERATOR_QUICKSTART.md)
+- 15-minute setup path: [docs/FIFTEEN_MINUTE_SETUP.md](./docs/FIFTEEN_MINUTE_SETUP.md)
+- Single-host production profile: [docs/SINGLE_HOST_PRODUCTION_PROFILE.md](./docs/SINGLE_HOST_PRODUCTION_PROFILE.md)
+- Restart announcement preset: [docs/RESTART_ANNOUNCEMENT_PRESET.md](./docs/RESTART_ANNOUNCEMENT_PRESET.md)
 - System status: [PROJECT_HQ.md](./PROJECT_HQ.md)
 - Verification status: [docs/VERIFICATION_STATUS_TH.md](./docs/VERIFICATION_STATUS_TH.md)
 - Evidence map: [docs/EVIDENCE_MAP_TH.md](./docs/EVIDENCE_MAP_TH.md)
 - Visual assets: [docs/assets/README.md](./docs/assets/README.md)
 - Architecture: [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)
+- Runtime boundary explainer: [docs/RUNTIME_BOUNDARY_EXPLAINER.md](./docs/RUNTIME_BOUNDARY_EXPLAINER.md)
 - Runtime topology: [docs/RUNTIME_TOPOLOGY.md](./docs/RUNTIME_TOPOLOGY.md)
 - Worklist: [docs/WORKLIST.md](./docs/WORKLIST.md)
 - Product-ready gap matrix: [docs/PRODUCT_READY_GAP_MATRIX.md](./docs/PRODUCT_READY_GAP_MATRIX.md)
+- Practical adoption plan: [docs/PRACTICAL_ADOPTION_PLAN.md](./docs/PRACTICAL_ADOPTION_PLAN.md)
 - Refactor plan: [docs/REFACTOR_PLAN.md](./docs/REFACTOR_PLAN.md)
 - Config matrix: [docs/CONFIG_MATRIX.md](./docs/CONFIG_MATRIX.md)
 - Database strategy: [docs/DATABASE_STRATEGY.md](./docs/DATABASE_STRATEGY.md)
+- Data ownership map: [docs/DATA_OWNERSHIP_MAP.md](./docs/DATA_OWNERSHIP_MAP.md)
 - PostgreSQL cutover checklist: [docs/POSTGRESQL_CUTOVER_CHECKLIST.md](./docs/POSTGRESQL_CUTOVER_CHECKLIST.md)
 - Delivery capability matrix: [docs/DELIVERY_CAPABILITY_MATRIX_TH.md](./docs/DELIVERY_CAPABILITY_MATRIX_TH.md)
 - Migration / rollback / restore: [docs/MIGRATION_ROLLBACK_POLICY_TH.md](./docs/MIGRATION_ROLLBACK_POLICY_TH.md)
@@ -92,11 +99,17 @@ If a statement in this repository is not backed by code, tests, CI artifacts, or
 
 - Runtime supervisor with per-role status
 - Notification center and reconcile findings in admin
+- Owner console now supports one-click tenant diagnostics export so support can gather tenant runtime, delivery, request-error, and commercial context from one place
+- Owner console now also exposes tenant support-case context, delivery lifecycle reporting, and guarded automation control from the primary surface
+- Tenant console now exposes delivery lifecycle signals, action planner guidance, bulk recovery prep, and per-case phase visibility from the scoped surface
+- Secret rotation now has a dedicated readiness/check matrix via `npm run security:rotation:check` so operators can see reload targets, validation steps, and split-origin drift before reopening traffic
+- Restore, delivery, and guarded config flows now expose explicit operator-facing lifecycle phases in the web UI without changing the underlying business logic
 - Backup / restore preview and restore guardrails
 - CI artifacts for lint, tests, doctor, security checks, readiness, and smoke
 - `doctor`, `security:check`, `readiness`, `smoke`, and `doctor:topology` now share one machine-readable report contract when called with `--json`
 - `ci:verify` now writes `verification-contract.json` from the shared JSON contract instead of relying only on raw log parsing
 - `lint` now covers syntax, text-encoding scan, ESLint, and formatting checks for repo metadata/docs
+- `lint` now also blocks ambiguous temp/proof files from living in the repository root
 - User-facing Thai command and leaderboard text is now guarded by `lint:text` plus `test/mojibake-regression.test.js`
 - Policy checks now include runtime profile, control-panel config registry, smoke behavior, readiness sequencing, and module docs
 - Live runtime proof now exists on this workstation for `console-agent` preflight/execute and watcher `ready` state against a real `SCUM.log`
@@ -115,6 +128,7 @@ If a statement in this repository is not backed by code, tests, CI artifacts, or
 - Real captures now exist for admin login, authenticated admin dashboard, player landing, player login, authenticated player dashboard, player showcase, and a simple demo GIF under `docs/assets/`
 - `src/adminWebServer.js` and `apps/web-portal-standalone/server.js` are now thin bootstrap/composition entrypoints
 - `src/admin/dashboard.html` is now a thinner shell, and the browser runtime is split across focused assets under `src/admin/assets/`, though the surface is still large
+- Some operator flows are intentionally represented as read-only lifecycle models in the UI, not full workflow engines; this improves clarity without changing current route or runtime contracts
 
 ## What Is Runtime-Dependent
 
@@ -150,6 +164,7 @@ Commands used for local verification:
 
 ```bash
 npm run lint
+npm run check:repo-hygiene
 npm run test:policy
 npm test
 npm run doctor
@@ -159,6 +174,13 @@ npm run smoke:postdeploy
 ```
 
 Latest local verification on this workstation completed on `2026-03-18` with all commands above passing.
+
+Operational guardrails now enforced by validation:
+
+- production must use PostgreSQL as the primary runtime database
+- `schema-per-tenant` / `database-per-tenant` require PostgreSQL
+- do not enable delivery worker on both `bot` and `worker`
+- split-origin cookie domain drift is checked in `doctor` / `security:check`
 
 Additional live runtime evidence from this workstation:
 
@@ -215,6 +237,19 @@ npm run db:generate:postgresql
 npm run db:migrate:deploy:postgresql
 ```
 
+### Operator first path
+
+If you are operating a live environment and need the shortest route:
+
+1. Open [docs/OPERATOR_QUICKSTART.md](./docs/OPERATOR_QUICKSTART.md)
+2. Run:
+
+```bash
+npm run doctor
+npm run security:check
+npm run security:rotation:check
+```
+
 ### Cut over from SQLite to PostgreSQL
 
 ```bash
@@ -262,6 +297,7 @@ DELIVERY_NATIVE_PROOF_POLL_INTERVAL_MS=1500
 โฟลเดอร์ admin web: `src/adminWebServer.js` (รันผ่าน runtime bot)
 
 ตัวอย่าง `.env` ที่แนะนำ (ปรับโดเมน/พอร์ตตามของจริง):
+
 ```env
 ADMIN_WEB_HOST=0.0.0.0
 ADMIN_WEB_PORT=3200
@@ -296,6 +332,7 @@ ADMIN_WEB_SSO_DISCORD_GUILD_ID=...
 โฟลเดอร์ portal: `apps/web-portal-standalone/` (รันแยก process)
 
 ตัวอย่าง `.env` (ไฟล์ของ portal) ที่แนะนำ:
+
 ```env
 WEB_PORTAL_MODE=player
 WEB_PORTAL_HOST=0.0.0.0
@@ -329,6 +366,7 @@ npm run smoke:postdeploy
 ```
 
 ถ้า smoke script ใช้ public base url ผ่าน env แยก ให้ตั้ง:
+
 ```bat
 set SMOKE_ADMIN_BASE_URL=https://admin.genz.noah-dns.online/admin
 set SMOKE_PLAYER_BASE_URL=https://player.genz.noah-dns.online

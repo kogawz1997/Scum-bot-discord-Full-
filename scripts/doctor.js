@@ -60,6 +60,19 @@ function parseCsvList(value) {
     .filter(Boolean);
 }
 
+function hostnameMatchesCookieDomain(hostname, cookieDomain) {
+  const normalizedHost = String(hostname || '').trim().toLowerCase();
+  const normalizedDomain = String(cookieDomain || '')
+    .trim()
+    .replace(/^\./, '')
+    .toLowerCase();
+  if (!normalizedHost || !normalizedDomain) return true;
+  return (
+    normalizedHost === normalizedDomain
+    || normalizedHost.endsWith(`.${normalizedDomain}`)
+  );
+}
+
 function parseUrlOrThrow(value, label) {
   try {
     return new URL(String(value || '').trim());
@@ -128,6 +141,108 @@ function addPortConflictChecks() {
     if (labels.length > 1) {
       throw new Error(`Port ${port} is reused by: ${labels.join(', ')}`);
     }
+  }
+}
+
+function addDatabaseDeploymentChecks() {
+  const runtime = resolveDatabaseRuntime();
+  const topologyMode = String(process.env.TENANT_DB_TOPOLOGY_MODE || 'shared')
+    .trim()
+    .toLowerCase() || 'shared';
+
+  if (isProduction && runtime.engine !== 'postgresql') {
+    throw new Error(
+      'Production requires PostgreSQL DATABASE_URL; SQLite remains for local dev/import/compatibility only',
+    );
+  }
+
+  if (
+    ['schema-per-tenant', 'database-per-tenant'].includes(topologyMode)
+    && runtime.engine !== 'postgresql'
+  ) {
+    throw new Error(
+      `TENANT_DB_TOPOLOGY_MODE=${topologyMode} requires PostgreSQL DATABASE_URL`,
+    );
+  }
+}
+
+function addRuntimeOwnershipChecks() {
+  const botDeliveryWorkerEnabled = isTruthy(
+    process.env.BOT_ENABLE_DELIVERY_WORKER,
+    true,
+  );
+  const workerDeliveryEnabled = isTruthy(
+    process.env.WORKER_ENABLE_DELIVERY,
+    true,
+  );
+  const workerRentEnabled = isTruthy(
+    process.env.WORKER_ENABLE_RENTBIKE,
+    true,
+  );
+
+  if (botDeliveryWorkerEnabled && workerDeliveryEnabled) {
+    throw new Error(
+      'Do not enable delivery worker on both bot and worker (BOT_ENABLE_DELIVERY_WORKER + WORKER_ENABLE_DELIVERY)',
+    );
+  }
+
+  if ((workerDeliveryEnabled || workerRentEnabled) && !readPort(process.env.WORKER_HEALTH_PORT, 0)) {
+    warnings.push(
+      'Worker runtime is enabled without WORKER_HEALTH_PORT; health/readiness drift will be harder to detect',
+    );
+  }
+}
+
+function addCookieScopeChecks() {
+  const adminOrigins = parseCsvList(process.env.ADMIN_WEB_ALLOWED_ORIGINS);
+  const adminCookieDomain = String(
+    process.env.ADMIN_WEB_SESSION_COOKIE_DOMAIN || '',
+  ).trim();
+  const adminCookiePath = String(
+    process.env.ADMIN_WEB_SESSION_COOKIE_PATH || '/admin',
+  ).trim() || '/admin';
+  const portalCookieDomain = String(
+    process.env.WEB_PORTAL_COOKIE_DOMAIN || '',
+  ).trim();
+  const portalBaseUrl = parseUrlOrThrow(
+    process.env.WEB_PORTAL_BASE_URL || 'http://127.0.0.1:3300',
+    'WEB_PORTAL_BASE_URL',
+  );
+  const legacyAdminUrl = parseUrlOrThrow(
+    process.env.WEB_PORTAL_LEGACY_ADMIN_URL || 'http://127.0.0.1:3200/admin',
+    'WEB_PORTAL_LEGACY_ADMIN_URL',
+  );
+
+  if (adminCookieDomain) {
+    for (const origin of adminOrigins) {
+      const parsed = new URL(origin);
+      if (!hostnameMatchesCookieDomain(parsed.hostname, adminCookieDomain)) {
+        throw new Error(
+          `ADMIN_WEB_SESSION_COOKIE_DOMAIN (${adminCookieDomain}) does not match allowed admin origin host (${parsed.hostname})`,
+        );
+      }
+    }
+  }
+
+  if (
+    portalCookieDomain
+    && !hostnameMatchesCookieDomain(portalBaseUrl.hostname, portalCookieDomain)
+  ) {
+    throw new Error(
+      `WEB_PORTAL_COOKIE_DOMAIN (${portalCookieDomain}) does not match WEB_PORTAL_BASE_URL host (${portalBaseUrl.hostname})`,
+    );
+  }
+
+  if (
+    adminCookieDomain
+    && portalCookieDomain
+    && adminCookieDomain === portalCookieDomain
+    && portalBaseUrl.origin !== legacyAdminUrl.origin
+    && adminCookiePath === '/'
+  ) {
+    warnings.push(
+      'Admin and player cookies share the same cookie domain while split origins are enabled and ADMIN_WEB_SESSION_COOKIE_PATH=/; tighten cookie scope to reduce cross-surface drift',
+    );
   }
 }
 
@@ -545,6 +660,10 @@ runCheck('DATABASE_URL format', () => {
   }
 });
 
+runCheck('database deployment posture', () => {
+  addDatabaseDeploymentChecks();
+});
+
 runCheck('prisma schema exists', () => {
   const schemaPath = path.resolve(process.cwd(), 'prisma', 'schema.prisma');
   if (!fs.existsSync(schemaPath)) {
@@ -562,6 +681,14 @@ runCheck('player portal reverse proxy / origins config', () => {
 
 runCheck('Discord OAuth redirect consistency', () => {
   addDiscordRedirectChecks();
+});
+
+runCheck('runtime ownership / worker drift', () => {
+  addRuntimeOwnershipChecks();
+});
+
+runCheck('cookie scope / split-origin drift', () => {
+  addCookieScopeChecks();
 });
 
 runCheck('auth/session hardening posture', () => {

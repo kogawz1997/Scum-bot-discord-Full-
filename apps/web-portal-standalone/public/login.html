@@ -8,49 +8,57 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/player/assets/ui/portal-public.css">
+  <link rel="stylesheet" href="/player/assets/ui/portal-public.css?v=20260319-tactical-i18n">
 </head>
 <body>
   <div class="public-shell signin-layout">
     <section class="signin-card public-panel">
       <aside class="signin-side">
-        <span class="public-badge">Player Portal</span>
-        <h2>Trusted player access</h2>
-        <p>Use Discord sign-in to access wallet, purchases, redeem flow, Steam linking, and transaction history. Admin and platform controls stay in separate consoles.</p>
+        <span class="public-badge" data-i18n="player.login.badge">Player Portal</span>
+        <h2 data-i18n="player.login.title">Trusted player access</h2>
+        <p data-i18n="player.login.subtitle">Use Discord sign-in to access wallet, purchases, redeem flow, Steam linking, and transaction history. Admin and platform controls stay in separate consoles.</p>
         <div class="hint-list">
           <article class="hint-card">
-            <strong>Player only</strong>
-            <p class="muted">This surface is for community players. Platform owner and tenant admins should use the admin web.</p>
+            <strong data-i18n="player.login.hintPlayer">Player only</strong>
+            <p class="muted" data-i18n="player.login.hintPlayerDetail">This surface is for community players. Platform owner and tenant admins should use the admin web.</p>
           </article>
           <article class="hint-card">
-            <strong>Safe purchase flow</strong>
-            <p class="muted">Order status, delivery state, and Steam-link requirements are shown inside the portal after sign-in.</p>
+            <strong data-i18n="player.login.hintPurchase">Safe purchase flow</strong>
+            <p class="muted" data-i18n="player.login.hintPurchaseDetail">Order status, delivery state, and Steam-link requirements are shown inside the portal after sign-in.</p>
           </article>
           <article class="hint-card">
-            <strong>Auth method</strong>
-            <p class="muted">Discord OAuth 2.0 is used to identify the player account tied to this portal session.</p>
+            <strong data-i18n="player.login.hintAuth">Auth method</strong>
+            <p class="muted" data-i18n="player.login.hintAuthDetail">Discord OAuth 2.0 is used to identify the player account tied to this portal session.</p>
           </article>
         </div>
       </aside>
 
       <div class="signin-form">
-        <span class="public-badge">Sign In</span>
-        <h3>Enter the portal</h3>
-        <p class="muted">Continue with Discord to open the player-facing portal experience.</p>
-        <button class="button button-primary" id="discordBtn" type="button">Continue with Discord</button>
+        <div class="signin-toolbar">
+          <span class="public-badge" data-i18n="common.signIn">Sign In</span>
+          <label class="language-picker">
+            <span data-i18n="common.language">Language</span>
+            <select id="playerLoginLanguageSelect" class="language-select"></select>
+          </label>
+        </div>
+        <h3 data-i18n="player.login.enterTitle">Enter the portal</h3>
+        <p class="muted" data-i18n="player.login.enterSubtitle">Continue with Discord to open the player-facing portal experience.</p>
+        <button class="button button-primary" id="discordBtn" type="button" data-i18n="player.login.discord">Continue with Discord</button>
         <div id="errorText" class="error">__ERROR_MESSAGE__</div>
-        <p class="muted">If sign-in fails, verify the standalone portal OAuth settings in the runtime environment.</p>
+        <p class="muted" data-i18n="player.login.failureHint">If sign-in fails, verify the standalone portal OAuth settings in the runtime environment.</p>
         <div class="links">
-          <a class="button" href="/landing">Platform overview</a>
-          <a class="button" href="/showcase">Feature showcase</a>
-          <a class="button" href="/trial">Trial checklist</a>
-          <a class="button" href="/admin">Admin consoles</a>
+          <a class="button" href="/landing" data-i18n="player.login.overview">Platform overview</a>
+          <a class="button" href="/showcase" data-i18n="player.login.showcase">Feature showcase</a>
+          <a class="button" href="/trial" data-i18n="player.login.trial">Trial checklist</a>
+          <a class="button" href="/admin" data-i18n="player.login.admin">Admin consoles</a>
         </div>
       </div>
     </section>
   </div>
 
+  <script src="/player/assets/ui/portal-i18n.js?v=20260320-complete-pass"></script>
   <script>
+    window.PortalUiI18n?.init(['playerLoginLanguageSelect']);
     document.getElementById('discordBtn').addEventListener('click', () => {
       window.location.href = '/auth/discord/start';
     });

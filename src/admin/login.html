@@ -145,6 +145,38 @@
       width: fit-content;
     }
 
+    .auth-topbar {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .language-picker {
+      display: grid;
+      gap: 6px;
+      min-width: 172px;
+    }
+
+    .language-picker span {
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .language-select {
+      min-height: 40px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.05);
+      padding: 0 12px;
+      color-scheme: dark;
+      appearance: none;
+    }
+
     .theme-switch button {
       border: 1px solid var(--line);
       background: rgba(255, 255, 255, 0.03);
@@ -244,57 +276,64 @@
 <body>
   <section class="screen">
     <aside class="hero">
-      <div class="tag">Admin Access</div>
-      <h1>Owner and tenant consoles</h1>
-      <p>Sign in to reach the role-appropriate admin surface. Platform owners land in the owner console. Tenant-scoped operators land in the tenant console.</p>
+      <div class="tag" data-i18n="login.adminAccess">Admin Access</div>
+      <h1 data-i18n="login.heroTitle">Owner and tenant consoles</h1>
+      <p data-i18n="login.heroSubtitle">Sign in to reach the role-appropriate admin surface. Platform owners land in the owner console. Tenant-scoped operators land in the tenant console.</p>
       <div class="specs">
         <div class="spec">
-          <span class="k">Auth stack</span>
-          <span class="v">Database login, Session, 2FA, Rate Limit</span>
+          <span class="k" data-i18n="login.authStackKicker">Auth stack</span>
+          <span class="v" data-i18n="login.authStackValue">Database login, Session, 2FA, Rate Limit</span>
         </div>
         <div class="spec">
-          <span class="k">Owner console</span>
-          <span class="v">Global health, tenant fleet, security, runtime, recovery</span>
+          <span class="k" data-i18n="login.ownerKicker">Owner console</span>
+          <span class="v" data-i18n="login.ownerValue">Global health, tenant fleet, security, runtime, recovery</span>
         </div>
         <div class="spec">
-          <span class="k">Tenant console</span>
-          <span class="v">Scoped config, delivery, wallet, player operations</span>
+          <span class="k" data-i18n="login.tenantKicker">Tenant console</span>
+          <span class="v" data-i18n="login.tenantValue">Scoped config, delivery, wallet, player operations</span>
         </div>
       </div>
     </aside>
 
     <div class="auth">
-      <span class="tag">Sign In</span>
-      <h2>Enter admin web</h2>
-      <p>Use your admin account to open the correct console automatically after authentication.</p>
+      <div class="auth-topbar">
+        <span class="tag" data-i18n="login.enterTag">Sign In</span>
+        <label class="language-picker login-language-picker">
+          <span data-i18n="common.language">Language</span>
+          <select id="adminLanguageSelect" class="language-select"></select>
+        </label>
+      </div>
+      <h2 data-i18n="login.enterTitle">Enter admin web</h2>
+      <p data-i18n="login.enterSubtitle">Use your admin account to open the correct console automatically after authentication.</p>
 
       <div class="theme-switch" role="group" aria-label="Choose theme">
-        <button id="themeBtnMilitary" type="button">Tactical</button>
-        <button id="themeBtnNeon" type="button">High Contrast</button>
+        <button id="themeBtnMilitary" type="button" data-i18n="common.tactical">Tactical</button>
+        <button id="themeBtnNeon" type="button" data-i18n="common.highContrast">High Contrast</button>
       </div>
 
       <form id="loginForm" autocomplete="on">
         <label>
-          <span>Username</span>
+          <span data-i18n="common.username">Username</span>
           <input id="usernameInput" name="username" autocomplete="username" placeholder="admin-owner" required>
         </label>
         <label>
-          <span>Password</span>
+          <span data-i18n="common.password">Password</span>
           <input id="passwordInput" name="password" type="password" autocomplete="current-password" required>
         </label>
         <label>
-          <span>2FA Code (optional)</span>
+          <span data-i18n="common.twoFactorOptional">2FA Code (optional)</span>
           <input id="otpInput" name="otp" inputmode="numeric" pattern="\\d{6}" maxlength="6" placeholder="123456">
         </label>
-        <button id="loginBtn" type="submit">Sign In</button>
+        <button id="loginBtn" type="submit" data-i18n="login.signIn">Sign In</button>
       </form>
 
       <button id="discordSsoBtn" type="button">Continue with Discord SSO</button>
       <div id="errorText" class="error"></div>
-      <p id="sourceHint" class="hint">Admin users are read from the database first. Session policy, 2FA, and rate limiting remain enforced after the redesign.</p>
+      <p id="sourceHint" class="hint" data-i18n="login.sourceHint">Admin users are read from the database first. Session policy, 2FA, and rate limiting remain enforced after the redesign.</p>
     </div>
   </section>
 
+    <script src="/admin/assets/admin-i18n.js?v=20260320-support-toolkit-pass"></script>
   <script>
     const form = document.getElementById('loginForm');
     const usernameInput = document.getElementById('usernameInput');
@@ -404,7 +443,7 @@
       errorText.textContent = '';
       loginBtn.disabled = true;
       const originalText = loginBtn.textContent;
-      loginBtn.textContent = 'Signing in...';
+      loginBtn.textContent = window.AdminUiI18n?.t('login.signingIn', 'Signing in...') || 'Signing in...';
       try {
         await api('/admin/api/login', 'POST', {
           username: usernameInput.value.trim(),
@@ -413,7 +452,7 @@
         });
         window.location.replace('/admin');
       } catch (error) {
-        errorText.textContent = error.message || 'Sign in failed';
+        errorText.textContent = error.message || (window.AdminUiI18n?.t('login.signInFailed', 'Sign in failed') || 'Sign in failed');
         if (/2FA|OTP/i.test(errorText.textContent)) {
           otpInput.focus();
         } else {
@@ -437,6 +476,7 @@
       applyTheme('neon', true);
     });
 
+    window.AdminUiI18n?.init(['adminLanguageSelect']);
     applyTheme(loadPreferredTheme(), false);
     showErrorFromQuery();
     loadAuthProviders();

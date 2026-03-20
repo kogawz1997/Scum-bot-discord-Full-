@@ -220,6 +220,8 @@ function buildNotificationFromLiveEvent(type, payload = {}) {
         || kind === 'runtime-degraded'
         || kind === 'platform-webhook-failed'
         || kind === 'platform-auto-backup-failed'
+        || kind === 'platform-auto-restart-failed'
+        || kind === 'platform-auto-monitoring-followup-failed'
         ? 'error'
         : 'warn';
     let title = 'Operational Alert';
@@ -297,6 +299,27 @@ function buildNotificationFromLiveEvent(type, payload = {}) {
     } else if (kind === 'platform-auto-backup-failed') {
       title = 'Platform Auto Backup Failed';
       message = `${data.error ? trimText(data.error, 240) : 'unknown error'}`;
+    } else if (kind === 'platform-auto-restart-started') {
+      title = 'Platform Auto Recovery Started';
+      message =
+        `${String(data.runtimeLabel || data.runtimeKey || 'runtime')} -> ${String(data.serviceKey || '-')}`
+        + `${data.reason ? ` reason=${trimText(data.reason, 160)}` : ''}`;
+    } else if (kind === 'platform-auto-restart-succeeded') {
+      title = 'Platform Auto Recovery Succeeded';
+      message =
+        `${String(data.runtimeLabel || data.runtimeKey || 'runtime')} -> ${String(data.serviceKey || '-')}`
+        + `${Number.isFinite(Number(data.exitCode)) ? ` exit=${Number(data.exitCode)}` : ''}`;
+    } else if (kind === 'platform-auto-restart-failed') {
+      title = 'Platform Auto Recovery Failed';
+      message =
+        `${String(data.runtimeLabel || data.runtimeKey || 'runtime')} -> ${String(data.serviceKey || '-')}`
+        + `${Number.isFinite(Number(data.exitCode)) ? ` exit=${Number(data.exitCode)}` : ''}`
+        + `${data.stderr ? ` error=${trimText(data.stderr, 200)}` : ''}`;
+    } else if (kind === 'platform-auto-monitoring-followup-failed') {
+      title = 'Post-Recovery Monitoring Failed';
+      message =
+        `${String(data.runtimeLabel || data.runtimeKey || 'runtime')}`
+        + `${data.error ? ` error=${trimText(data.error, 200)}` : ''}`;
     }
     return {
       type: 'ops-alert',

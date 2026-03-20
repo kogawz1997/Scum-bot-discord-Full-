@@ -10,6 +10,14 @@
       .replace(/'/g, '&#39;');
   }
 
+  function getI18n() {
+    return window.AdminUiI18n || null;
+  }
+
+  function t(key, fallback, params) {
+    return getI18n()?.t?.(key, fallback, params) ?? fallback ?? key;
+  }
+
   async function api(path, options = {}) {
     const method = String(options.method || 'GET').toUpperCase();
     const headers = {
@@ -46,7 +54,7 @@
 
   function formatNumber(value, fallback = '-') {
     const number = Number(value);
-    return Number.isFinite(number) ? number.toLocaleString('en-US') : fallback;
+    return Number.isFinite(number) ? number.toLocaleString(getI18n()?.getLocale?.() || 'en-US') : fallback;
   }
 
   function formatDateTime(value, fallback = '-') {
@@ -54,7 +62,7 @@
     if (!text) return fallback;
     const parsed = new Date(text);
     if (Number.isNaN(parsed.getTime())) return text;
-    return parsed.toLocaleString('th-TH', {
+    return parsed.toLocaleString(getI18n()?.getLocale?.() || 'en-US', {
       dateStyle: 'medium',
       timeStyle: 'short',
     });
@@ -95,7 +103,7 @@
             : '',
           '</article>',
         ].join('')).join('')
-      : '<div class="empty-state">No summary available.</div>';
+      : `<div class="empty-state">${escapeHtml(t('shared.emptySummary', 'No summary available.'))}</div>`;
   }
 
   function renderTable(container, options = {}) {
@@ -103,20 +111,26 @@
     const columns = Array.isArray(options.columns) ? options.columns : [];
     const rows = Array.isArray(options.rows) ? options.rows : [];
     if (!columns.length || !rows.length) {
-      container.innerHTML = `<div class="empty-state">${escapeHtml(options.emptyText || 'No data found.')}</div>`;
+      container.innerHTML = `<div class="empty-state">${escapeHtml(options.emptyText || t('shared.emptyData', 'No data found.'))}</div>`;
       return;
     }
+    const shellClass = ['table-shell', options.shellClass || ''].filter(Boolean).join(' ');
+    const tableClass = String(options.tableClass || '').trim();
     container.innerHTML = [
-      '<div class="table-shell"><table>',
+      `<div class="${escapeHtml(shellClass)}"><table${tableClass ? ` class="${escapeHtml(tableClass)}"` : ''}>`,
       '<thead><tr>',
-      columns.map((column) => `<th>${escapeHtml(column.label || '')}</th>`).join(''),
+      columns.map((column) => {
+        const headerClass = String(column.headerClass || '').trim();
+        return `<th${headerClass ? ` class="${escapeHtml(headerClass)}"` : ''}>${escapeHtml(column.label || '')}</th>`;
+      }).join(''),
       '</tr></thead>',
       '<tbody>',
       rows.map((row) => [
         '<tr>',
         columns.map((column) => {
           const raw = typeof column.render === 'function' ? column.render(row) : row?.[column.key];
-          return `<td>${raw == null ? '' : raw}</td>`;
+          const cellClass = String(column.cellClass || '').trim();
+          return `<td${cellClass ? ` class="${escapeHtml(cellClass)}"` : ''}>${raw == null ? '' : raw}</td>`;
         }).join(''),
         '</tr>',
       ].join('')).join(''),
@@ -129,7 +143,7 @@
     const rows = Array.isArray(items) ? items : [];
     container.innerHTML = rows.length
       ? rows.map((item) => renderer(item)).join('')
-      : `<div class="empty-state">${escapeHtml(emptyText || 'No entries yet.')}</div>`;
+      : `<div class="empty-state">${escapeHtml(emptyText || t('shared.emptyEntries', 'No entries yet.'))}</div>`;
   }
 
   function setText(id, text) {
@@ -145,7 +159,7 @@
       button.dataset.idleLabel = button.textContent || '';
     }
     button.disabled = Boolean(busy);
-    button.textContent = busy ? String(pendingLabel || 'Working...') : button.dataset.idleLabel;
+    button.textContent = busy ? String(pendingLabel || t('shared.working', 'Working...')) : button.dataset.idleLabel;
   }
 
   function ensureToastStack() {
@@ -231,6 +245,8 @@
     function open() {
       refresh();
       panel.hidden = false;
+      panel.removeAttribute('hidden');
+      panel.setAttribute('aria-hidden', 'false');
       document.body.classList.add('palette-open');
       window.setTimeout(() => {
         searchInput.focus();
@@ -240,6 +256,8 @@
 
     function close() {
       panel.hidden = true;
+      panel.setAttribute('hidden', 'hidden');
+      panel.setAttribute('aria-hidden', 'true');
       document.body.classList.remove('palette-open');
       searchInput.value = '';
     }
@@ -282,7 +300,18 @@
     });
 
     if (openButton) openButton.addEventListener('click', open);
-    if (closeButton) closeButton.addEventListener('click', close);
+    if (closeButton) {
+      closeButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        close();
+      });
+      closeButton.addEventListener('pointerdown', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        close();
+      });
+    }
 
     document.addEventListener('keydown', (event) => {
       const target = event.target;
@@ -308,6 +337,280 @@
     });
 
     refresh();
+    return { open, close, refresh };
+  }
+
+  // Each console is now page-mode rather than one long dashboard.
+  // This controller owns which owner/tenant page is visible and keeps the
+  // sidebar, summary block, and current-page state in sync.
+  function wireWorkspaceSwitcher(options = {}) {
+    const {
+      switchId,
+      summaryId,
+      hintId,
+      navListId,
+      defaultWorkspace,
+      workspaces = [],
+      sectionsByWorkspace = {},
+    } = options;
+    const switchRoot = switchId ? document.getElementById(switchId) : null;
+    const summaryRoot = summaryId ? document.getElementById(summaryId) : null;
+    const hintRoot = hintId ? document.getElementById(hintId) : null;
+    const navList = navListId ? document.getElementById(navListId) : null;
+    const sectionWorkspace = new Map();
+    Object.entries(sectionsByWorkspace).forEach(([workspaceKey, sectionIds]) => {
+      (Array.isArray(sectionIds) ? sectionIds : []).forEach((sectionId) => {
+        sectionWorkspace.set(sectionId, workspaceKey);
+      });
+    });
+    const workspaceList = Array.isArray(workspaces) ? workspaces.filter((item) => item?.key) : [];
+    let currentWorkspace = workspaceList.some((item) => item.key === defaultWorkspace)
+      ? defaultWorkspace
+      : (workspaceList[0]?.key || '');
+    let currentSectionId = ((sectionsByWorkspace[currentWorkspace] || []).find((sectionId) => document.getElementById(sectionId)) || '');
+
+    function getSectionLabel(sectionId) {
+      if (!navList || !sectionId) return sectionId;
+      const link = navList.querySelector(`a[href="#${sectionId}"]`);
+      return String(link?.textContent || '').trim() || sectionId;
+    }
+
+    function renderSummary() {
+      const active = workspaceList.find((item) => item.key === currentWorkspace);
+      if (hintRoot) {
+        hintRoot.textContent = String(
+          active?.sidebarHint
+          || active?.description
+          || active?.summary
+          || ''
+        );
+      }
+      if (!summaryRoot || !active) return;
+      const sectionCount = (sectionsByWorkspace[active.key] || []).length;
+      const tags = [
+        currentSectionId ? `<span class="pill pill-success">${escapeHtml(getSectionLabel(currentSectionId))}</span>` : '',
+        active.tag ? `<span class="pill pill-info">${escapeHtml(active.tag)}</span>` : '',
+        sectionCount ? `<span class="pill pill-neutral">${escapeHtml(`${sectionCount} sections`)}</span>` : '',
+      ].filter(Boolean).join('');
+      summaryRoot.innerHTML = [
+        `<div class="workspace-summary-copy">`,
+        `<span class="section-kicker">${escapeHtml(active.label || active.title || 'Workspace')}</span>`,
+        `<strong>${escapeHtml(active.title || active.label || active.key)}</strong>`,
+        currentSectionId ? `<p class="muted">${escapeHtml(t('shared.currentPage', 'Current page: {page}', { page: getSectionLabel(currentSectionId) }))}</p>` : '',
+        active.description ? `<p class="muted">${escapeHtml(active.description)}</p>` : '',
+        `</div>`,
+        tags ? `<div class="tag-row">${tags}</div>` : '',
+      ].join('');
+    }
+
+    function renderSwitch() {
+      if (!switchRoot) return;
+      switchRoot.innerHTML = workspaceList.map((workspace) => [
+        `<button type="button" class="workspace-tab${workspace.key === currentWorkspace ? ' active' : ''}" data-workspace="${escapeHtml(workspace.key)}" aria-pressed="${workspace.key === currentWorkspace ? 'true' : 'false'}">`,
+        `<span class="workspace-tab-label">${escapeHtml(workspace.label || workspace.title || workspace.key)}</span>`,
+        workspace.short ? `<span class="workspace-tab-meta">${escapeHtml(workspace.short)}</span>` : '',
+        '</button>',
+      ].join('')).join('');
+      Array.from(switchRoot.querySelectorAll('[data-workspace]')).forEach((button) => {
+        button.addEventListener('click', () => {
+          setWorkspace(button.dataset.workspace, { focus: true });
+        });
+      });
+    }
+
+    function applyWorkspace() {
+      document.body.dataset.currentWorkspace = currentWorkspace || '';
+      document.body.dataset.currentSection = currentSectionId || '';
+      sectionWorkspace.forEach((workspaceKey, sectionId) => {
+        const section = document.getElementById(sectionId);
+        if (!section) return;
+        const isActive = !(Boolean(currentWorkspace) && (workspaceKey !== currentWorkspace || sectionId !== currentSectionId));
+        section.hidden = !isActive;
+        section.classList.toggle('surface-section-active', isActive);
+      });
+      if (navList) {
+        Array.from(navList.querySelectorAll('a[href^="#"]')).forEach((link) => {
+          const sectionId = String(link.getAttribute('href') || '').replace(/^#/, '');
+          const workspaceKey = sectionWorkspace.get(sectionId);
+          link.dataset.workspace = workspaceKey || '';
+          link.hidden = Boolean(workspaceKey) && workspaceKey !== currentWorkspace;
+          const isActive = sectionId === currentSectionId;
+          link.classList.toggle('nav-link-active', isActive);
+          if (isActive) {
+            link.setAttribute('aria-current', 'page');
+          } else {
+            link.removeAttribute('aria-current');
+          }
+        });
+      }
+      renderSummary();
+      renderSwitch();
+    }
+
+    function setWorkspace(workspaceKey, options = {}) {
+      if (!workspaceList.some((item) => item.key === workspaceKey)) {
+        return;
+      }
+      currentWorkspace = workspaceKey;
+      if (!currentSectionId || sectionWorkspace.get(currentSectionId) !== workspaceKey) {
+        currentSectionId = (sectionsByWorkspace[currentWorkspace] || []).find((sectionId) => document.getElementById(sectionId)) || '';
+      }
+      applyWorkspace();
+      if (options.focus !== false) {
+        const firstSectionId = (sectionsByWorkspace[currentWorkspace] || []).find((sectionId) => document.getElementById(sectionId));
+        if (firstSectionId) {
+          openSection(firstSectionId, { block: 'start' });
+        }
+      }
+    }
+
+    function openSection(sectionId, options = {}) {
+      const workspaceKey = sectionWorkspace.get(sectionId);
+      currentSectionId = sectionId;
+      if (workspaceKey && workspaceKey !== currentWorkspace) {
+        currentWorkspace = workspaceKey;
+        applyWorkspace();
+      } else {
+        applyWorkspace();
+      }
+      const targetId = options.targetId || sectionId;
+      const block = options.block || 'start';
+      if (!options.skipHash) {
+        window.history.replaceState(null, '', `#${sectionId}`);
+      }
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          document.getElementById(targetId)?.scrollIntoView({
+            behavior: 'smooth',
+            block,
+          });
+        });
+      });
+    }
+
+    if (navList) {
+      navList.addEventListener('click', (event) => {
+        const link = event.target.closest('a[href^="#"]');
+        if (!link) return;
+        const sectionId = String(link.getAttribute('href') || '').replace(/^#/, '');
+        if (!sectionId) return;
+        event.preventDefault();
+        openSection(sectionId, { block: 'start' });
+      });
+    }
+
+    renderSwitch();
+    applyWorkspace();
+    const initialHash = String(window.location.hash || '').replace(/^#/, '');
+    if (initialHash && sectionWorkspace.has(initialHash)) {
+      openSection(initialHash, { block: 'start' });
+    }
+
+    return {
+      getWorkspace() {
+        return currentWorkspace;
+      },
+      getSection() {
+        return currentSectionId;
+      },
+      setWorkspace,
+      openSection,
+      refresh: applyWorkspace,
+    };
+  }
+
+  // Shared sidebar shell for owner/tenant consoles.
+  // Use this if you want to change how the left menu collapses on desktop or
+  // behaves like a drawer on smaller screens.
+  function wireSidebarShell(options = {}) {
+    const {
+      body = document.body,
+      sidebarId,
+      navListId,
+      toggleButtonId,
+      backdropId,
+      mobileBreakpoint = 1180,
+    } = options;
+    const sidebar = sidebarId ? document.getElementById(sidebarId) : null;
+    const navList = navListId ? document.getElementById(navListId) : null;
+    const toggleButton = toggleButtonId ? document.getElementById(toggleButtonId) : null;
+    const backdrop = backdropId ? document.getElementById(backdropId) : null;
+    if (!body || !sidebar || !toggleButton) {
+      return {
+        open() {},
+        close() {},
+        refresh() {},
+      };
+    }
+
+    function isMobileLayout() {
+      return window.innerWidth <= mobileBreakpoint;
+    }
+
+    function syncBackdrop() {
+      if (!backdrop) return;
+      backdrop.hidden = !(isMobileLayout() && body.classList.contains('sidebar-open'));
+    }
+
+    function syncToggleState() {
+      const expanded = isMobileLayout()
+        ? body.classList.contains('sidebar-open')
+        : !body.classList.contains('sidebar-collapsed');
+      toggleButton.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    }
+
+    function open() {
+      if (isMobileLayout()) {
+        body.classList.add('sidebar-open');
+      } else {
+        body.classList.remove('sidebar-collapsed');
+      }
+      syncBackdrop();
+      syncToggleState();
+    }
+
+    function close() {
+      if (isMobileLayout()) {
+        body.classList.remove('sidebar-open');
+      } else {
+        body.classList.add('sidebar-collapsed');
+      }
+      syncBackdrop();
+      syncToggleState();
+    }
+
+    function toggle() {
+      if (isMobileLayout()) {
+        if (body.classList.contains('sidebar-open')) {
+          close();
+        } else {
+          open();
+        }
+        return;
+      }
+      body.classList.toggle('sidebar-collapsed');
+      syncBackdrop();
+      syncToggleState();
+    }
+
+    function refresh() {
+      if (!isMobileLayout()) {
+        body.classList.remove('sidebar-open');
+      }
+      syncBackdrop();
+      syncToggleState();
+    }
+
+    toggleButton.addEventListener('click', toggle);
+    backdrop?.addEventListener('click', close);
+    navList?.addEventListener('click', () => {
+      if (isMobileLayout()) {
+        close();
+      }
+    });
+    window.addEventListener('resize', refresh);
+    refresh();
+
     return { open, close, refresh };
   }
 
@@ -349,6 +652,7 @@
     };
   }
 
+  // Shared UI helpers consumed by owner-console.js and tenant-console.js.
   window.ConsoleSurface = {
     api,
     connectLiveStream,
@@ -364,5 +668,7 @@
     setText,
     showToast,
     wireCommandPalette,
+    wireSidebarShell,
+    wireWorkspaceSwitcher,
   };
 })();

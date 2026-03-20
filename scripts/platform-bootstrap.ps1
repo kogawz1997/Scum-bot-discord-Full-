@@ -1,5 +1,11 @@
 $ErrorActionPreference = 'Stop'
 
+param(
+  [ValidateSet('production', 'single-host-prod', 'multi-tenant-prod', 'development', 'test')]
+  [string]$Profile = 'production',
+  [switch]$PrepareEnv
+)
+
 function Write-Step([string]$Message) {
   Write-Host ""
   Write-Host "[platform-bootstrap] $Message" -ForegroundColor Cyan
@@ -13,6 +19,11 @@ function Invoke-Step([string[]]$Command) {
 }
 
 Set-Location (Resolve-Path (Join-Path $PSScriptRoot '..'))
+
+if ($PrepareEnv) {
+  Write-Step "Preparing env files for profile $Profile"
+  Invoke-Step @('node', 'scripts/setup-env-profile.js', "--profile=$Profile", '--write', '--force')
+}
 
 Write-Step "Installing npm dependencies"
 Invoke-Step @('npm.cmd', 'install')
@@ -41,6 +52,7 @@ Invoke-Step @('npm.cmd', 'run', 'readiness:full')
 
 Write-Step "Platform bootstrap complete"
 Write-Host "Next: review docs/GO_LIVE_CHECKLIST_TH.md and docs/SPLIT_ORIGIN_AND_2FA_GUIDE.md, then verify /landing, /showcase, /trial, /admin" -ForegroundColor Green
+Write-Host "Profile used: $Profile" -ForegroundColor DarkGray
 Write-Host "Optional: npm run security:scaffold-split-env -- --admin-origin https://admin.example.com --player-origin https://player.example.com" -ForegroundColor DarkGray
 Write-Host "Optional: npm run security:apply-split-env -- --write" -ForegroundColor DarkGray
 Write-Host "Optional: npm run security:activate-split-env -- --admin-origin https://admin.example.com --player-origin https://player.example.com --write --with-readiness" -ForegroundColor DarkGray

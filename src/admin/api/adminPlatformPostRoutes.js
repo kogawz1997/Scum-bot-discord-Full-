@@ -25,6 +25,7 @@ function createAdminPlatformPostRoutes(deps) {
     createMarketplaceOffer,
     reconcileDeliveryState,
     runPlatformMonitoringCycle,
+    runPlatformAutomationCycle,
     acknowledgeAdminNotifications,
     clearAdminNotifications,
   } = deps;
@@ -375,6 +376,22 @@ function createAdminPlatformPostRoutes(deps) {
         data: await runPlatformMonitoringCycle({
           client,
           force: true,
+        }),
+      });
+      return true;
+    }
+
+    if (pathname === '/admin/api/platform/automation/run') {
+      if (getAuthTenantId(auth)) {
+        sendJson(res, 403, { ok: false, error: 'Tenant-scoped admin cannot run shared platform automation directly' });
+        return true;
+      }
+      sendJson(res, 200, {
+        ok: true,
+        data: await runPlatformAutomationCycle({
+          client,
+          force: body?.force !== false,
+          dryRun: body?.dryRun === true,
         }),
       });
       return true;

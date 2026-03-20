@@ -33,6 +33,8 @@ npm run env:prepare:production
 - ใช้ใน clean-room install, CI, หรือเครื่อง dev ใหม่ได้
 - ถ้าจำเป็นต้องเขียนทับจริง ให้เรียก `scripts/setup-env-profile.js --write --force` โดยตรง ซึ่ง script จะ backup ไฟล์เดิมไว้ใน `data/env-profile-backups/`
 - สำหรับ production จริงยังควรใช้ secret rotation / split-origin tooling เดิมร่วมด้วย
+- production profile ใน repo นี้เป็น PostgreSQL-first; อย่า materialize `.env` production ที่ยังชี้ไป SQLite แล้วนำไปรันจริง
+- หลัง materialize profile สำหรับ production ให้รัน `npm run doctor`, `npm run security:check`, และ `npm run readiness:prod` เพื่อตรวจ drift ก่อน boot runtime
 
 แนะนำการใช้งาน:
 

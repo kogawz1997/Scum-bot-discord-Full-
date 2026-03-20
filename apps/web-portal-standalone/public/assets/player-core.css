@@ -16,7 +16,7 @@
   --radius-lg: 22px;
   --radius-md: 18px;
   --radius-sm: 14px;
-  --shadow: 0 24px 72px rgba(0, 0, 0, 0.34);
+  --shadow: 0 18px 44px rgba(0, 0, 0, 0.26);
 }
 
 * {
@@ -40,11 +40,11 @@ body {
 }
 
 .portal-shell {
-  width: min(1320px, calc(100% - 24px));
+  width: min(1240px, calc(100% - 24px));
   margin: 0 auto;
-  padding: 18px 0 34px;
+  padding: 16px 0 30px;
   display: grid;
-  gap: 16px;
+  gap: 14px;
 }
 
 .portal-header,
@@ -57,7 +57,8 @@ body {
 .feed-item,
 .tip-card,
 .order-card,
-.toast {
+.toast,
+.task-cluster {
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   background:
@@ -68,11 +69,11 @@ body {
 }
 
 .portal-header {
-  padding: 20px;
+  padding: 18px;
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
-  gap: 16px;
+  gap: 14px;
 }
 
 .portal-identity {
@@ -111,7 +112,7 @@ body {
 }
 
 .portal-header h1 {
-  font-size: clamp(40px, 5vw, 66px);
+  font-size: clamp(34px, 4.4vw, 56px);
   line-height: 0.92;
 }
 
@@ -131,6 +132,24 @@ body {
   flex-wrap: wrap;
   gap: 10px;
   align-items: center;
+}
+
+.language-picker {
+  display: grid;
+  gap: 6px;
+  min-width: 170px;
+}
+
+.language-picker span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.language-select {
+  width: 100%;
 }
 
 .toolbar.stack {
@@ -218,15 +237,15 @@ a.button:hover {
 }
 
 .portal-nav {
-  padding: 8px;
+  padding: 7px;
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
 }
 
 .nav-btn {
-  min-height: 44px;
-  border-radius: 14px;
+  min-height: 40px;
+  border-radius: 12px;
   border: 1px solid transparent;
   background: rgba(255, 255, 255, 0.02);
 }
@@ -246,7 +265,20 @@ a.button:hover {
 .tip-stack,
 .order-grid {
   display: grid;
-  gap: 12px;
+  gap: 10px;
+}
+
+.focus-layout,
+.primary-stack,
+.secondary-stack,
+.task-body {
+  display: grid;
+  gap: 10px;
+}
+
+.focus-layout {
+  grid-template-columns: minmax(0, 1.16fr) minmax(300px, 0.84fr);
+  align-items: start;
 }
 
 .tab-panel {
@@ -272,7 +304,7 @@ a.button:hover {
 .shop-card,
 .tip-card,
 .order-card {
-  padding: 16px;
+  padding: 14px;
   display: grid;
   gap: 10px;
 }
@@ -307,12 +339,12 @@ a.button:hover {
 
 .metric-value {
   font-family: "Barlow Condensed", sans-serif;
-  font-size: 40px;
+  font-size: 34px;
   line-height: 0.9;
 }
 
 .stats-grid {
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(164px, 1fr));
 }
 
 .stats-grid.compact {
@@ -337,11 +369,72 @@ a.button:hover {
 }
 
 .section-head h2 {
-  font-size: 28px;
+  font-size: 24px;
+}
+
+.task-cluster {
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.015)),
+    rgba(17, 28, 38, 0.9);
+}
+
+.task-cluster > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 16px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.task-cluster > summary::-webkit-details-marker {
+  display: none;
+}
+
+.task-cluster > summary::after {
+  content: "+";
+  color: var(--accent);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 15px;
+}
+
+.task-cluster[open] > summary::after {
+  content: "-";
+}
+
+.task-cluster[open] > summary {
+  border-bottom: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.task-body {
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.012);
 }
 
 .shop-grid {
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.guide-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+}
+
+.guide-card {
+  border-radius: var(--radius-md);
+  background: var(--panel-soft);
+}
+
+.guide-card p {
+  margin: 0;
 }
 
 .shop-card {
@@ -385,7 +478,7 @@ a.button:hover {
 
 .shop-price {
   font-family: "Barlow Condensed", sans-serif;
-  font-size: 34px;
+  font-size: 30px;
   line-height: 0.92;
 }
 
@@ -402,11 +495,15 @@ a.button:hover {
 }
 
 .order-grid {
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
 }
 
 .order-card {
   align-content: start;
+}
+
+.order-card .button-row {
+  margin-top: auto;
 }
 
 .order-card .code {
@@ -442,6 +539,31 @@ select:focus {
   outline: none;
   border-color: rgba(141, 189, 255, 0.52);
   box-shadow: 0 0 0 2px rgba(91, 181, 255, 0.12);
+}
+
+select {
+  color-scheme: dark;
+}
+
+select:not([multiple]) {
+  -webkit-appearance: none;
+  appearance: none;
+  padding-right: 42px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='10' viewBox='0 0 14 10' fill='none'%3E%3Cpath d='M2 2.25L7 7.25L12 2.25' stroke='%2390bcff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  background-size: 14px 10px;
+}
+
+select option,
+select optgroup {
+  color: var(--text);
+  background: #0d1722;
+}
+
+select option:disabled,
+select optgroup {
+  color: var(--muted);
 }
 
 .table-shell {
@@ -510,7 +632,55 @@ th {
   transform: translateY(4px);
 }
 
+body.drawer-open {
+  overflow: hidden;
+}
+
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(2, 7, 12, 0.76);
+  backdrop-filter: blur(6px);
+}
+
+.drawer-card {
+  width: min(820px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid rgba(147, 181, 212, 0.22);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(180deg, rgba(18, 28, 38, 0.98), rgba(10, 17, 24, 0.98)),
+    rgba(8, 14, 20, 0.96);
+  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.42);
+}
+
+.drawer-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 16px;
+}
+
+.drawer-head h2 {
+  margin: 4px 0 0;
+  font-size: 32px;
+}
+
+.inset-card {
+  padding: 18px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
 @media (max-width: 1100px) {
+  .focus-layout,
   .hero-grid,
   .panel-grid.two-col,
   .shop-layout {
@@ -552,9 +722,445 @@ th {
     font-size: 24px;
   }
 
+  .drawer-card {
+    padding: 16px;
+  }
+
+  .drawer-head {
+    flex-direction: column;
+  }
+
   .stats-grid,
   .shop-grid,
-  .order-grid {
+    .order-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+/* 2026-03 player portal redesign layer
+   The player portal keeps the same tabs and IDs, but this layer turns the
+   shell into a cleaner, more game-like service interface with lower noise. */
+
+:root {
+  --bg: #06090d;
+  --bg-alt: #0b1015;
+  --bg-elevated: #121920;
+  --panel: rgba(11, 16, 21, 0.96);
+  --panel-soft: rgba(18, 25, 32, 0.94);
+  --line: rgba(175, 186, 193, 0.12);
+  --line-strong: rgba(205, 214, 220, 0.24);
+  --text: #edf0f2;
+  --muted: #a2acb3;
+  --accent: #a9b58a;
+  --success: #8bb56f;
+  --warning: #c68b47;
+  --danger: #b46757;
+  --info: #7f96a8;
+  --radius-lg: 16px;
+  --radius-md: 12px;
+  --radius-sm: 10px;
+  --shadow: 0 14px 34px rgba(0, 0, 0, 0.2);
+}
+
+html,
+body {
+  background:
+    radial-gradient(920px 540px at 100% 0%, rgba(169, 181, 138, 0.08), transparent 50%),
+    radial-gradient(860px 500px at 0% 100%, rgba(127, 150, 168, 0.06), transparent 55%),
+    linear-gradient(180deg, #05080b 0%, #090d12 42%, #0d1217 100%);
+  color: var(--text);
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+  background-size: 24px 24px;
+  opacity: 0.18;
+}
+
+.portal-shell-redesign {
+  width: min(1420px, calc(100% - 28px));
+  padding: 16px 0 26px;
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  grid-template-areas:
+    'header header'
+    'status status'
+    'nav main';
+  gap: 14px;
+}
+
+.portal-header,
+.status-banner,
+.portal-nav,
+.panel-card,
+.hero-card,
+.stat-card,
+.shop-card,
+.feed-item,
+.tip-card,
+.order-card,
+.toast,
+.task-cluster {
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.018), rgba(255, 255, 255, 0)),
+    var(--panel);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(8px);
+}
+
+.portal-header {
+  grid-area: header;
+  padding: 16px 18px;
+  gap: 12px 18px;
+}
+
+.portal-utility-bar {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.utility-group {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.utility-label,
+.utility-value {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.utility-label {
+  color: var(--muted);
+}
+
+.utility-value {
+  color: var(--text);
+}
+
+.utility-divider {
+  width: 22px;
+  height: 1px;
+  background: var(--line-strong);
+}
+
+.portal-identity {
+  gap: 6px;
+  max-width: 64ch;
+}
+
+.portal-header h1 {
+  font-size: clamp(30px, 3.8vw, 44px);
+  line-height: 0.94;
+  letter-spacing: 0.04em;
+}
+
+.portal-header p,
+.muted {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.portal-badge {
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  color: #dfe6c9;
+  border-color: rgba(169, 181, 138, 0.24);
+  background: rgba(169, 181, 138, 0.08);
+}
+
+.portal-actions {
+  gap: 8px;
+  align-items: end;
+}
+
+.button,
+button,
+a.button {
+  min-height: 40px;
+  padding: 0 13px;
+  border-radius: 10px;
+  border-color: var(--line);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.button:hover,
+button:hover,
+a.button:hover {
+  transform: none;
+  border-color: var(--line-strong);
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.button-primary {
+  background: linear-gradient(180deg, rgba(169, 181, 138, 0.98), rgba(132, 147, 103, 0.96));
+  color: #09100c;
+}
+
+#statusBanner {
+  grid-area: status;
+  padding: 12px 14px;
+}
+
+.portal-nav {
+  grid-area: nav;
+  position: sticky;
+  top: 16px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+  padding: 12px;
+  align-self: start;
+  background: rgba(8, 12, 16, 0.94);
+}
+
+.nav-btn {
+  width: 100%;
+  min-height: 42px;
+  justify-content: flex-start;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.025);
+  position: relative;
+  overflow: hidden;
+}
+
+.nav-btn::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.nav-btn.active {
+  background: rgba(169, 181, 138, 0.1);
+  border-color: rgba(169, 181, 138, 0.28);
+}
+
+.nav-btn.active::before {
+  background: #dfe6c9;
+}
+
+.portal-main {
+  grid-area: main;
+  min-width: 0;
+}
+
+.tab-panel {
+  gap: 12px;
+}
+
+.hero-grid {
+  grid-template-columns: minmax(0, 1.2fr) repeat(2, minmax(0, 0.9fr));
+  gap: 12px;
+}
+
+.hero-card,
+.panel-card,
+.stat-card,
+.shop-card,
+.tip-card,
+.order-card {
+  padding: 14px;
+  gap: 10px;
+  box-shadow: none;
+}
+
+.panel-grid.two-col,
+.shop-layout,
+.focus-layout {
+  gap: 12px;
+}
+
+.focus-layout,
+.panel-grid.two-col,
+.shop-layout {
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+}
+
+.task-cluster {
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.012);
+}
+
+.task-cluster > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 12px 14px;
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 18px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.task-cluster > summary::-webkit-details-marker {
+  display: none;
+}
+
+.task-cluster[open] > summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.task-body {
+  padding: 12px;
+}
+
+.section-head h2 {
+  font-size: clamp(21px, 2vw, 28px);
+  line-height: 1;
+}
+
+.stat-card {
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.profile-head {
+  grid-template-columns: 58px 1fr;
+}
+
+.avatar {
+  width: 58px;
+  height: 58px;
+  border: 1px solid var(--line);
+}
+
+.toolbar input,
+.toolbar select,
+.language-select {
+  min-height: 40px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+}
+
+.toolbar input:focus,
+.toolbar select:focus,
+.language-select:focus {
+  border-color: rgba(169, 181, 138, 0.4);
+  box-shadow: 0 0 0 1px rgba(169, 181, 138, 0.16);
+  outline: none;
+}
+
+.pill {
+  min-height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border-color: transparent;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.pill-neutral {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+
+.pill-info {
+  background: rgba(127, 150, 168, 0.24);
+  color: #d9e1e7;
+}
+
+.pill-success {
+  background: rgba(139, 181, 111, 0.24);
+  color: #dce9d3;
+}
+
+.pill-warning {
+  background: rgba(198, 139, 71, 0.22);
+  color: #f3ddbf;
+}
+
+.pill-danger {
+  background: rgba(180, 103, 87, 0.22);
+  color: #f0d4ce;
+}
+
+.order-grid,
+.feed-list,
+.tip-stack,
+.shop-grid {
+  gap: 10px;
+}
+
+@media (max-width: 1180px) {
+  .portal-shell-redesign {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      'header'
+      'status'
+      'nav'
+      'main';
+  }
+
+  .portal-nav {
+    position: static;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .hero-grid,
+  .focus-layout,
+  .panel-grid.two-col,
+  .shop-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .portal-shell-redesign {
+    width: min(100%, calc(100% - 18px));
+    padding-top: 10px;
+  }
+
+  .portal-header,
+  #statusBanner,
+  .portal-nav,
+  .panel-card,
+  .hero-card,
+  .stat-card {
+    border-radius: 14px;
+  }
+
+  .portal-header h1 {
+    font-size: 27px;
+  }
+
+  .portal-nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .nav-btn,
+  .button,
+  button,
+  a.button {
+    width: 100%;
   }
 }

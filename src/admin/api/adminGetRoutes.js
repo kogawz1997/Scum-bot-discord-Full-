@@ -3,6 +3,35 @@
  * admin server entrypoint so auth and runtime wiring stay readable.
  */
 
+function escapeCsvCell(value) {
+  const text = String(value ?? '');
+  if (/[",\r\n]/.test(text)) {
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+  return text;
+}
+
+function buildAdminNotificationsCsv(rows = []) {
+  const headers = [
+    'id',
+    'type',
+    'source',
+    'kind',
+    'severity',
+    'title',
+    'message',
+    'entityKey',
+    'createdAt',
+    'acknowledgedAt',
+    'acknowledgedBy',
+  ];
+  const lines = [
+    headers.join(','),
+    ...rows.map((row) => headers.map((key) => escapeCsvCell(row?.[key] ?? '')).join(',')),
+  ];
+  return `${lines.join('\n')}\n`;
+}
+
 function createAdminGetRoutes(deps) {
   const {
     prisma,
@@ -27,6 +56,8 @@ function createAdminGetRoutes(deps) {
     listAdminSecurityEvents,
     buildAdminSecurityEventExportRows,
     buildAdminSecurityEventCsv,
+    buildSecretRotationReport,
+    buildSecretRotationCsv,
     listAdminSessions,
     listAdminUsersFromDb,
     buildControlPanelSettings,
@@ -34,10 +65,18 @@ function createAdminGetRoutes(deps) {
     getRuntimeSupervisorSnapshot,
     getAdminRestoreState,
     getPlatformAnalyticsOverview,
+    buildTenantDiagnosticsBundle,
+    buildTenantDiagnosticsCsv,
+    buildTenantSupportCaseBundle,
+    buildTenantSupportCaseCsv,
+    buildDeliveryLifecycleReport,
+    buildDeliveryLifecycleCsv,
     getPlatformPublicOverview,
     getPlatformPermissionCatalog,
     getPlanCatalog,
     getPlatformOpsState,
+    getPlatformAutomationState,
+    getPlatformAutomationConfig,
     getPlatformTenantConfig,
     getTenantQuotaSnapshot,
     listPlatformTenants,
@@ -213,6 +252,46 @@ function createAdminGetRoutes(deps) {
       return true;
     }
 
+    if (pathname === '/admin/api/security/rotation-check') {
+      const auth = ensureRole(req, urlObj, 'owner', res);
+      if (!auth) return true;
+      sendJson(res, 200, {
+        ok: true,
+        data: buildSecretRotationReport(),
+      });
+      return true;
+    }
+
+    if (pathname === '/admin/api/security/rotation-check/export') {
+      const auth = ensureRole(req, urlObj, 'owner', res);
+      if (!auth) return true;
+      const report = buildSecretRotationReport();
+      const format = String(urlObj.searchParams.get('format') || 'json').trim().toLowerCase();
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      if (format === 'csv') {
+        sendDownload(
+          res,
+          200,
+          buildSecretRotationCsv(report),
+          {
+            filename: `secret-rotation-check-${timestamp}.csv`,
+            contentType: 'text/csv; charset=utf-8',
+          },
+        );
+        return true;
+      }
+      sendDownload(
+        res,
+        200,
+        `${JSON.stringify(report, jsonReplacer, 2)}\n`,
+        {
+          filename: `secret-rotation-check-${timestamp}.json`,
+          contentType: 'application/json; charset=utf-8',
+        },
+      );
+      return true;
+    }
+
     if (pathname === '/admin/api/auth/sessions') {
       const auth = ensureRole(req, urlObj, 'owner', res);
       if (!auth) return true;
@@ -298,6 +377,8 @@ function createAdminGetRoutes(deps) {
           guilds: client.guilds.cache.size,
           role: auth.role,
           runtimeSupervisor,
+          automationState: getPlatformAutomationState(),
+          automationConfig: getPlatformAutomationConfig(),
           backupRestore: getAdminRestoreState(),
         },
       });
@@ -337,6 +418,8 @@ function createAdminGetRoutes(deps) {
           permissionCatalog: getPlatformPermissionCatalog(),
           plans: getPlanCatalog(),
           opsState: getPlatformOpsState(),
+          automationState: getPlatformAutomationState(),
+          automationConfig: getPlatformAutomationConfig(),
           tenantConfig: tenantId ? await getPlatformTenantConfig(tenantId) : null,
         },
       });
@@ -366,7 +449,11 @@ function createAdminGetRoutes(deps) {
       if (!auth) return true;
       sendJson(res, 200, {
         ok: true,
-        data: getPlatformOpsState(),
+        data: {
+          ...getPlatformOpsState(),
+          automation: getPlatformAutomationState(),
+          automationConfig: getPlatformAutomationConfig(),
+        },
       });
       return true;
     }
@@ -381,6 +468,134 @@ function createAdminGetRoutes(deps) {
       });
       data = filterRowsByTenantScope(data, auth);
       sendJson(res, 200, { ok: true, data });
+      return true;
+    }
+
+    if (pathname === '/admin/api/platform/tenant-diagnostics') {
+      const auth = ensureRole(req, urlObj, 'mod', res);
+      if (!auth) return true;
+      const tenantId = resolveScopedTenantId(
+        req,
+        res,
+        auth,
+        requiredString(urlObj.searchParams.get('tenantId')),
+        { required: true },
+      );
+      if (!tenantId) return true;
+      sendJson(res, 200, {
+        ok: true,
+        data: await buildTenantDiagnosticsBundle(tenantId, {
+          limit: asInt(urlObj.searchParams.get('limit'), 25) || 25,
+          windowMs: asInt(urlObj.searchParams.get('windowMs'), null),
+          pendingOverdueMs: asInt(urlObj.searchParams.get('pendingOverdueMs'), null),
+        }),
+      });
+      return true;
+    }
+
+    if (pathname === '/admin/api/platform/tenant-diagnostics/export') {
+      const auth = ensureRole(req, urlObj, 'mod', res);
+      if (!auth) return true;
+      const tenantId = resolveScopedTenantId(
+        req,
+        res,
+        auth,
+        requiredString(urlObj.searchParams.get('tenantId')),
+        { required: true },
+      );
+      if (!tenantId) return true;
+      const data = await buildTenantDiagnosticsBundle(tenantId, {
+        limit: asInt(urlObj.searchParams.get('limit'), 25) || 25,
+        windowMs: asInt(urlObj.searchParams.get('windowMs'), null),
+        pendingOverdueMs: asInt(urlObj.searchParams.get('pendingOverdueMs'), null),
+      });
+      const format = String(urlObj.searchParams.get('format') || 'json').trim().toLowerCase();
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      if (format === 'csv') {
+        sendDownload(
+          res,
+          200,
+          buildTenantDiagnosticsCsv(data),
+          {
+            filename: `tenant-diagnostics-${tenantId}-${timestamp}.csv`,
+            contentType: 'text/csv; charset=utf-8',
+          },
+        );
+        return true;
+      }
+      sendDownload(
+        res,
+        200,
+        `${JSON.stringify(data, jsonReplacer, 2)}\n`,
+        {
+          filename: `tenant-diagnostics-${tenantId}-${timestamp}.json`,
+          contentType: 'application/json; charset=utf-8',
+        },
+      );
+      return true;
+    }
+
+    if (pathname === '/admin/api/platform/tenant-support-case') {
+      const auth = ensureRole(req, urlObj, 'mod', res);
+      if (!auth) return true;
+      const tenantId = resolveScopedTenantId(
+        req,
+        res,
+        auth,
+        requiredString(urlObj.searchParams.get('tenantId')),
+        { required: true },
+      );
+      if (!tenantId) return true;
+      sendJson(res, 200, {
+        ok: true,
+        data: await buildTenantSupportCaseBundle(tenantId, {
+          limit: asInt(urlObj.searchParams.get('limit'), 25) || 25,
+          windowMs: asInt(urlObj.searchParams.get('windowMs'), null),
+          pendingOverdueMs: asInt(urlObj.searchParams.get('pendingOverdueMs'), null),
+        }),
+      });
+      return true;
+    }
+
+    if (pathname === '/admin/api/platform/tenant-support-case/export') {
+      const auth = ensureRole(req, urlObj, 'mod', res);
+      if (!auth) return true;
+      const tenantId = resolveScopedTenantId(
+        req,
+        res,
+        auth,
+        requiredString(urlObj.searchParams.get('tenantId')),
+        { required: true },
+      );
+      if (!tenantId) return true;
+      const data = await buildTenantSupportCaseBundle(tenantId, {
+        limit: asInt(urlObj.searchParams.get('limit'), 25) || 25,
+        windowMs: asInt(urlObj.searchParams.get('windowMs'), null),
+        pendingOverdueMs: asInt(urlObj.searchParams.get('pendingOverdueMs'), null),
+      });
+      const format = String(urlObj.searchParams.get('format') || 'json').trim().toLowerCase();
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      if (format === 'csv') {
+        sendDownload(
+          res,
+          200,
+          buildTenantSupportCaseCsv(data),
+          {
+            filename: `tenant-support-case-${tenantId}-${timestamp}.csv`,
+            contentType: 'text/csv; charset=utf-8',
+          },
+        );
+        return true;
+      }
+      sendDownload(
+        res,
+        200,
+        `${JSON.stringify(data, jsonReplacer, 2)}\n`,
+        {
+          filename: `tenant-support-case-${tenantId}-${timestamp}.json`,
+          contentType: 'application/json; charset=utf-8',
+        },
+      );
       return true;
     }
 
@@ -873,6 +1088,69 @@ function createAdminGetRoutes(deps) {
       return true;
     }
 
+    if (pathname === '/admin/api/delivery/lifecycle') {
+      const auth = ensureRole(req, urlObj, 'mod', res);
+      if (!auth) return true;
+      const requestedTenantId = requiredString(urlObj.searchParams.get('tenantId'));
+      const tenantId = resolveScopedTenantId(req, res, auth, requestedTenantId, {
+        required: false,
+      });
+      if (requestedTenantId && !tenantId) return true;
+      sendJson(res, 200, {
+        ok: true,
+        data: await buildDeliveryLifecycleReport({
+          tenantId: tenantId || getAuthTenantId(auth) || undefined,
+          limit: asInt(urlObj.searchParams.get('limit'), 120) || 120,
+          pendingOverdueMs: asInt(urlObj.searchParams.get('pendingOverdueMs'), null),
+          retryHeavyAttempts: asInt(urlObj.searchParams.get('retryHeavyAttempts'), null),
+          poisonAttempts: asInt(urlObj.searchParams.get('poisonAttempts'), null),
+        }),
+      });
+      return true;
+    }
+
+    if (pathname === '/admin/api/delivery/lifecycle/export') {
+      const auth = ensureRole(req, urlObj, 'mod', res);
+      if (!auth) return true;
+      const requestedTenantId = requiredString(urlObj.searchParams.get('tenantId'));
+      const tenantId = resolveScopedTenantId(req, res, auth, requestedTenantId, {
+        required: false,
+      });
+      if (requestedTenantId && !tenantId) return true;
+      const data = await buildDeliveryLifecycleReport({
+        tenantId: tenantId || getAuthTenantId(auth) || undefined,
+        limit: asInt(urlObj.searchParams.get('limit'), 120) || 120,
+        pendingOverdueMs: asInt(urlObj.searchParams.get('pendingOverdueMs'), null),
+        retryHeavyAttempts: asInt(urlObj.searchParams.get('retryHeavyAttempts'), null),
+        poisonAttempts: asInt(urlObj.searchParams.get('poisonAttempts'), null),
+      });
+      const format = String(urlObj.searchParams.get('format') || 'json').trim().toLowerCase();
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const scopeLabel = tenantId || getAuthTenantId(auth) || 'global';
+      if (format === 'csv') {
+        sendDownload(
+          res,
+          200,
+          buildDeliveryLifecycleCsv(data),
+          {
+            filename: `delivery-lifecycle-${scopeLabel}-${timestamp}.csv`,
+            contentType: 'text/csv; charset=utf-8',
+          },
+        );
+        return true;
+      }
+      sendDownload(
+        res,
+        200,
+        `${JSON.stringify(data, jsonReplacer, 2)}\n`,
+        {
+          filename: `delivery-lifecycle-${scopeLabel}-${timestamp}.json`,
+          contentType: 'application/json; charset=utf-8',
+        },
+      );
+      return true;
+    }
+
     if (pathname === '/admin/api/delivery/runtime') {
       const auth = ensureRole(req, urlObj, 'mod', res);
       if (!auth) return true;
@@ -981,6 +1259,50 @@ function createAdminGetRoutes(deps) {
           }),
         },
       });
+      return true;
+    }
+
+    if (pathname === '/admin/api/notifications/export') {
+      const auth = ensureRole(req, urlObj, 'mod', res);
+      if (!auth) return true;
+      const acknowledgedRaw = String(urlObj.searchParams.get('acknowledged') || '').trim().toLowerCase();
+      const acknowledged =
+        acknowledgedRaw === 'true'
+          ? true
+          : acknowledgedRaw === 'false'
+            ? false
+            : null;
+      const rows = listAdminNotifications({
+        limit: asInt(urlObj.searchParams.get('limit'), 500) || 500,
+        type: String(urlObj.searchParams.get('type') || '').trim(),
+        kind: String(urlObj.searchParams.get('kind') || '').trim(),
+        severity: String(urlObj.searchParams.get('severity') || '').trim(),
+        entityKey: String(urlObj.searchParams.get('entityKey') || '').trim(),
+        acknowledged,
+      });
+      const format = String(urlObj.searchParams.get('format') || 'json').trim().toLowerCase();
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      if (format === 'csv') {
+        sendDownload(
+          res,
+          200,
+          buildAdminNotificationsCsv(rows),
+          {
+            filename: `admin-notifications-${timestamp}.csv`,
+            contentType: 'text/csv; charset=utf-8',
+          },
+        );
+        return true;
+      }
+      sendDownload(
+        res,
+        200,
+        `${JSON.stringify({ ok: true, data: { items: rows } }, jsonReplacer, 2)}\n`,
+        {
+          filename: `admin-notifications-${timestamp}.json`,
+          contentType: 'application/json; charset=utf-8',
+        },
+      );
       return true;
     }
 

@@ -7,35 +7,39 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/player/assets/ui/portal-public.css">
+  <link rel="stylesheet" href="/player/assets/ui/portal-public.css?v=20260319-tactical-i18n">
 </head>
 <body>
   <div class="public-shell">
     <header class="public-header">
       <div class="public-brand">
-        <span class="public-badge">Feature Showcase</span>
-        <h1>Role-based platform surfaces</h1>
-        <p>Overview of how the platform is structured across owner, tenant, and player experiences while staying compatible with the current runtime.</p>
+        <span class="public-badge" data-i18n="showcase.badge">Feature Showcase</span>
+        <h1 data-i18n="showcase.title">Role-based platform surfaces</h1>
+        <p data-i18n="showcase.subtitle">Overview of how the platform is structured across owner, tenant, and player experiences while staying compatible with the current runtime.</p>
       </div>
       <div class="public-actions">
-        <a class="button" href="/landing">Landing</a>
-        <a class="button button-primary" href="/player/login">Player Portal</a>
-        <a class="button" href="/admin">Admin Web</a>
+        <label class="language-picker">
+          <span data-i18n="common.language">Language</span>
+          <select id="showcaseLanguageSelect" class="language-select"></select>
+        </label>
+        <a class="button" href="/landing" data-i18n="showcase.backLanding">Landing</a>
+        <a class="button button-primary" href="/player/login" data-i18n="showcase.openPlayer">Player Portal</a>
+        <a class="button" href="/admin" data-i18n="showcase.openAdmin">Admin Web</a>
       </div>
     </header>
 
     <section class="public-panel section">
       <div class="section-head">
         <div>
-          <span class="eyebrow">Owner / Tenant / Player</span>
-          <h2 class="section-title">Surface responsibilities</h2>
-          <p class="muted">Each surface uses the same product language but serves a different user with different risk and information density.</p>
+            <span class="eyebrow" data-i18n="public.showcase.surfacesEyebrow">Owner / Tenant / Player</span>
+          <h2 class="section-title" data-i18n="showcase.surfaceTitle">Surface responsibilities</h2>
+            <p class="muted" data-i18n="public.showcase.surfacesDetail">Each surface uses the same product language but serves a different user with different risk and information density.</p>
         </div>
       </div>
       <div class="card-grid">
         <article class="surface-card">
-          <span class="eyebrow">Owner Console</span>
-          <h3>Dense, operational, global</h3>
+            <span class="eyebrow" data-i18n="public.showcase.ownerEyebrow">Owner Console</span>
+            <h3 data-i18n="public.showcase.ownerTitle">Dense, operational, global</h3>
           <ul>
             <li>System health, runtime posture, and tenant fleet visibility</li>
             <li>Security center, audit feed, request anomalies, and incident stream</li>
@@ -44,8 +48,8 @@
           </ul>
         </article>
         <article class="surface-card">
-          <span class="eyebrow">Tenant Console</span>
-          <h3>Scoped, guided, safer</h3>
+            <span class="eyebrow" data-i18n="public.showcase.tenantEyebrow">Tenant Console</span>
+            <h3 data-i18n="public.showcase.tenantTitle">Scoped, guided, safer</h3>
           <ul>
             <li>Server and delivery posture inside tenant scope</li>
             <li>Shop, economy, wallet, and delivery recovery grouped logically</li>
@@ -54,8 +58,8 @@
           </ul>
         </article>
         <article class="surface-card">
-          <span class="eyebrow">Player Portal</span>
-          <h3>Simple, trusted, mobile-first</h3>
+            <span class="eyebrow" data-i18n="public.showcase.playerEyebrow">Player Portal</span>
+            <h3 data-i18n="public.showcase.playerTitle">Simple, trusted, mobile-first</h3>
           <ul>
             <li>Wallet balance and clear transaction history</li>
             <li>Inventory-style shop UI and order state clarity</li>
@@ -70,9 +74,9 @@
       <section class="public-panel section">
         <div class="section-head">
           <div>
-            <span class="eyebrow">Design Language</span>
-            <h2 class="section-title">Shared but role-appropriate</h2>
-            <p class="muted">The redesign keeps a tactical dark SaaS tone without turning the platform into a flashy game-themed dashboard.</p>
+            <span class="eyebrow" data-i18n="public.showcase.designEyebrow">Design Language</span>
+          <h2 class="section-title" data-i18n="showcase.designTitle">Shared but role-appropriate</h2>
+            <p class="muted" data-i18n="public.showcase.designDetail">The redesign keeps a tactical dark SaaS tone without turning the platform into a flashy game-themed dashboard.</p>
           </div>
         </div>
         <div class="step-grid">
@@ -98,7 +102,7 @@
         <div class="section-head">
           <div>
             <span class="eyebrow">Compatibility</span>
-            <h2 class="section-title">What stays intact</h2>
+          <h2 class="section-title" data-i18n="showcase.compatTitle">What stays intact</h2>
             <p class="muted">This redesign is front-end-first. Existing backend flows, authentication, tenant routing, and runtime behavior remain untouched.</p>
           </div>
         </div>
@@ -119,5 +123,9 @@
       </section>
     </section>
   </div>
+  <script src="/player/assets/ui/portal-i18n.js?v=20260320-complete-pass"></script>
+  <script>
+    window.PortalUiI18n?.init(['showcaseLanguageSelect']);
+  </script>
 </body>
 </html>

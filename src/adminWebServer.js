@@ -214,7 +214,30 @@ const {
   startPlatformMonitoring,
   stopPlatformMonitoring,
 } = require('./services/platformMonitoringService');
+const {
+  buildTenantDiagnosticsBundle,
+  buildTenantDiagnosticsCsv,
+  buildTenantSupportCaseBundle,
+  buildTenantSupportCaseCsv,
+} = require('./services/tenantDiagnosticsService');
+const {
+  buildDeliveryLifecycleReport,
+  buildDeliveryLifecycleCsv,
+} = require('./services/deliveryLifecycleService');
+const {
+  buildSecretRotationReport,
+  buildSecretRotationCsv,
+} = require('./utils/secretRotationCheck');
+const {
+  runPlatformAutomationCycle,
+  getAutomationConfig,
+  startPlatformAutomation,
+  stopPlatformAutomation,
+} = require('./services/platformAutomationService');
 const { getPlatformOpsState } = require('./store/platformOpsStateStore');
+const {
+  getPlatformAutomationState,
+} = require('./store/platformAutomationStateStore');
 const {
   revokeWelcomePackClaimForAdmin,
   clearWelcomePackClaimsForAdmin,
@@ -570,6 +593,8 @@ const {
   tryServeAdminStaticAsset,
   tryServeStaticScumIcon,
   getDashboardHtml,
+  getOwnerConsoleHtml,
+  getTenantConsoleHtml,
   getLoginHtml,
 } = createAdminPageRuntime({
   dashboardHtmlPath,
@@ -776,6 +801,8 @@ const handleAdminGetRoute = createAdminGetRoutes({
   listAdminSecurityEvents,
   buildAdminSecurityEventExportRows,
   buildAdminSecurityEventCsv,
+  buildSecretRotationReport,
+  buildSecretRotationCsv,
   listAdminSessions,
   listAdminUsersFromDb,
   buildControlPanelSettings,
@@ -783,11 +810,19 @@ const handleAdminGetRoute = createAdminGetRoutes({
   getRuntimeSupervisorSnapshot,
   getAdminRestoreState,
   getPlatformAnalyticsOverview,
+  buildTenantDiagnosticsBundle,
+  buildTenantDiagnosticsCsv,
+  buildTenantSupportCaseBundle,
+  buildTenantSupportCaseCsv,
+  buildDeliveryLifecycleReport,
+  buildDeliveryLifecycleCsv,
   getPlatformPublicOverview,
   getPlatformPermissionCatalog,
-  getPlanCatalog,
-  getPlatformOpsState,
-  getPlatformTenantConfig,
+    getPlanCatalog,
+    getPlatformOpsState,
+    getPlatformAutomationState,
+    getPlatformAutomationConfig: getAutomationConfig,
+    getPlatformTenantConfig,
   getTenantQuotaSnapshot,
   listPlatformTenants,
   listPlatformTenantConfigs,
@@ -938,6 +973,7 @@ const handleAdminPlatformPostRoute = createAdminPlatformPostRoutes({
   createMarketplaceOffer,
   reconcileDeliveryState,
   runPlatformMonitoringCycle,
+  runPlatformAutomationCycle,
   acknowledgeAdminNotifications,
   clearAdminNotifications,
 });
@@ -984,6 +1020,8 @@ const {
   ensureMetricsSeriesTimer,
   startPlatformMonitoring,
   stopPlatformMonitoring,
+  startPlatformAutomation,
+  stopPlatformAutomation,
   adminLiveBus,
   broadcastLiveUpdate,
   createAdminRequestHandler,

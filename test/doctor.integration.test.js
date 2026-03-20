@@ -5,12 +5,15 @@ const { spawnSync } = require('node:child_process');
 
 const projectRoot = path.resolve(__dirname, '..');
 const scriptPath = path.resolve(projectRoot, 'scripts', 'doctor.js');
+const PROD_DB_URL = 'postgresql://app:secret@127.0.0.1:5432/scum_th_platform?schema=public';
 
 function runDoctor(env, args = []) {
   return spawnSync(process.execPath, [scriptPath, ...args], {
     cwd: projectRoot,
     env: {
       ...process.env,
+      ADMIN_WEB_SESSION_COOKIE_DOMAIN: '',
+      WEB_PORTAL_COOKIE_DOMAIN: '',
       ...env,
     },
     encoding: 'utf8',
@@ -20,7 +23,7 @@ function runDoctor(env, args = []) {
 test('doctor passes valid reverse proxy/origin/port production setup', () => {
   const result = runDoctor({
     NODE_ENV: 'production',
-    DATABASE_URL: 'file:./prisma/dev.db',
+    DATABASE_URL: PROD_DB_URL,
     ADMIN_WEB_HOST: '127.0.0.1',
     ADMIN_WEB_PORT: '3200',
     ADMIN_WEB_SECURE_COOKIE: 'true',
@@ -70,7 +73,7 @@ test('doctor passes valid reverse proxy/origin/port production setup', () => {
 test('doctor fails when player legacy admin origin is not allowed by admin origin list', () => {
   const result = runDoctor({
     NODE_ENV: 'production',
-    DATABASE_URL: 'file:./prisma/dev.db',
+    DATABASE_URL: PROD_DB_URL,
     ADMIN_WEB_HOST: '127.0.0.1',
     ADMIN_WEB_PORT: '3200',
     ADMIN_WEB_SECURE_COOKIE: 'true',
@@ -91,6 +94,8 @@ test('doctor fails when player legacy admin origin is not allowed by admin origi
     WEB_PORTAL_DISCORD_CLIENT_SECRET: 'portal-secret-1234567890',
     WEB_PORTAL_SECURE_COOKIE: 'true',
     WEB_PORTAL_ENFORCE_ORIGIN_CHECK: 'true',
+    BOT_ENABLE_DELIVERY_WORKER: 'false',
+    WORKER_ENABLE_DELIVERY: 'false',
     WEB_PORTAL_PORT: '3300',
     SCUM_WEBHOOK_PORT: '3100',
     BOT_HEALTH_PORT: '3210',
@@ -106,7 +111,7 @@ test('doctor fails when player legacy admin origin is not allowed by admin origi
 test('doctor fails when RCON template is missing {command}', () => {
   const result = runDoctor({
     NODE_ENV: 'production',
-    DATABASE_URL: 'file:./prisma/dev.db',
+    DATABASE_URL: PROD_DB_URL,
     ADMIN_WEB_HOST: '127.0.0.1',
     ADMIN_WEB_PORT: '3200',
     ADMIN_WEB_SECURE_COOKIE: 'true',
@@ -146,7 +151,7 @@ test('doctor fails when RCON template is missing {command}', () => {
 test('doctor fails when admin Discord redirect origin is not allowed', () => {
   const result = runDoctor({
     NODE_ENV: 'production',
-    DATABASE_URL: 'file:./prisma/dev.db',
+    DATABASE_URL: PROD_DB_URL,
     ADMIN_WEB_HOST: '127.0.0.1',
     ADMIN_WEB_PORT: '3200',
     ADMIN_WEB_SECURE_COOKIE: 'true',
@@ -165,10 +170,10 @@ test('doctor fails when admin Discord redirect origin is not allowed', () => {
     WEB_PORTAL_DISCORD_CLIENT_SECRET: 'portal-secret-1234567890',
     WEB_PORTAL_SECURE_COOKIE: 'true',
     WEB_PORTAL_ENFORCE_ORIGIN_CHECK: 'true',
-    BOT_ENABLE_RENTBIKE_SERVICE: 'false',
     BOT_ENABLE_DELIVERY_WORKER: 'false',
-    WORKER_ENABLE_RENTBIKE: 'false',
     WORKER_ENABLE_DELIVERY: 'false',
+    BOT_ENABLE_RENTBIKE_SERVICE: 'false',
+    WORKER_ENABLE_RENTBIKE: 'false',
   });
 
   assert.notEqual(result.status, 0);
@@ -179,7 +184,7 @@ test('doctor fails when admin Discord redirect origin is not allowed', () => {
 test('doctor warns when external admin lacks 2FA and session ttl is too long', () => {
   const result = runDoctor({
     NODE_ENV: 'production',
-    DATABASE_URL: 'file:./prisma/dev.db',
+    DATABASE_URL: PROD_DB_URL,
     ADMIN_WEB_HOST: '127.0.0.1',
     ADMIN_WEB_PORT: '3200',
     ADMIN_WEB_SECURE_COOKIE: 'true',
@@ -205,6 +210,8 @@ test('doctor warns when external admin lacks 2FA and session ttl is too long', (
     WEB_PORTAL_SECURE_COOKIE: 'true',
     WEB_PORTAL_ENFORCE_ORIGIN_CHECK: 'true',
     WEB_PORTAL_SESSION_TTL_HOURS: '72',
+    BOT_ENABLE_DELIVERY_WORKER: 'false',
+    WORKER_ENABLE_DELIVERY: 'false',
     SCUM_WEBHOOK_PORT: '3100',
     BOT_HEALTH_PORT: '3210',
     WORKER_HEALTH_PORT: '3211',
@@ -223,7 +230,7 @@ test('doctor warns when external admin lacks 2FA and session ttl is too long', (
 test('doctor emits shared JSON report when requested', () => {
   const result = runDoctor({
     NODE_ENV: 'production',
-    DATABASE_URL: 'file:./prisma/dev.db',
+    DATABASE_URL: PROD_DB_URL,
     ADMIN_WEB_HOST: '127.0.0.1',
     ADMIN_WEB_PORT: '3200',
     ADMIN_WEB_SECURE_COOKIE: 'true',
@@ -261,4 +268,30 @@ test('doctor emits shared JSON report when requested', () => {
   assert.equal(payload.kind, 'doctor');
   assert.equal(payload.ok, true);
   assert.equal(Array.isArray(payload.checks), true);
+});
+
+test('doctor fails when delivery worker ownership is duplicated across bot and worker', () => {
+  const result = runDoctor({
+    NODE_ENV: 'production',
+    DATABASE_URL: PROD_DB_URL,
+    ADMIN_WEB_HOST: '127.0.0.1',
+    ADMIN_WEB_PORT: '3200',
+    ADMIN_WEB_SECURE_COOKIE: 'true',
+    ADMIN_WEB_HSTS_ENABLED: 'true',
+    ADMIN_WEB_TRUST_PROXY: 'true',
+    ADMIN_WEB_ENFORCE_ORIGIN_CHECK: 'true',
+    ADMIN_WEB_ALLOWED_ORIGINS: 'https://admin.example.com',
+    ADMIN_WEB_SSO_DISCORD_ENABLED: 'false',
+    WEB_PORTAL_BASE_URL: 'https://player.example.com',
+    WEB_PORTAL_LEGACY_ADMIN_URL: 'https://admin.example.com/admin',
+    WEB_PORTAL_DISCORD_CLIENT_ID: '1478651427088760842',
+    WEB_PORTAL_DISCORD_CLIENT_SECRET: 'portal-secret-1234567890',
+    WEB_PORTAL_SECURE_COOKIE: 'true',
+    WEB_PORTAL_ENFORCE_ORIGIN_CHECK: 'true',
+    BOT_ENABLE_DELIVERY_WORKER: 'true',
+    WORKER_ENABLE_DELIVERY: 'true',
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.match(`${result.stdout}\n${result.stderr}`, /Do not enable delivery worker on both bot and worker/i);
 });

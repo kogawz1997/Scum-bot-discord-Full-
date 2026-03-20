@@ -463,6 +463,23 @@ const defaultConfig = {
       includeSnapshot: true,
       note: 'auto-platform-backup',
     },
+    automation: {
+      enabled: true,
+      intervalMs: 2 * 60 * 1000,
+      recoveryCooldownMs: 5 * 60 * 1000,
+      recoveryWindowMs: 30 * 60 * 1000,
+      maxAttemptsPerRuntime: 2,
+      maxActionsPerCycle: 1,
+      runMonitoringAfterRecovery: true,
+      postRestartMonitoringDelayMs: 5 * 1000,
+      allowSelfRestart: false,
+      restartServices: [
+        'worker',
+        'watcher',
+        'player-portal',
+        'console-agent',
+      ],
+    },
     agent: {
       minimumVersion: '1.0.0',
       releaseChannel: 'stable',

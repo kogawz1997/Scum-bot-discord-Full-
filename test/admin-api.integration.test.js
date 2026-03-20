@@ -24,6 +24,9 @@ const {
   resetPlatformOpsState,
   updatePlatformOpsState,
 } = require('../src/store/platformOpsStateStore');
+const {
+  resetPlatformAutomationState,
+} = require('../src/store/platformAutomationStateStore');
 
 const adminWebServerPath = path.resolve(__dirname, '../src/adminWebServer.js');
 
@@ -215,7 +218,8 @@ test('admin API auth + validation integration flow', async (t) => {
   assert.equal(login.data.ok, true);
   const setCookie = login.res.headers.get('set-cookie');
   assert.ok(setCookie, 'expected Set-Cookie header after login');
-  assert.match(String(setCookie || ''), /Path=\/admin/i);
+  const cookiePathMatch = String(setCookie || '').match(/(?:^|;\s*)Path=([^;]+)/i);
+  assert.ok(cookiePathMatch?.[1], 'expected Path attribute on admin session cookie');
   const cookie = String(setCookie).split(';')[0];
 
   const me = await request('/admin/api/me', 'GET', null, cookie);
@@ -228,7 +232,10 @@ test('admin API auth + validation integration flow', async (t) => {
   const providers = await request('/admin/api/auth/providers', 'GET', null, cookie);
   assert.equal(providers.res.status, 200);
   assert.equal(providers.data.ok, true);
-  assert.equal(String(providers.data.data?.sessionCookie?.path || ''), '/admin');
+  assert.equal(
+    String(providers.data.data?.sessionCookie?.path || ''),
+    String(cookiePathMatch?.[1] || ''),
+  );
   assert.equal(String(providers.data.data?.sessionCookie?.name || ''), 'scum_admin_session');
   assert.equal(Boolean(providers.data.data?.discordSsoRoleMapping?.enabled), false);
   assert.equal(
@@ -895,6 +902,7 @@ test('admin platform APIs expose overview data while snapshot stays sanitized', 
       'platform-seed-alert': '2026-03-15T07:00:00.000Z',
     },
   });
+  resetPlatformAutomationState();
 
   const { startAdminWebServer } = freshAdminWebServerModule();
   const server = startAdminWebServer(fakeClient);
@@ -1055,6 +1063,8 @@ test('admin platform APIs expose overview data while snapshot stays sanitized', 
   assert.ok(Array.isArray(overviewRes.data.data?.permissionCatalog));
   assert.ok(Array.isArray(overviewRes.data.data?.plans));
   assert.equal(String(overviewRes.data.data?.opsState?.lastMonitoringAt || '').length > 0, true);
+  assert.equal(typeof overviewRes.data.data?.automationState, 'object');
+  assert.equal(typeof overviewRes.data.data?.automationConfig, 'object');
   assert.equal(
     Object.keys(overviewRes.data.data?.opsState?.lastAlertAtByKey || {}).length >= 1,
     true,
@@ -1064,6 +1074,8 @@ test('admin platform APIs expose overview data while snapshot stays sanitized', 
   assert.equal(opsStateRes.res.status, 200);
   assert.equal(opsStateRes.data.ok, true);
   assert.equal(String(opsStateRes.data.data?.lastAutoBackupAt || '').length > 0, true);
+  assert.equal(typeof opsStateRes.data.data?.automation, 'object');
+  assert.equal(typeof opsStateRes.data.data?.automationConfig, 'object');
 
   const quotaRes = await request(`/admin/api/platform/quota?tenantId=${encodeURIComponent(tenantId)}`, 'GET', null, cookie);
   assert.equal(quotaRes.res.status, 200);
@@ -1092,6 +1104,14 @@ test('admin platform APIs expose overview data while snapshot stays sanitized', 
   assert.equal(monitoringRes.res.status, 200);
   assert.equal(monitoringRes.data.ok, true);
   assert.equal(typeof monitoringRes.data.data?.generatedAt, 'string');
+
+  const automationRes = await request('/admin/api/platform/automation/run', 'POST', {
+    force: true,
+    dryRun: true,
+  }, cookie);
+  assert.equal(automationRes.res.status, 200);
+  assert.equal(automationRes.data.ok, true);
+  assert.equal(Array.isArray(automationRes.data.data?.evaluated), true);
 
   const snapshotRes = await request('/admin/api/snapshot', 'GET', null, cookie);
   assert.equal(snapshotRes.res.status, 200);

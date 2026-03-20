@@ -193,6 +193,7 @@ ADMIN_WEB_SESSION_BIND_USER_AGENT=true
 - tenant config scope บางส่วน
 
 หมายเหตุการใช้งาน/ความปลอดภัย:
+
 - การเรียก `POST /admin/api/*` จะถูกตรวจ CSRF ผ่าน `origin`/`sec-fetch-site` เมื่อผู้ใช้มี session แล้ว และเปิด `ADMIN_WEB_ENFORCE_ORIGIN_CHECK=true`
 - auth มี 3 โหมด:
   - session cookie จาก `/admin/login`

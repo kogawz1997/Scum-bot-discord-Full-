@@ -29,26 +29,26 @@ This document is the operator-facing matrix for core configuration. It is not a 
 
 ## Discord Bot
 
-| Key                            | Required | Production-only | Used by | UI scope | Notes                            |
-| ------------------------------ | -------- | --------------- | ------- | -------- | -------------------------------- |
-| `DISCORD_TOKEN`                | Yes      | Yes             | bot     | no-ui    | secret                           |
-| `BOT_ENABLE_ADMIN_WEB`         | Optional | No              | bot     | restart  | controls admin web bootstrap     |
-| `BOT_ENABLE_SCUM_WEBHOOK`      | Optional | No              | bot     | restart  | controls webhook receiver        |
-| `BOT_ENABLE_RESTART_SCHEDULER` | Optional | No              | bot     | runtime  | runtime feature flag             |
-| `BOT_ENABLE_RENTBIKE_SERVICE`  | Optional | No              | bot     | restart  | should stay off in split runtime |
-| `BOT_ENABLE_DELIVERY_WORKER`   | Optional | No              | bot     | restart  | should stay off in split runtime |
-| `BOT_HEALTH_HOST`              | Optional | Yes             | bot     | env-only | health bind address              |
-| `BOT_HEALTH_PORT`              | Optional | Yes             | bot     | env-only | health bind port                 |
+| Key                            | Required | Production-only | Used by | UI scope | Notes                                                                                       |
+| ------------------------------ | -------- | --------------- | ------- | -------- | ------------------------------------------------------------------------------------------- |
+| `DISCORD_TOKEN`                | Yes      | Yes             | bot     | no-ui    | secret                                                                                      |
+| `BOT_ENABLE_ADMIN_WEB`         | Optional | No              | bot     | restart  | controls admin web bootstrap                                                                |
+| `BOT_ENABLE_SCUM_WEBHOOK`      | Optional | No              | bot     | restart  | controls webhook receiver                                                                   |
+| `BOT_ENABLE_RESTART_SCHEDULER` | Optional | No              | bot     | runtime  | runtime feature flag                                                                        |
+| `BOT_ENABLE_RENTBIKE_SERVICE`  | Optional | No              | bot     | restart  | should stay off in split runtime                                                            |
+| `BOT_ENABLE_DELIVERY_WORKER`   | Optional | No              | bot     | restart  | should stay off in split runtime; must not be `true` together with `WORKER_ENABLE_DELIVERY` |
+| `BOT_HEALTH_HOST`              | Optional | Yes             | bot     | env-only | health bind address                                                                         |
+| `BOT_HEALTH_PORT`              | Optional | Yes             | bot     | env-only | health bind port                                                                            |
 
 ## Worker
 
-| Key                      | Required | Production-only | Used by | UI scope | Notes                              |
-| ------------------------ | -------- | --------------- | ------- | -------- | ---------------------------------- |
-| `WORKER_ENABLE_DELIVERY` | Optional | No              | worker  | restart  | should be on for split worker role |
-| `WORKER_ENABLE_RENTBIKE` | Optional | No              | worker  | restart  | feature-dependent                  |
-| `WORKER_HEALTH_HOST`     | Optional | Yes             | worker  | env-only | health bind address                |
-| `WORKER_HEALTH_PORT`     | Optional | Yes             | worker  | env-only | health bind port                   |
-| `WORKER_HEARTBEAT_MS`    | Optional | No              | worker  | restart  | heartbeat interval                 |
+| Key                      | Required | Production-only | Used by | UI scope | Notes                                                                                             |
+| ------------------------ | -------- | --------------- | ------- | -------- | ------------------------------------------------------------------------------------------------- |
+| `WORKER_ENABLE_DELIVERY` | Optional | No              | worker  | restart  | should be on for split worker role; must not be `true` together with `BOT_ENABLE_DELIVERY_WORKER` |
+| `WORKER_ENABLE_RENTBIKE` | Optional | No              | worker  | restart  | feature-dependent                                                                                 |
+| `WORKER_HEALTH_HOST`     | Optional | Yes             | worker  | env-only | health bind address                                                                               |
+| `WORKER_HEALTH_PORT`     | Optional | Yes             | worker  | env-only | health bind port                                                                                  |
+| `WORKER_HEARTBEAT_MS`    | Optional | No              | worker  | restart  | heartbeat interval                                                                                |
 
 ## Watcher
 

@@ -3,189 +3,496 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SCUM Tenant Admin Console</title>
+  <title data-i18n="tenant.documentTitle">SCUM Tenant Admin Console</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/admin/assets/console-surfaces.css">
+  <link rel="stylesheet" href="/admin/assets/console-surfaces.css?v=20260320-total-redesign-pass">
 </head>
-<body>
-  <div class="surface-root">
+<body class="surface-tenant">
+  <div class="surface-root console-app-shell">
     <header class="surface-header">
+      <div class="surface-utility-bar">
+        <div class="utility-group">
+          <span class="utility-label" data-i18n="tenant.surfaceId">Tenant Admin Console</span>
+          <span class="utility-divider"></span>
+          <span class="utility-value" data-i18n="tenant.metaSurfaceTitle">Tenant-only operations</span>
+        </div>
+        <div class="utility-group">
+          <span class="utility-label" data-i18n="tenant.metaGuardrailsLabel">Guardrails</span>
+          <span class="utility-value" data-i18n="tenant.metaGuardrailsTitle">Confirm, validate, then apply</span>
+        </div>
+      </div>
       <div class="surface-topline">
         <div class="surface-brand">
-          <span class="surface-id">Tenant Admin Console</span>
-          <h1>Scoped Server Operations</h1>
-          <p>Tenant-facing console for server operations, delivery flow, shop and wallet control, scoped config edits, and support activity. Global owner controls are intentionally excluded.</p>
+          <span class="surface-id" data-i18n="tenant.surfaceId">Tenant Admin Console</span>
+          <h1 data-i18n="tenant.title">Scoped Server Operations</h1>
+          <p data-i18n="tenant.subtitle">Tenant-facing console for server operations, delivery flow, shop and wallet control, scoped config edits, and support activity. Global owner controls are intentionally excluded.</p>
         </div>
         <div class="surface-actions">
-          <button id="tenantPaletteBtn" class="command-chip" type="button">Command Palette</button>
-          <button id="tenantRefreshBtn" class="button button-primary" type="button">Refresh Console</button>
-          <button id="tenantAckAlertsBtn" class="button" type="button">Acknowledge Alerts</button>
-          <a class="ghost-link" href="/admin/legacy">Legacy Workbench</a>
+          <button id="tenantSidebarToggleBtn" class="button" type="button" aria-controls="tenantSidebar" aria-expanded="true" data-i18n="common.menu">Menu</button>
+          <label class="language-picker">
+            <span data-i18n="common.language">Language</span>
+            <select id="tenantLanguageSelect" class="language-select"></select>
+          </label>
+          <button id="tenantRefreshBtn" class="button button-primary" type="button" data-i18n="common.refreshConsole">Refresh Console</button>
+          <details class="action-menu">
+            <summary class="action-menu-button" data-i18n="common.more">More</summary>
+            <div class="action-menu-panel">
+              <button id="tenantPaletteBtn" class="button" type="button" data-i18n="common.commandPalette">Command Palette</button>
+              <button id="tenantAckAlertsBtn" class="button" type="button" data-i18n="common.acknowledgeAlerts">Acknowledge Alerts</button>
+              <a class="ghost-link" href="/admin/legacy" data-i18n="common.legacyWorkbench">Legacy Workbench</a>
+            </div>
+          </details>
         </div>
       </div>
 
       <div id="tenantStatusBanner" class="status-banner banner-info">
         <div>
-          <strong id="tenantStatusTitle">Loading tenant console...</strong>
-          <p id="tenantStatusDetail">Preparing scoped runtime, commerce, and support state.</p>
+          <strong id="tenantStatusTitle" data-i18n="tenant.statusLoadingTitle">Loading tenant console...</strong>
+          <p id="tenantStatusDetail" data-i18n="tenant.statusLoadingDetail">Preparing scoped runtime, commerce, and support state.</p>
         </div>
         <div id="tenantStatusTags" class="tag-row"></div>
       </div>
 
-      <div class="meta-grid">
-        <article class="meta-card">
-          <span class="meta-label">Surface</span>
-          <strong>Tenant-only operations</strong>
-          <p class="muted">This console stays scoped to one tenant. Platform-wide config, security policy, and global recovery remain owner-only.</p>
+      <div class="workspace-toolbar">
+        <div class="workspace-copy">
+          <span class="section-kicker" data-i18n="tenant.consoleAreasKicker">Console Areas</span>
+          <strong data-i18n="tenant.consoleAreasLead">Open one tenant area at a time, then use the left menu for the pages inside that area.</strong>
+          <p id="tenantWorkspaceHint" class="muted" data-i18n="tenant.workspaceHintLoading">Loading tenant workspace layout...</p>
+        </div>
+        <div id="tenantWorkspaceSwitch" class="workspace-switch"></div>
+      </div>
+
+      <div id="tenantWorkspaceSummary" class="workspace-summary"></div>
+
+      <div class="surface-context-strip">
+        <article class="context-pill">
+          <strong data-i18n="tenant.metaSurfaceLabel">Surface</strong>
+          <span data-i18n="tenant.metaSurfaceTitle">Tenant-only operations</span>
         </article>
-        <article class="meta-card">
-          <span class="meta-label">Guardrails</span>
-          <strong>Confirm, validate, then apply</strong>
-          <p class="muted">Config save, wallet adjustment, and delivery recovery actions require explicit confirmation and stay bound to the tenant scope.</p>
+        <article class="context-pill">
+          <strong data-i18n="tenant.metaGuardrailsLabel">Guardrails</strong>
+          <span data-i18n="tenant.metaGuardrailsTitle">Confirm, validate, then apply</span>
         </article>
-        <article class="meta-card">
-          <span class="meta-label">Realtime</span>
-          <strong>Alerts and delivery stream</strong>
-          <p class="muted">Delivery events, anomalies, and notifications refresh into this tenant console without exposing owner-only data.</p>
+        <article class="context-pill">
+          <strong data-i18n="tenant.metaRealtimeLabel">Realtime</strong>
+          <span data-i18n="tenant.metaRealtimeTitle">Alerts and delivery stream</span>
         </article>
       </div>
     </header>
 
     <div class="surface-main">
-      <aside class="surface-sidebar">
+      <!-- Tenant navigation is intentionally scoped: only tenant-safe pages belong here. -->
+      <aside id="tenantSidebar" class="surface-sidebar">
         <nav class="nav-card">
-          <h2>Navigate</h2>
-          <div class="nav-list">
-            <a class="nav-link" href="#overview">Overview</a>
-            <a class="nav-link" href="#operations">Runtime + Alerts</a>
-            <a class="nav-link" href="#insights">Insights</a>
-            <a class="nav-link" href="#commerce">Commerce + Delivery</a>
-            <a class="nav-link" href="#sandbox">Delivery Lab</a>
-            <a class="nav-link" href="#catalog-tools">Catalog Tools</a>
-            <a class="nav-link" href="#players">Players + Activity</a>
-            <a class="nav-link" href="#transactions">Transactions</a>
-            <a class="nav-link" href="#support-tools">Support Tools</a>
-            <a class="nav-link" href="#config">Tenant Config</a>
-            <a class="nav-link" href="#audit">Audit Trail</a>
-            <a class="nav-link" href="#actions">Safe Actions</a>
+          <div class="nav-head">
+            <span class="section-kicker" data-i18n="common.pages">Pages</span>
+            <strong data-i18n="tenant.consoleAreasLead">Focused tenant routes</strong>
+          </div>
+          <div id="tenantNavList" class="nav-list">
+            <a class="nav-link" href="#overview" data-i18n="tenant.nav.overview">Overview</a>
+            <a class="nav-link" href="#operations" data-i18n="tenant.nav.operations">Runtime + Alerts</a>
+            <a class="nav-link" href="#incidents" data-i18n="tenant.nav.incidents">Incident Center</a>
+            <a class="nav-link" href="#insights" data-i18n="tenant.nav.insights">Insights</a>
+            <a class="nav-link" href="#plan-integrations" data-i18n="tenant.nav.plan">Plan + Integrations</a>
+            <a class="nav-link" href="#commerce" data-i18n="tenant.nav.commerce">Commerce + Delivery</a>
+            <a class="nav-link" href="#sandbox" data-i18n="tenant.nav.lab">Delivery Lab</a>
+            <a class="nav-link" href="#catalog-tools" data-i18n="tenant.nav.catalog">Catalog Tools</a>
+            <a class="nav-link" href="#players" data-i18n="tenant.nav.players">Players + Activity</a>
+            <a class="nav-link" href="#transactions" data-i18n="tenant.nav.transactions">Transactions</a>
+            <a class="nav-link" href="#support-tools" data-i18n="tenant.nav.support">Support Tools</a>
+            <a class="nav-link" href="#config" data-i18n="tenant.nav.config">Tenant Config</a>
+            <a class="nav-link" href="#audit" data-i18n="tenant.nav.audit">Audit Trail</a>
+            <a class="nav-link" href="#actions" data-i18n="tenant.nav.actions">Safe Actions</a>
           </div>
         </nav>
 
-        <section class="nav-card">
-          <h2>Scoped Context</h2>
-          <p id="tenantScopeText" class="hint">Checking tenant scope and role binding...</p>
-        </section>
-
-        <section class="nav-card">
-          <h2>Workbench Shortcuts</h2>
-          <div class="nav-list">
-            <a class="nav-link" href="/admin/legacy?tab=economy">Shop + Economy</a>
-            <a class="nav-link" href="/admin/legacy?tab=delivery">Delivery Runtime</a>
-            <a class="nav-link" href="/admin/legacy?tab=players">Player Tools</a>
-            <a class="nav-link" href="/admin/legacy?tab=platform">Scoped Config</a>
+        <section class="nav-card nav-intel">
+          <div class="nav-head">
+            <span class="section-kicker" data-i18n="tenant.scopedContext">Scoped Context</span>
+            <strong data-i18n="tenant.metaRealtimeTitle">Alerts and delivery stream</strong>
           </div>
+          <p id="tenantScopeText" class="hint" data-i18n="tenant.scopeLoading">Checking tenant scope and role binding...</p>
+          <p id="tenantSidebarHint" class="hint" data-i18n="tenant.scopeDetail">This surface stays scoped to tenant operations, commerce, support, and guarded config only.</p>
         </section>
       </aside>
 
+      <!-- Each section below is treated like a page by the shared workspace controller. -->
       <main class="surface-grid">
         <section class="surface-section" id="overview">
           <div class="section-head">
             <div class="section-copy">
-              <span class="section-kicker">Tenant Snapshot</span>
-              <h2 class="section-title">Status, workload, and support visibility</h2>
-              <p>Fast-scanning view for the tenant operator: purchases, queue depth, player coverage, delivery state, and quota posture.</p>
+              <span class="section-kicker" data-i18n="tenant.section.snapshot.kicker">Tenant Snapshot</span>
+              <h2 class="section-title" data-i18n="tenant.section.snapshot.title">Status, workload, and support visibility</h2>
+              <p data-i18n="tenant.section.snapshot.detail">Fast-scanning view for the tenant operator: purchases, queue depth, player coverage, delivery state, and quota posture.</p>
             </div>
           </div>
           <div id="tenantOverviewStats" class="stats-grid"></div>
+          <section class="panel-card inset-card">
+            <div class="section-head">
+              <div class="section-copy">
+                <span class="section-kicker" data-i18n="tenant.quickActions.kicker">Quick Actions</span>
+                <h3 data-i18n="tenant.quickActions.title">Common tenant support shortcuts</h3>
+                <p data-i18n="tenant.quickActions.detail">Jump straight into the tenant flows used most often for delivery support, wallet fixes, Steam linking, and restart communication.</p>
+              </div>
+            </div>
+            <div id="tenantQuickActions" class="quick-action-grid"></div>
+          </section>
         </section>
 
         <section class="surface-section" id="operations">
           <div class="section-head">
             <div class="section-copy">
-              <span class="section-kicker">Runtime + Alerts</span>
-              <h2 class="section-title">Delivery posture and scoped incident stream</h2>
+              <span class="section-kicker" data-i18n="tenant.section.runtime.kicker">Runtime + Alerts</span>
+              <h2 class="section-title" data-i18n="tenant.section.runtime.title">Delivery posture and scoped incident stream</h2>
               <p>Monitor delivery runtime, tenant alerts, request pressure, and live event flow without exposing platform-wide owner controls.</p>
             </div>
             <div class="section-tools">
-              <a class="action-link" href="/admin/legacy?tab=delivery">Open delivery workbench</a>
+              <a class="action-link" href="/admin/legacy?tab=delivery" data-i18n="tenant.section.runtime.link">Open delivery workbench</a>
             </div>
           </div>
           <div class="surface-two-col">
             <section class="panel-card">
-              <h3>Tenant Alerts</h3>
+                  <h3 data-i18n="tenant.runtime.alerts">Tenant Alerts</h3>
               <div id="tenantNotificationFeed" class="list-feed"></div>
             </section>
             <section class="panel-card">
-              <h3>Live Activity Stream</h3>
+                  <h3 data-i18n="tenant.runtime.liveActivity">Live Activity Stream</h3>
               <div id="tenantActivityFeed" class="timeline-list"></div>
             </section>
           </div>
         </section>
 
+        <section class="surface-section" id="incidents">
+          <div class="section-head">
+            <div class="section-copy">
+              <span class="section-kicker" data-i18n="tenant.section.incidents.kicker">Incident Center</span>
+              <h2 class="section-title" data-i18n="tenant.section.incidents.title">Scoped incident inbox for queue, dead-letter, reconcile, and tenant alerts</h2>
+              <p>This tenant-safe incident view is built from scoped runtime state, reconcile findings, queue pressure, dead letters, and tenant-relevant notifications only. It avoids exposing platform-wide owner incidents.</p>
+            </div>
+          </div>
+          <div id="tenantIncidentStats" class="stats-grid"></div>
+          <div class="surface-two-col">
+            <form id="tenantIncidentQueryForm" class="panel-card">
+                  <h3 data-i18n="tenant.incidents.query">Incident Query</h3>
+              <div class="form-grid">
+                <label class="field span-4">
+                      <span data-i18n="tenant.form.severity">Severity</span>
+                  <select name="severity">
+                    <option value="">all</option>
+                    <option value="error">error</option>
+                    <option value="warn">warn</option>
+                    <option value="info">info</option>
+                  </select>
+                </label>
+                <label class="field span-4">
+                      <span data-i18n="tenant.form.kind">Kind</span>
+                  <input name="kind" type="text" placeholder="dead-letter">
+                </label>
+                <label class="field span-4">
+                      <span data-i18n="tenant.form.source">Source</span>
+                  <select name="source">
+                    <option value="">all</option>
+                    <option value="notification">notification</option>
+                    <option value="reconcile">reconcile</option>
+                    <option value="queue">queue</option>
+                    <option value="dead-letter">dead-letter</option>
+                    <option value="runtime">runtime</option>
+                    <option value="live">live</option>
+                  </select>
+                </label>
+              </div>
+              <div class="button-row">
+                    <button type="submit" class="button button-primary" data-i18n="tenant.incidents.load">Load Incident View</button>
+                    <button id="tenantIncidentExportJsonBtn" type="button" class="button" data-i18n="tenant.incidents.exportJson">Export JSON</button>
+                    <button id="tenantIncidentExportCsvBtn" type="button" class="button" data-i18n="tenant.incidents.exportCsv">Export CSV</button>
+              </div>
+            </form>
+
+            <section class="panel-card">
+                  <h3 data-i18n="tenant.incidents.guidance">Operator Guidance</h3>
+              <div id="tenantIncidentRunbooks" class="panel-grid"></div>
+            </section>
+          </div>
+          <section class="panel-card">
+                  <h3 data-i18n="tenant.incidents.inbox">Incident Inbox</h3>
+            <div id="tenantIncidentFeed" class="list-feed"></div>
+          </section>
+        </section>
+
         <section class="surface-section" id="insights">
           <div class="section-head">
             <div class="section-copy">
-              <span class="section-kicker">Insights</span>
-              <h2 class="section-title">Tenant anomalies, abuse signals, and quota posture</h2>
+              <span class="section-kicker" data-i18n="tenant.section.insights.kicker">Insights</span>
+              <h2 class="section-title" data-i18n="tenant.section.insights.title">Tenant anomalies, abuse signals, and quota posture</h2>
               <p>Scoped insight surface for delivery reconcile findings, abuse heuristics, and quota-driven operational pressure without exposing any cross-tenant state.</p>
             </div>
           </div>
           <div id="tenantInsightStats" class="stats-grid"></div>
           <div class="surface-two-col">
             <section class="panel-card is-warning">
-              <h3>Reconcile Findings</h3>
+                  <h3 data-i18n="tenant.insights.reconcile">Reconcile Findings</h3>
               <div id="tenantReconcileFeed" class="list-feed"></div>
             </section>
             <section class="panel-card">
-              <h3>Runtime Guidance</h3>
+                  <h3 data-i18n="tenant.insights.runtimeGuidance">Runtime Guidance</h3>
               <div id="tenantInsightCards" class="panel-grid"></div>
             </section>
           </div>
         </section>
 
+        <!-- Tenant integrations page:
+             keep plan/quota visible by default, then tuck deeper integration
+             inventories and mutation forms behind collapsible task clusters. -->
+        <section class="surface-section" id="plan-integrations">
+          <div class="section-head">
+            <div class="section-copy">
+              <span class="section-kicker" data-i18n="tenant.section.plan.kicker">Plan + Integrations</span>
+              <h2 class="section-title" data-i18n="tenant.section.plan.title">Plan posture, allowances, and integrations</h2>
+              <p>Keep subscription visibility, quota posture, API keys, webhooks, and agent footprint together without mixing this surface with owner-side packaging or commercial catalog management.</p>
+            </div>
+          </div>
+          <div class="focus-layout">
+            <div class="primary-stack">
+              <div id="tenantPlanStats" class="stats-grid"></div>
+              <div class="surface-two-col">
+                <section class="panel-card">
+                  <h3 data-i18n="tenant.plan.currentPlan">Current Plan + License</h3>
+                  <div id="tenantPlanTable"></div>
+                </section>
+                <section class="panel-card">
+                  <h3 data-i18n="tenant.plan.quotaAllowances">Quota Allowances</h3>
+                  <div id="tenantQuotaTable"></div>
+                </section>
+              </div>
+              <div class="surface-two-col">
+                <section class="panel-card">
+                  <div class="section-head">
+                    <div class="section-copy">
+                      <h3 data-i18n="tenant.plan.presetsTitle">Recommended presets</h3>
+                      <p class="muted" data-i18n="tenant.plan.presetsDetail">Use these guided starting points when you want the tenant surface to feel smaller without losing the underlying platform tools.</p>
+                    </div>
+                  </div>
+                  <div id="tenantPresetGuides" class="quick-action-grid"></div>
+                </section>
+                <section class="panel-card">
+                  <div class="section-head">
+                    <div class="section-copy">
+                      <h3 data-i18n="tenant.plan.modulesTitle">Optional modules</h3>
+                      <p class="muted" data-i18n="tenant.plan.modulesDetail">Turn advanced community capabilities into explicit add-ons so simple tenants can stay simple.</p>
+                    </div>
+                  </div>
+                  <div id="tenantModuleGuides" class="quick-action-grid"></div>
+                </section>
+              </div>
+              <details class="task-cluster" open>
+                <summary data-i18n="tenant.plan.liveIntegrationsSummary">Live Integrations</summary>
+                <div class="task-body">
+                  <div class="surface-two-col">
+                    <section class="panel-card">
+                      <h3 data-i18n="tenant.plan.apiKeys">API Keys</h3>
+                      <div id="tenantApiKeyTable"></div>
+                    </section>
+                    <section class="panel-card">
+                      <h3 data-i18n="tenant.plan.webhooks">Webhooks</h3>
+                      <div id="tenantWebhookTable"></div>
+                    </section>
+                  </div>
+                  <section class="panel-card">
+                    <h3 data-i18n="tenant.plan.agentRuntimes">Agent Runtimes</h3>
+                    <div id="tenantAgentTable"></div>
+                  </section>
+                </div>
+              </details>
+              <details class="task-cluster">
+                <summary data-i18n="tenant.plan.integrationResultSummary">Latest Integration Result</summary>
+                <div class="task-body">
+                  <section class="panel-card">
+                    <h3 data-i18n="tenant.plan.integrationResult">Integration Result</h3>
+                    <div id="tenantIntegrationResult" class="panel-grid"></div>
+                  </section>
+                </div>
+              </details>
+            </div>
+            <aside class="secondary-stack">
+              <details class="task-cluster" open>
+                <summary data-i18n="tenant.plan.apiKeySummary">API Key</summary>
+                <div class="task-body">
+                  <form id="tenantApiKeyForm" class="panel-card">
+              <h3 data-i18n="tenant.plan.createApiKey">Create API Key</h3>
+              <div class="form-grid">
+                <label class="field span-6">
+                  <span data-i18n="tenant.form.name">Name</span>
+                  <input name="name" type="text" placeholder="tenant-portal-reader">
+                </label>
+                <label class="field span-6">
+                  <span data-i18n="tenant.form.status">Status</span>
+                  <select name="status">
+                    <option value="active">active</option>
+                    <option value="disabled">disabled</option>
+                    <option value="revoked">revoked</option>
+                  </select>
+                </label>
+                <label class="field span-12">
+                  <span data-i18n="tenant.form.scopes">Scopes</span>
+                  <input name="scopes" type="text" placeholder="portal.player, webhook.dispatch">
+                </label>
+              </div>
+              <p class="hint" data-i18n="tenant.plan.apiKeyHint">Use only scopes the tenant really needs. The owner console still governs the full permission catalog and global policy.</p>
+              <div class="button-row">
+                <button type="submit" class="button button-primary" data-i18n="tenant.plan.createApiKey">Create API Key</button>
+              </div>
+            </form>
+                </div>
+              </details>
+              <details class="task-cluster">
+                <summary data-i18n="tenant.plan.webhookSummary">Webhook</summary>
+                <div class="task-body">
+                  <form id="tenantWebhookForm" class="panel-card">
+                <h3 data-i18n="tenant.plan.createWebhook">Create Webhook</h3>
+                <div class="form-grid">
+                  <label class="field span-6">
+                    <span>Name</span>
+                    <input name="name" type="text" placeholder="tenant-alerts">
+                  </label>
+                  <label class="field span-6">
+                    <span data-i18n="tenant.form.eventType">Event Type</span>
+                    <input name="eventType" type="text" placeholder="platform.delivery.updated">
+                  </label>
+                  <label class="field span-12">
+                    <span data-i18n="tenant.form.targetUrl">Target URL</span>
+                    <input name="targetUrl" type="text" placeholder="https://hooks.example.com/tenant">
+                  </label>
+                  <label class="field span-8">
+                    <span data-i18n="tenant.form.secret">Secret</span>
+                    <input name="secretValue" type="text" placeholder="Leave blank to auto-generate">
+                  </label>
+                  <label class="field span-4">
+                    <span data-i18n="tenant.form.enabled">Enabled</span>
+                    <select name="enabled">
+                      <option value="true">true</option>
+                      <option value="false">false</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="button-row">
+                  <button type="submit" class="button button-primary" data-i18n="tenant.plan.createWebhook">Create Webhook</button>
+                </div>
+              </form>
+
+                  <form id="tenantWebhookTestForm" class="panel-card">
+                <h3 data-i18n="tenant.plan.dispatchWebhookTest">Dispatch Webhook Test</h3>
+                <div class="form-grid">
+                  <label class="field span-6">
+                    <span>Event Type</span>
+                    <input name="eventType" type="text" placeholder="platform.admin.test">
+                  </label>
+                  <label class="field span-12">
+                    <span data-i18n="tenant.form.payloadJson">Payload JSON</span>
+                    <textarea name="payload" placeholder='{"source":"tenant-console"}'></textarea>
+                  </label>
+                </div>
+                <div class="button-row">
+                  <button type="submit" class="button button-warning" data-i18n="tenant.plan.dispatchTest">Dispatch Test</button>
+                </div>
+              </form>
+                </div>
+              </details>
+              <section class="panel-card">
+              <h3 data-i18n="tenant.plan.integrationHandoff">Integration Handoff</h3>
+              <p class="hint" data-i18n="tenant.plan.integrationHint">If you need deeper packaging, billing changes, or owner-managed marketplace work, hand it off to the platform owner. The tenant console stays focused on runtime integrations you can operate safely yourself.</p>
+              <div class="button-row">
+                <a class="ghost-link" href="#config" data-i18n="tenant.plan.reviewConfig">Review scoped config</a>
+                <a class="ghost-link" href="/admin/legacy?tab=delivery" data-i18n="tenant.plan.openDeliveryWorkbench">Open deep delivery workbench</a>
+              </div>
+            </section>
+            </aside>
+          </div>
+        </section>
+
+        <!-- Commerce page:
+             catalog stays primary, while queue and dead-letter expand only
+             when the operator is actively investigating delivery pressure. -->
         <section class="surface-section" id="commerce">
           <div class="section-head">
             <div class="section-copy">
-              <span class="section-kicker">Commerce + Delivery</span>
-              <h2 class="section-title">Catalog, queue, and dead-letter handling</h2>
-              <p>Manage the active catalog and keep purchase delivery visible with queue and dead-letter states grouped together.</p>
+              <span class="section-kicker" data-i18n="tenant.section.commerce.kicker">Commerce + Delivery</span>
+              <h2 class="section-title" data-i18n="tenant.section.commerce.title">Catalog, queue, and dead-letter handling</h2>
+              <p data-i18n="tenant.section.commerce.detail">Manage the active catalog and keep purchase delivery visible with queue and dead-letter states grouped together.</p>
             </div>
           </div>
-          <div class="surface-two-col">
-            <section class="panel-card">
-              <h3>Catalog</h3>
-              <div id="tenantShopTable"></div>
-            </section>
-            <section class="panel-card">
-              <h3>Delivery Queue</h3>
-              <div id="tenantQueueTable"></div>
-            </section>
+          <div class="focus-layout">
+            <div class="primary-stack">
+              <!-- Delivery lifecycle stays above the catalog so operators can
+                   spot queue pressure before digging into individual jobs. -->
+              <section class="panel-card">
+                <h3 data-i18n="tenant.commerce.lifecycle">Delivery Lifecycle</h3>
+                <p class="hint" data-i18n="tenant.commerce.lifecycleDetail">Watch queue pressure, poison candidates, and dead-letter retry posture before taking manual action.</p>
+                <div id="tenantDeliveryLifecycleStats" class="stats-grid"></div>
+                <div class="panel-grid two-col">
+                  <div class="compact-stack">
+                    <h4 class="panel-subtitle" data-i18n="tenant.commerce.lifecycleSignals">Priority Signals</h4>
+                    <div id="tenantDeliveryLifecycleSignals" class="list-feed"></div>
+                  </div>
+                  <div class="compact-stack">
+                    <h4 class="panel-subtitle" data-i18n="tenant.commerce.lifecycleErrors">Top Error Signatures</h4>
+                    <div id="tenantDeliveryLifecycleErrors" class="list-feed"></div>
+                  </div>
+                </div>
+                <div class="compact-stack">
+                  <div class="panel-subtitle-row">
+                    <h4 class="panel-subtitle" data-i18n="tenant.commerce.lifecycleActions">Action Planner</h4>
+                    <button id="tenantDeliveryLifecycleExportJsonBtn" type="button" class="button" data-i18n="deliveryLifecycle.action.exportJson">Export JSON</button>
+                  </div>
+                  <div id="tenantDeliveryLifecycleActions" class="list-feed"></div>
+                </div>
+              </section>
+              <section class="panel-card">
+                <h3 data-i18n="tenant.commerce.catalog">Catalog</h3>
+                <div id="tenantShopTable"></div>
+              </section>
+            </div>
+            <aside class="secondary-stack">
+              <details class="task-cluster" open>
+                <summary data-i18n="tenant.commerce.queueSummary">Delivery Queue</summary>
+                <div class="task-body">
+                  <section class="panel-card">
+                    <h3 data-i18n="tenant.commerce.deliveryQueue">Delivery Queue</h3>
+                    <div id="tenantQueueTable"></div>
+                  </section>
+                </div>
+              </details>
+              <details class="task-cluster">
+                <summary data-i18n="tenant.commerce.deadSummary">Dead Letters</summary>
+                <div class="task-body">
+                  <section class="panel-card">
+                    <h3 data-i18n="tenant.commerce.deadLetters">Dead Letters</h3>
+                    <div id="tenantDeadLetterTable"></div>
+                  </section>
+                </div>
+              </details>
+            </aside>
           </div>
-          <section class="panel-card">
-            <h3>Dead Letters</h3>
-            <div id="tenantDeadLetterTable"></div>
-          </section>
         </section>
 
         <section class="surface-section" id="sandbox">
           <div class="section-head">
             <div class="section-copy">
-              <span class="section-kicker">Delivery Lab</span>
-              <h2 class="section-title">Safe preview, preflight, simulate, and guarded test-send</h2>
-              <p>Use preview, preflight, and simulate when validating delivery behavior safely. Test-send remains available but is explicitly marked as live runtime execution.</p>
+              <span class="section-kicker" data-i18n="tenant.section.lab.kicker">Delivery Lab</span>
+              <h2 class="section-title" data-i18n="tenant.section.lab.title">Safe preview, preflight, simulate, and guarded test-send</h2>
+              <p data-i18n="tenant.section.lab.detail">Use preview, preflight, and simulate when validating delivery behavior safely. Test-send remains available but is explicitly marked as live runtime execution.</p>
             </div>
             <div class="section-tools">
-              <a class="action-link" href="/admin/legacy?tab=delivery">Open deep delivery workbench</a>
+              <a class="action-link" href="/admin/legacy?tab=delivery" data-i18n="tenant.section.lab.link">Open deep delivery workbench</a>
             </div>
           </div>
           <div class="surface-two-col">
             <form id="tenantDeliveryLabForm" class="panel-card">
-              <h3>Delivery Lab Request</h3>
+              <h3 data-i18n="tenant.lab.request">Delivery Lab Request</h3>
               <div class="form-grid">
                 <label class="field span-4">
-                  <span>Action</span>
+                  <span data-i18n="tenant.form.action">Action</span>
                   <select name="action">
                     <option value="preview">preview</option>
                     <option value="preflight">preflight</option>
@@ -194,11 +501,11 @@
                   </select>
                 </label>
                 <label class="field span-4">
-                  <span>Item ID</span>
+                  <span data-i18n="tenant.form.itemId">Item ID</span>
                   <input name="itemId" type="text" placeholder="item-ak47">
                 </label>
                 <label class="field span-4">
-                  <span>Game Item ID</span>
+                  <span data-i18n="tenant.form.gameItemId">Game Item ID</span>
                   <input name="gameItemId" type="text" placeholder="Weapon_AK47">
                 </label>
                 <label class="field span-6">
@@ -261,8 +568,19 @@
               <p>Common catalog maintenance now lives in the tenant console. Advanced bundle composition, capability presets, and complex delivery overrides still remain in the legacy workbench.</p>
             </div>
           </div>
-          <div class="surface-two-col">
-            <form id="tenantShopCreateForm" class="panel-card">
+          <div class="focus-layout">
+            <div class="primary-stack">
+              <section class="panel-card">
+                <h3>Catalog Workflow</h3>
+                <p class="hint">Use one tool at a time. Add new entries sparingly, reprice only when the live store needs a change, and retire items without touching historical purchases.</p>
+                <div id="tenantShopTable"></div>
+              </section>
+            </div>
+            <aside class="secondary-stack">
+              <details class="task-cluster" open>
+                <summary>Add Catalog Entry</summary>
+                <div class="task-body">
+                  <form id="tenantShopCreateForm" class="panel-card">
               <h3>Add Catalog Entry</h3>
               <div class="form-grid">
                 <label class="field span-4">
@@ -306,9 +624,12 @@
                 <button type="submit" class="button button-primary">Add Catalog Entry</button>
               </div>
             </form>
-
-            <div class="panel-grid">
-              <form id="tenantShopPriceForm" class="panel-card">
+                </div>
+              </details>
+              <details class="task-cluster">
+                <summary>Reprice / Retire</summary>
+                <div class="task-body">
+                  <form id="tenantShopPriceForm" class="panel-card">
                 <h3>Update Price</h3>
                 <div class="form-grid">
                   <label class="field span-6">
@@ -325,7 +646,7 @@
                 </div>
               </form>
 
-              <form id="tenantShopDeleteForm" class="panel-card">
+                  <form id="tenantShopDeleteForm" class="panel-card">
                 <h3>Remove Catalog Entry</h3>
                 <div class="form-grid">
                   <label class="field span-12">
@@ -338,7 +659,9 @@
                   <button type="submit" class="button button-danger">Delete Entry</button>
                 </div>
               </form>
-            </div>
+                </div>
+              </details>
+            </aside>
           </div>
         </section>
 
@@ -364,8 +687,42 @@
               <p>Purchase inspection stays scoped to one tenant. Lookup is per player, and status changes require an explicit code plus a selected target status.</p>
             </div>
           </div>
-          <div class="surface-two-col">
-            <form id="tenantPurchaseLookupForm" class="panel-card">
+          <div class="focus-layout">
+            <div class="primary-stack">
+              <section class="panel-card">
+                <h3>Purchase Results</h3>
+                <div id="tenantPurchaseTable"></div>
+              </section>
+              <!-- Delivery case keeps one purchase code in focus so operators can
+                   understand lifecycle state without jumping between queue,
+                   dead-letter, and audit pages. -->
+              <section class="panel-card">
+                <div class="section-head">
+                  <div class="section-copy">
+                    <span class="section-kicker" data-i18n="tenant.deliveryCase.kicker">Delivery Case</span>
+                    <h3 data-i18n="tenant.deliveryCase.title">Delivery lifecycle, evidence, and next steps</h3>
+                    <p data-i18n="tenant.deliveryCase.detail">Load one purchase code to inspect lifecycle state, queue or dead-letter posture, audit timeline, and the next operator action inside this tenant.</p>
+                  </div>
+                </div>
+                <div id="tenantDeliveryCaseStats" class="stats-grid"></div>
+                <div id="tenantDeliveryCaseMeta" class="panel-grid"></div>
+                <div class="surface-two-col">
+                  <section class="panel-card">
+                    <h3 data-i18n="tenant.deliveryCase.timeline">Timeline</h3>
+                    <div id="tenantDeliveryCaseTimeline" class="timeline-list"></div>
+                  </section>
+                  <section class="panel-card">
+                    <h3 data-i18n="tenant.deliveryCase.actions">Recommended Next Steps</h3>
+                    <div id="tenantDeliveryCaseActions" class="list-feed"></div>
+                  </section>
+                </div>
+              </section>
+            </div>
+            <aside class="secondary-stack">
+              <details class="task-cluster" open>
+                <summary>Purchase Lookup</summary>
+                <div class="task-body">
+                  <form id="tenantPurchaseLookupForm" class="panel-card">
               <h3>Purchase Lookup</h3>
               <div class="form-grid">
                 <label class="field span-6">
@@ -383,8 +740,30 @@
                 <button type="submit" class="button button-primary">Load Purchases</button>
               </div>
             </form>
-
-            <form id="tenantPurchaseStatusForm" class="panel-card">
+                </div>
+              </details>
+              <details class="task-cluster" open>
+                <summary data-i18n="tenant.deliveryCase.summary">Delivery Case</summary>
+                <div class="task-body">
+                  <form id="tenantDeliveryCaseForm" class="panel-card">
+                    <h3 data-i18n="tenant.deliveryCase.loadTitle">Open Delivery Case</h3>
+                    <div class="form-grid">
+                      <label class="field span-12">
+                        <span data-i18n="tenant.form.purchaseCode">Purchase Code</span>
+                        <input name="purchaseCode" type="text" placeholder="Pxxxxxxxx">
+                      </label>
+                    </div>
+                    <div class="button-row">
+                      <button id="tenantDeliveryCaseLoadBtn" type="submit" class="button button-primary" data-i18n="tenant.deliveryCase.load">Load Case</button>
+                      <button id="tenantDeliveryCaseExportBtn" type="button" class="button" data-i18n="tenant.deliveryCase.exportJson">Export JSON</button>
+                    </div>
+                  </form>
+                </div>
+              </details>
+              <details class="task-cluster">
+                <summary>Status Fix</summary>
+                <div class="task-body">
+                  <form id="tenantPurchaseStatusForm" class="panel-card">
               <h3>Update Purchase Status</h3>
               <div class="form-grid">
                 <label class="field span-6">
@@ -406,11 +785,10 @@
                 <button type="submit" class="button button-warning">Apply Status Change</button>
               </div>
             </form>
+                </div>
+              </details>
+            </aside>
           </div>
-          <section class="panel-card">
-            <h3>Purchase Results</h3>
-            <div id="tenantPurchaseTable"></div>
-          </section>
         </section>
 
         <section class="surface-section" id="support-tools">
@@ -421,8 +799,44 @@
               <p>Scoped support actions stay inside the tenant boundary. These forms are for frequent support work; deeper community workflows can still fall back to the legacy workbench.</p>
             </div>
           </div>
-          <div class="panel-grid two-col">
-            <form id="tenantSteamLinkForm" class="panel-card">
+          <div class="focus-layout">
+            <div class="primary-stack">
+              <section class="panel-card">
+                <h3 data-i18n="tenant.support.scopeTitle">Support Scope</h3>
+                <p class="hint" data-i18n="tenant.support.scopeDetail">These tools are intentionally narrow: Steam linkage, VIP entitlement, and redeem-code maintenance. Deeper community workflows still belong in the legacy workbench.</p>
+                <div class="button-row">
+                  <a class="ghost-link" href="#players" data-i18n="tenant.support.scopePlayers">Open player roster</a>
+                  <a class="ghost-link" href="/admin/legacy?tab=players" data-i18n="tenant.support.scopeLegacy">Open legacy player tools</a>
+                </div>
+              </section>
+              <section class="panel-card">
+                <div class="section-head">
+                  <div class="section-copy">
+                    <h3 data-i18n="tenant.support.toolkitTitle">Support Toolkit</h3>
+                    <p class="hint" data-i18n="tenant.support.toolkitDetail">Keep the four highest-frequency support moves one click away: delivery case, wallet support, Steam support, and restart communication.</p>
+                  </div>
+                </div>
+                <div id="tenantSupportToolkit" class="quick-action-grid"></div>
+              </section>
+              <section class="panel-card">
+                <div class="section-head">
+                  <div class="section-copy">
+                    <h3 data-i18n="tenant.support.restartPresetTitle">Restart + Maintenance Preset</h3>
+                    <p class="hint" data-i18n="tenant.support.restartPresetDetail">Use this guided path before you announce downtime. It keeps player communication and delivery checks in a predictable order.</p>
+                  </div>
+                </div>
+                <div id="tenantRestartPresetChecklist" class="list-feed"></div>
+                <div class="button-row">
+                  <button id="tenantRestartPresetBtn" type="button" class="button button-warning" data-i18n="tenant.support.restartPresetButton">Open restart flow</button>
+                  <a class="ghost-link" href="/admin/legacy?tab=delivery" data-i18n="tenant.support.restartPresetFallback">Open legacy delivery workbench</a>
+                </div>
+              </section>
+            </div>
+            <aside class="secondary-stack">
+              <details class="task-cluster" open>
+                <summary>Steam Link</summary>
+                <div class="task-body">
+                  <form id="tenantSteamLinkForm" class="panel-card">
               <h3>Steam Link Support</h3>
               <div class="form-grid">
                 <label class="field span-4">
@@ -449,8 +863,12 @@
                 <button type="submit" class="button button-primary">Apply Steam Link Action</button>
               </div>
             </form>
-
-            <form id="tenantVipForm" class="panel-card">
+                </div>
+              </details>
+              <details class="task-cluster">
+                <summary>VIP Access</summary>
+                <div class="task-body">
+                  <form id="tenantVipForm" class="panel-card">
               <h3>VIP Access</h3>
               <div class="form-grid">
                 <label class="field span-4">
@@ -477,8 +895,12 @@
                 <button type="submit" class="button button-primary">Apply VIP Action</button>
               </div>
             </form>
-
-            <form id="tenantRedeemForm" class="panel-card">
+                </div>
+              </details>
+              <details class="task-cluster">
+                <summary>Redeem Code</summary>
+                <div class="task-body">
+                  <form id="tenantRedeemForm" class="panel-card">
               <h3>Redeem Code</h3>
               <div class="form-grid">
                 <label class="field span-4">
@@ -513,9 +935,15 @@
                 <button type="submit" class="button button-warning">Apply Redeem Action</button>
               </div>
             </form>
+                </div>
+              </details>
+            </aside>
           </div>
         </section>
 
+        <!-- Config page:
+             keep the risky editor explicit, but move previews and presets into
+             separate collapsible blocks so the page is calmer by default. -->
         <section class="surface-section" id="config">
           <div class="section-head">
             <div class="section-copy">
@@ -525,36 +953,63 @@
             </div>
           </div>
 
-          <div class="surface-two-col">
-            <form id="tenantConfigForm" class="panel-card">
-              <h3>Tenant Config Editor</h3>
-              <div class="form-grid">
-                <label class="field span-4">
-                  <span>Feature Flags JSON</span>
-                  <textarea name="featureFlags" placeholder="{ }"></textarea>
-                </label>
-                <label class="field span-4">
-                  <span>Config Patch JSON</span>
-                  <textarea name="configPatch" placeholder="{ }"></textarea>
-                </label>
-                <label class="field span-4">
-                  <span>Portal Env Patch JSON</span>
-                  <textarea name="portalEnvPatch" placeholder="{ }"></textarea>
-                </label>
-              </div>
-              <p class="hint">Leave a box empty to skip that patch group. This form never edits platform-wide environment directly.</p>
-              <div class="button-row">
-                <button type="submit" class="button button-primary">Save Tenant Config</button>
-              </div>
-            </form>
-
-            <section class="panel-card">
-              <h3>Preset + Guided Paths</h3>
-              <div id="tenantPresetCards" class="panel-grid"></div>
-            </section>
+          <div class="focus-layout">
+            <div class="primary-stack">
+              <details class="task-cluster" open>
+                <summary data-i18n="tenant.config.editorSummary">Config Editor</summary>
+                <div class="task-body">
+                  <form id="tenantConfigForm" class="panel-card">
+                  <h3>Tenant Config Editor</h3>
+                  <div class="form-grid">
+                    <label class="field span-4">
+                      <span>Feature Flags JSON</span>
+                      <textarea name="featureFlags" placeholder="{ }"></textarea>
+                    </label>
+                    <label class="field span-4">
+                      <span>Config Patch JSON</span>
+                      <textarea name="configPatch" placeholder="{ }"></textarea>
+                    </label>
+                    <label class="field span-4">
+                      <span>Portal Env Patch JSON</span>
+                      <textarea name="portalEnvPatch" placeholder="{ }"></textarea>
+                    </label>
+                  </div>
+                  <p class="hint">Leave a box empty to skip that patch group. This form never edits platform-wide environment directly.</p>
+                  <div class="button-row">
+                    <button id="tenantConfigPreviewBtn" type="button" class="button">Preview Changes</button>
+                    <button id="tenantConfigResetBtn" type="button" class="button">Reset to Live</button>
+                    <button type="submit" class="button button-primary">Save Tenant Config</button>
+                  </div>
+                </form>
+                </div>
+              </details>
+            </div>
+            <aside class="secondary-stack">
+              <details class="task-cluster" open>
+                <summary data-i18n="tenant.config.presetsSummary">Preset + Guided Paths</summary>
+                <div class="task-body">
+                  <section class="panel-card">
+                    <h3>Preset + Guided Paths</h3>
+                    <div id="tenantPresetCards" class="panel-grid"></div>
+                  </section>
+                </div>
+              </details>
+              <details class="task-cluster">
+                <summary data-i18n="tenant.config.previewSummary">Change Preview</summary>
+                <div class="task-body">
+                  <section class="panel-card">
+                    <h3>Change Preview</h3>
+                    <div id="tenantConfigPreview" class="panel-grid"></div>
+                  </section>
+                </div>
+              </details>
+            </aside>
           </div>
         </section>
 
+        <!-- Audit page:
+             keep results visible, but tuck the query controls behind an
+             explicit cluster so investigations start from the output first. -->
         <section class="surface-section" id="audit">
           <div class="section-head">
             <div class="section-copy">
@@ -563,51 +1018,65 @@
               <p>Scoped audit review for support and commerce investigations. This stays inside the tenant boundary and reuses the existing audit dataset/export service.</p>
             </div>
           </div>
-          <div class="surface-two-col">
-            <form id="tenantAuditQueryForm" class="panel-card">
-              <h3>Audit Query</h3>
-              <div class="form-grid">
-                <label class="field span-4">
-                  <span>View</span>
-                  <select name="view">
-                    <option value="wallet">wallet</option>
-                    <option value="reward">reward</option>
-                    <option value="event">event</option>
-                  </select>
-                </label>
-                <label class="field span-4">
-                  <span>User ID</span>
-                  <input name="userId" type="text" placeholder="Optional Discord user id">
-                </label>
-                <label class="field span-4">
-                  <span>Window</span>
-                  <select name="windowMs">
-                    <option value="86400000">24h</option>
-                    <option value="604800000" selected>7d</option>
-                    <option value="2592000000">30d</option>
-                    <option value="">all</option>
-                  </select>
-                </label>
-                <label class="field span-12">
-                  <span>Query</span>
-                  <input name="query" type="text" placeholder="actor, reason, reference, or free-text query">
-                </label>
-              </div>
-              <div class="button-row">
-                <button type="submit" class="button button-primary">Load Audit View</button>
-                <button id="tenantAuditExportJsonBtn" type="button" class="button">Export JSON</button>
-                <button id="tenantAuditExportCsvBtn" type="button" class="button">Export CSV</button>
-              </div>
-            </form>
-            <section class="panel-card">
-              <h3>Audit Summary</h3>
-              <div id="tenantAuditStats" class="stats-grid"></div>
-            </section>
+          <div class="focus-layout">
+            <div class="primary-stack">
+              <section class="panel-card">
+                <h3>Audit Results</h3>
+                <div id="tenantAuditTable"></div>
+              </section>
+            </div>
+            <aside class="secondary-stack">
+              <details class="task-cluster" open>
+                <summary data-i18n="tenant.audit.querySummary">Audit Query</summary>
+                <div class="task-body">
+                  <form id="tenantAuditQueryForm" class="panel-card">
+                    <h3>Audit Query</h3>
+                    <div class="form-grid">
+                      <label class="field span-4">
+                        <span>View</span>
+                        <select name="view">
+                          <option value="wallet">wallet</option>
+                          <option value="reward">reward</option>
+                          <option value="event">event</option>
+                        </select>
+                      </label>
+                      <label class="field span-4">
+                        <span>User ID</span>
+                        <input name="userId" type="text" placeholder="Optional Discord user id">
+                      </label>
+                      <label class="field span-4">
+                        <span>Window</span>
+                        <select name="windowMs">
+                          <option value="86400000">24h</option>
+                          <option value="604800000" selected>7d</option>
+                          <option value="2592000000">30d</option>
+                          <option value="">all</option>
+                        </select>
+                      </label>
+                      <label class="field span-12">
+                        <span>Query</span>
+                        <input name="query" type="text" placeholder="actor, reason, reference, or free-text query">
+                      </label>
+                    </div>
+                    <div class="button-row">
+                      <button type="submit" class="button button-primary">Load Audit View</button>
+                      <button id="tenantAuditExportJsonBtn" type="button" class="button">Export JSON</button>
+                      <button id="tenantAuditExportCsvBtn" type="button" class="button">Export CSV</button>
+                    </div>
+                  </form>
+                </div>
+              </details>
+              <details class="task-cluster">
+                <summary data-i18n="tenant.audit.summarySummary">Audit Summary</summary>
+                <div class="task-body">
+                  <section class="panel-card">
+                    <h3>Audit Summary</h3>
+                    <div id="tenantAuditStats" class="stats-grid"></div>
+                  </section>
+                </div>
+              </details>
+            </aside>
           </div>
-          <section class="panel-card">
-            <h3>Audit Results</h3>
-            <div id="tenantAuditTable"></div>
-          </section>
         </section>
 
         <section class="surface-section" id="actions">
@@ -618,8 +1087,18 @@
               <p>Frequent operational actions stay grouped here with tenant-scoped confirmation and without leaking owner-only controls.</p>
             </div>
           </div>
-          <div class="surface-two-col">
-            <form id="tenantWalletForm" class="panel-card">
+          <div class="focus-layout">
+            <div class="primary-stack">
+              <section class="panel-card">
+                <h3>Bulk Action Result</h3>
+                <div id="tenantBulkDeliveryResult" class="panel-grid"></div>
+              </section>
+            </div>
+            <aside class="secondary-stack">
+              <details class="task-cluster" open>
+                <summary>Wallet Adjustment</summary>
+                <div class="task-body">
+                  <form id="tenantWalletForm" class="panel-card">
               <h3>Wallet Adjustment</h3>
               <div class="form-grid">
                 <label class="field span-4">
@@ -643,8 +1122,12 @@
                 <button type="submit" class="button button-primary">Apply Wallet Action</button>
               </div>
             </form>
-
-            <form id="tenantDeliveryForm" class="panel-card">
+                </div>
+              </details>
+              <details class="task-cluster">
+                <summary>Delivery Recovery</summary>
+                <div class="task-body">
+                  <form id="tenantDeliveryForm" class="panel-card">
               <h3>Delivery Recovery</h3>
               <div class="form-grid">
                 <label class="field span-6">
@@ -664,30 +1147,61 @@
                 <button type="submit" class="button button-warning">Run Delivery Action</button>
               </div>
             </form>
+                </div>
+              </details>
+              <details class="task-cluster">
+                <summary>Bulk Delivery Recovery</summary>
+                <div class="task-body">
+                  <form id="tenantDeliveryBulkForm" class="panel-card">
+              <h3>Bulk Delivery Recovery</h3>
+              <div class="form-grid">
+                <label class="field span-4">
+                  <span>Action</span>
+                  <select name="action">
+                    <option value="retry-many">Retry queue jobs</option>
+                    <option value="dead-letter-retry-many">Retry dead letters</option>
+                  </select>
+                </label>
+                <label class="field span-8">
+                  <span>Purchase Codes</span>
+                  <textarea name="codes" placeholder="P0001&#10;P0002&#10;P0003"></textarea>
+                </label>
+              </div>
+              <p class="hint">Paste one code per line or comma-separated values. This stays inside the signed-in tenant scope.</p>
+              <div class="button-row">
+                <button type="submit" class="button button-warning">Run Bulk Action</button>
+              </div>
+            </form>
+                </div>
+              </details>
+            </aside>
           </div>
         </section>
       </main>
     </div>
 
     <footer class="surface-footer">
-      <span>Tenant console only operates within the signed-in tenant scope.</span>
+      <span data-i18n="tenant.footer">Tenant console only operates within the signed-in tenant scope.</span>
       <span class="code">/tenant</span>
     </footer>
   </div>
 
+  <div id="tenantSidebarBackdrop" class="sidebar-backdrop" hidden></div>
   <div id="tenantPalette" class="palette-backdrop" hidden>
     <div class="palette-card" role="dialog" aria-modal="true" aria-labelledby="tenantPaletteTitle">
       <div class="palette-head">
-        <h2 id="tenantPaletteTitle">Tenant Command Palette</h2>
-        <button id="tenantPaletteCloseBtn" class="button" type="button">Close</button>
+        <h2 id="tenantPaletteTitle" data-i18n="tenant.paletteTitle">Tenant Command Palette</h2>
+        <button id="tenantPaletteCloseBtn" class="button" type="button" data-i18n="common.close">Close</button>
       </div>
-      <input id="tenantPaletteSearch" class="palette-search" type="text" placeholder="Jump to section, action, or tenant workbench shortcut">
-      <div id="tenantPaletteEmpty" class="empty-state" hidden>No matching tenant actions.</div>
+      <input id="tenantPaletteSearch" class="palette-search" type="text" data-i18n-placeholder="tenant.palettePlaceholder" placeholder="Jump to section, action, or tenant workbench shortcut">
+      <div id="tenantPaletteEmpty" class="empty-state" hidden data-i18n="tenant.paletteEmpty">No matching tenant actions.</div>
       <div id="tenantPaletteList" class="palette-list"></div>
     </div>
   </div>
 
-  <script src="/admin/assets/console-shared.js"></script>
-  <script src="/admin/assets/tenant-console.js"></script>
+    <script src="/admin/assets/admin-i18n.js?v=20260320-total-redesign-pass"></script>
+    <script src="/admin/assets/console-shared.js?v=20260320-total-redesign-pass"></script>
+    <script src="/admin/assets/operational-state-model.js?v=20260320-total-redesign-pass"></script>
+  <script src="/admin/assets/tenant-console.js?v=20260320-total-redesign-pass"></script>
 </body>
 </html>

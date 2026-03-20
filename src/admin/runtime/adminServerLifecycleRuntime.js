@@ -12,6 +12,8 @@ function createAdminServerLifecycle({
   ensureMetricsSeriesTimer,
   startPlatformMonitoring,
   stopPlatformMonitoring,
+  startPlatformAutomation,
+  stopPlatformAutomation,
   adminLiveBus,
   broadcastLiveUpdate,
   createAdminRequestHandler,
@@ -71,6 +73,7 @@ function createAdminServerLifecycle({
 
     ensureMetricsSeriesTimer();
     startPlatformMonitoring({ client });
+    startPlatformAutomation({ client });
 
     if (!liveBusBound) {
       adminLiveBus.on('update', (evt) => {
@@ -124,6 +127,7 @@ function createAdminServerLifecycle({
       closeAllLiveStreams();
       stopMetricsSeriesTimer();
       stopPlatformMonitoring();
+      stopPlatformAutomation();
       stopRuntimeSupervisorMonitor();
       adminServer = null;
     });

@@ -14,18 +14,35 @@
     setBusy,
     showToast,
     wireCommandPalette,
+    wireSidebarShell,
+    wireWorkspaceSwitcher,
   } = window.ConsoleSurface;
 
+  const {
+    getDeliveryCaseOperationalPhase,
+  } = window.AdminOperationalStateModel || {};
+
+  const t = (key, fallback, params) => window.AdminUiI18n?.t?.(key, fallback, params) ?? fallback ?? key;
+
+  // UI-only state for the tenant surface.
+  // When editing this page later, follow the pattern:
+  // state -> render* function -> matching HTML section.
   const state = {
     me: null,
     overview: null,
     reconcile: null,
     quota: null,
     tenantConfig: null,
+    subscriptions: [],
+    licenses: [],
+    apiKeys: [],
+    webhooks: [],
+    agents: [],
     dashboardCards: null,
     shopItems: [],
     queueItems: [],
     deadLetters: [],
+    deliveryLifecycle: null,
     players: [],
     notifications: [],
     deliveryRuntime: null,
@@ -35,7 +52,10 @@
       status: '',
       items: [],
     },
+    deliveryCase: null,
     deliveryLabResult: null,
+    integrationResult: null,
+    bulkDeliveryResult: null,
     audit: null,
     auditFilters: {
       view: 'wallet',
@@ -43,12 +63,21 @@
       query: '',
       windowMs: '604800000',
     },
+    incidentFilters: {
+      severity: '',
+      kind: '',
+      source: '',
+    },
+    configPreview: null,
+    configEditorDirty: false,
     liveEvents: [],
   };
 
   let liveConnection = null;
   let refreshTimer = null;
   let intervalHandle = null;
+  let workspaceController = null;
+  let sidebarController = null;
 
   function getTenantId() {
     return encodeURIComponent(String(state.me?.tenantId || '').trim());
@@ -69,11 +98,394 @@
     return [];
   }
 
+  // Delivery lifecycle is intentionally summarized separately from the raw
+  // queue/dead-letter tables so operators can get one quick read first.
+  function deliveryLifecycleSignalLabel(key) {
+    const labels = {
+      healthy: t('deliveryLifecycle.signal.healthy', 'Stable'),
+      overdue: t('deliveryLifecycle.signal.overdue', 'Overdue'),
+      retryHeavy: t('deliveryLifecycle.signal.retryHeavy', 'Retry Heavy'),
+      poisonCandidate: t('deliveryLifecycle.signal.poisonCandidate', 'Poison Candidate'),
+      retryableDeadLetter: t('deliveryLifecycle.signal.retryableDeadLetter', 'Retryable Dead Letter'),
+      nonRetryableDeadLetter: t('deliveryLifecycle.signal.nonRetryableDeadLetter', 'Non-Retryable Dead Letter'),
+      queued: t('deliveryLifecycle.signal.queued', 'Queued'),
+      deadLetter: t('deliveryLifecycle.signal.deadLetter', 'Dead Letter'),
+    };
+    return labels[key] || key || t('deliveryLifecycle.signal.queued', 'Queued');
+  }
+
+  function deliveryLifecycleSignalTone(key, fallbackTone) {
+    if (key === 'healthy') return 'success';
+    if (key === 'poisonCandidate' || key === 'nonRetryableDeadLetter') return 'danger';
+    if (key === 'overdue' || key === 'retryHeavy' || key === 'retryableDeadLetter' || key === 'deadLetter') return 'warning';
+    return fallbackTone || 'info';
+  }
+
+  // Action planner keys come from the shared lifecycle report so the UI can
+  // stay consistent without duplicating queue/dead-letter heuristics here.
+  function deliveryLifecycleActionLabel(key) {
+    const labels = {
+      'review-runtime-before-retry': t('deliveryLifecycle.action.reviewRuntimeBeforeRetry', 'Review runtime before retry'),
+      'retry-queue-batch': t('deliveryLifecycle.action.retryQueueBatch', 'Retry queue batch'),
+      'retry-dead-letter-batch': t('deliveryLifecycle.action.retryDeadLetterBatch', 'Retry dead-letter batch'),
+      'hold-poison-candidates': t('deliveryLifecycle.action.holdPoisonCandidates', 'Hold poison candidates'),
+      'inspect-top-error': t('deliveryLifecycle.action.inspectTopError', 'Inspect top error'),
+      'lifecycle-stable': t('deliveryLifecycle.action.lifecycleStable', 'Lifecycle looks stable'),
+    };
+    return labels[key] || key || t('deliveryLifecycle.action.lifecycleStable', 'Lifecycle looks stable');
+  }
+
+  function deliveryLifecycleActionDetail(action) {
+    const key = String(action?.key || '').trim();
+    if (key === 'review-runtime-before-retry') {
+      return t(
+        'deliveryLifecycle.action.reviewRuntimeBeforeRetryDetail',
+        'Check runtime readiness, delivery lab, and queue pressure before replaying overdue work.',
+      );
+    }
+    if (key === 'retry-queue-batch') {
+      return t(
+        'deliveryLifecycle.action.retryQueueBatchDetail',
+        'Populate the bulk recovery form with queue jobs that look retryable after runtime review.',
+      );
+    }
+    if (key === 'retry-dead-letter-batch') {
+      return t(
+        'deliveryLifecycle.action.retryDeadLetterBatchDetail',
+        'Populate the bulk recovery form with dead-letter entries that are still marked retryable.',
+      );
+    }
+    if (key === 'hold-poison-candidates') {
+      return t(
+        'deliveryLifecycle.action.holdPoisonCandidatesDetail',
+        'Do not replay these blindly. Export the lifecycle snapshot and inspect one delivery case first.',
+      );
+    }
+    if (key === 'inspect-top-error') {
+      return t(
+        'deliveryLifecycle.action.inspectTopErrorDetail',
+        'Use Delivery Lab and runtime evidence to understand the most repeated error signature before retrying.',
+      );
+    }
+    return t(
+      'deliveryLifecycle.action.lifecycleStableDetail',
+      'No immediate queue or dead-letter intervention is recommended from this lifecycle snapshot.',
+    );
+  }
+
+  function openTenantTarget(sectionId, options = {}) {
+    if (workspaceController) {
+      workspaceController.openSection(sectionId, options);
+      return;
+    }
+    const targetId = options.targetId || sectionId;
+    document.getElementById(targetId)?.scrollIntoView({
+      behavior: 'smooth',
+      block: options.block || 'start',
+    });
+  }
+
+  function openDeliveryLifecycleExport(format = 'json') {
+    const query = new URLSearchParams({
+      tenantId: String(state.me?.tenantId || '').trim(),
+      format: String(format || 'json').trim() || 'json',
+    });
+    window.open(
+      `/admin/api/delivery/lifecycle/export?${query.toString()}`,
+      '_blank',
+      'noopener,noreferrer',
+    );
+    showToast(
+      t('tenant.toast.deliveryLifecycleExportStarted', 'Delivery lifecycle export opened.'),
+      'info',
+    );
+  }
+
+  function populateBulkDeliveryForm(action, codes) {
+    const form = document.getElementById('tenantDeliveryBulkForm');
+    const list = Array.from(new Set((Array.isArray(codes) ? codes : []).map((value) => String(value || '').trim()).filter(Boolean)));
+    if (!form || list.length === 0) {
+      showToast(t('tenant.toast.noLifecycleCodes', 'No lifecycle codes are ready for this action yet.'), 'info');
+      return;
+    }
+    form.elements.action.value = action;
+    form.elements.codes.value = list.join('\n');
+    openTenantTarget('actions', { targetId: 'tenantDeliveryBulkForm', block: 'center' });
+    showToast(t('tenant.toast.bulkRecoveryPrepared', 'Bulk recovery form prepared.'), 'success');
+  }
+
+  function tenantNavLabel(sectionId) {
+    return String(document.querySelector(`#tenantNavList a[href="#${sectionId}"]`)?.textContent || '').trim() || sectionId;
+  }
+
   function stringifyJson(value) {
     if (!value || (typeof value === 'object' && Object.keys(value).length === 0)) {
       return '';
     }
     return `${JSON.stringify(value, null, 2)}\n`;
+  }
+
+  function summarizeQuotaEntry(entry) {
+    if (!entry || typeof entry !== 'object') return '-';
+    if (entry.unlimited) return `${formatNumber(entry.used, '0')} / unlimited`;
+    return `${formatNumber(entry.used, '0')} / ${formatNumber(entry.limit, '0')}`;
+  }
+
+  function quotaTone(entry) {
+    if (!entry || typeof entry !== 'object') return 'neutral';
+    if (entry.exceeded === true) return 'danger';
+    if (entry.unlimited) return 'info';
+    const limit = Number(entry.limit || 0);
+    const used = Number(entry.used || 0);
+    if (!Number.isFinite(limit) || limit <= 0) return 'neutral';
+    if (used >= limit) return 'danger';
+    if (used / limit >= 0.75) return 'warning';
+    return 'success';
+  }
+
+  function normalizeIncidentSeverity(value) {
+    const text = String(value || '').trim().toLowerCase();
+    if (text === 'warning') return 'warn';
+    if (text === 'danger' || text === 'failed') return 'error';
+    return text || 'info';
+  }
+
+  function getTenantRuntimeStatus() {
+    return String(
+      state.deliveryRuntime?.delivery?.status
+      || state.deliveryRuntime?.status
+      || state.deliveryRuntime?.mode
+      || 'ready'
+    ).trim();
+  }
+
+  function isHealthyTenantRuntimeStatus(value) {
+    return ['ready', 'ok', 'healthy', 'connected', 'active'].includes(String(value || '').trim().toLowerCase());
+  }
+
+  function formatTenantRuntimeStatus(value) {
+    const status = String(value || '').trim();
+    const normalized = status.toLowerCase();
+    if (!status) return t('tenant.runtime.status.unknown', 'unknown');
+    if (['ready', 'ok', 'healthy', 'connected', 'active'].includes(normalized)) {
+      return t('tenant.runtime.status.ready', 'ready');
+    }
+    if (['warn', 'warning', 'pending', 'degraded', 'queued', 'review', 'delivering'].includes(normalized)) {
+      return t('tenant.runtime.status.attention', 'attention');
+    }
+    if (['error', 'failed', 'offline', 'inactive', 'disconnected', 'danger'].includes(normalized)) {
+      return t('tenant.runtime.status.critical', 'critical');
+    }
+    return status;
+  }
+
+  function getTenantScopedNotifications() {
+    const tenantId = String(state.me?.tenantId || '').trim();
+    if (!tenantId) return [];
+    return state.notifications.filter((item) => {
+      const itemTenantId = String(
+        item?.tenantId
+        || item?.data?.tenantId
+        || item?.data?.tenant?.id
+        || ''
+      ).trim();
+      return itemTenantId === tenantId;
+    });
+  }
+
+  // Incident rows are composed from existing tenant-scoped sources only.
+  // This keeps the tenant inbox useful without leaking owner-only signals.
+  function buildTenantIncidentRows() {
+    const reconcileGeneratedAt = state.reconcile?.generatedAt || new Date().toISOString();
+    const rows = [
+      ...getTenantScopedNotifications().map((item) => ({
+        id: item.id || null,
+        source: 'notification',
+        kind: item.kind || item.type || 'notification',
+        severity: normalizeIncidentSeverity(item.severity),
+        title: item.title || item.detail || item.message || t('tenant.incident.notification', 'Tenant notification'),
+        detail: item.detail || item.message || '',
+        code: item.entityKey || item.id || '-',
+        at: item.createdAt || item.at || reconcileGeneratedAt,
+      })),
+      ...(Array.isArray(state.reconcile?.anomalies) ? state.reconcile.anomalies : []).map((item) => ({
+        id: null,
+        source: 'reconcile',
+        kind: item.type || 'anomaly',
+        severity: normalizeIncidentSeverity(item.severity === 'error' ? 'error' : 'warn'),
+        title: item.type || t('tenant.incident.reconcileAnomaly', 'reconcile anomaly'),
+        detail: item.detail || t('tenant.incident.reconcileAnomalyDetail', 'Reconcile reported an anomaly that needs tenant review.'),
+        code: item.code || '-',
+        at: reconcileGeneratedAt,
+      })),
+      ...(Array.isArray(state.reconcile?.abuseFindings) ? state.reconcile.abuseFindings : []).map((item) => ({
+        id: null,
+        source: 'reconcile',
+        kind: item.type || 'abuse-finding',
+        severity: 'warn',
+        title: item.type || t('tenant.incident.abuseFinding', 'abuse finding'),
+        detail: `count=${item.count || '-'} threshold=${item.threshold || '-'} user=${item.userId || '-'} item=${item.itemId || '-'}`,
+        code: item.userId || item.itemId || '-',
+        at: reconcileGeneratedAt,
+      })),
+      ...state.queueItems.map((item) => ({
+        id: null,
+        source: 'queue',
+        kind: item.status || 'queued',
+        severity: 'warn',
+        title: item.purchaseCode || item.code || t('tenant.incident.queuedDelivery', 'Queued delivery'),
+        detail: item.reason || item.status || t('tenant.incident.queuedDeliveryDetail', 'Queued delivery still waiting for completion.'),
+        code: item.purchaseCode || item.code || '-',
+        at: item.updatedAt || item.createdAt || reconcileGeneratedAt,
+      })),
+      ...state.deadLetters.map((item) => ({
+        id: null,
+        source: 'dead-letter',
+        kind: item.type || 'dead-letter',
+        severity: 'error',
+        title: item.purchaseCode || item.code || t('tenant.incident.deadLetter', 'Dead letter'),
+        detail: item.reason || item.errorCode || t('tenant.incident.deadLetterDetail', 'Delivery moved to dead-letter state.'),
+        code: item.purchaseCode || item.code || '-',
+        at: item.updatedAt || item.createdAt || reconcileGeneratedAt,
+      })),
+    ];
+
+    const runtimeStatus = String(
+      state.deliveryRuntime?.delivery?.status
+      || state.deliveryRuntime?.status
+      || state.deliveryRuntime?.mode
+      || ''
+    ).trim();
+    const runtimeTone = normalizeIncidentSeverity(runtimeStatus);
+    if (runtimeStatus && !['ready', 'ok', 'healthy', 'connected', 'active'].includes(runtimeStatus.toLowerCase())) {
+      rows.push({
+        id: null,
+        source: 'runtime',
+        kind: 'runtime-state',
+        severity: runtimeTone === 'info' ? 'warn' : runtimeTone,
+        title: t('tenant.incident.runtimeAttention', 'Delivery runtime needs attention'),
+        detail: t(
+          'tenant.incident.runtimeAttentionDetail',
+          'Runtime reported {status}. Review queue pressure and delivery lab before retrying purchases.',
+          { status: runtimeStatus }
+        ),
+        code: String(state.deliveryRuntime?.delivery?.mode || state.deliveryRuntime?.mode || 'runtime').trim(),
+        at: state.deliveryRuntime?.updatedAt || reconcileGeneratedAt,
+      });
+    }
+
+    return rows
+      .filter(Boolean)
+      .sort((left, right) => new Date(right.at || 0).getTime() - new Date(left.at || 0).getTime());
+  }
+
+  function getFilteredTenantIncidents() {
+    const filters = state.incidentFilters || {};
+    const severity = normalizeIncidentSeverity(filters.severity);
+    const kind = String(filters.kind || '').trim().toLowerCase();
+    const source = String(filters.source || '').trim().toLowerCase();
+    return buildTenantIncidentRows().filter((item) => {
+      if (severity && normalizeIncidentSeverity(item.severity) !== severity) return false;
+      if (kind && !`${item.kind || ''} ${item.title || ''}`.toLowerCase().includes(kind)) return false;
+      if (source && String(item.source || '').trim().toLowerCase() !== source) return false;
+      return true;
+    });
+  }
+
+  function buildTenantIncidentCsv(rows = []) {
+    const headers = ['severity', 'source', 'kind', 'title', 'detail', 'code', 'at'];
+    const escapeCell = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    return [
+      headers.join(','),
+      ...rows.map((row) => headers.map((key) => escapeCell(row[key])).join(',')),
+    ].join('\n');
+  }
+
+  // Keep the top-line tenant pressure logic in one place so the header banner
+  // and snapshot cards stay aligned when we tune the console later.
+  function getTenantOperationalSnapshot() {
+    const queueDepth = state.queueItems.length;
+    const deadCount = state.deadLetters.length;
+    const alertCount = getTenantScopedNotifications().length;
+    const runtimeStatus = getTenantRuntimeStatus();
+    const runtimeHealthy = isHealthyTenantRuntimeStatus(runtimeStatus);
+    const runtimeLabel = formatTenantRuntimeStatus(runtimeStatus);
+    const summary = state.reconcile?.summary || {};
+    const anomalyCount = Number(summary.anomalies || 0);
+    const abuseCount = Number(summary.abuseFindings || 0);
+    const incidentRows = buildTenantIncidentRows();
+    const incidentCount = incidentRows.length;
+    const criticalCount = incidentRows.filter((item) => normalizeIncidentSeverity(item.severity) === 'error').length;
+    const warningCount = incidentRows.filter((item) => normalizeIncidentSeverity(item.severity) === 'warn').length;
+    const tone = criticalCount > 0 || deadCount > 0 || !runtimeHealthy
+      ? 'danger'
+      : queueDepth > 0 || anomalyCount > 0 || alertCount > 0 || warningCount > 0
+        ? 'warning'
+        : 'success';
+    return {
+      queueDepth,
+      deadCount,
+      alertCount,
+      anomalyCount,
+      abuseCount,
+      incidentCount,
+      criticalCount,
+      warningCount,
+      runtimeStatus,
+      runtimeLabel,
+      runtimeHealthy,
+      tone,
+    };
+  }
+
+  function tenantIncidentActionForItem(item) {
+    const source = String(item?.source || '').trim().toLowerCase();
+    if (source === 'dead-letter' || source === 'queue') {
+      return { label: t('tenant.palette.openPage', 'Open {page}', { page: tenantNavLabel('commerce') }), targetId: 'commerce' };
+    }
+    if (source === 'reconcile') {
+      return { label: t('tenant.palette.openPage', 'Open {page}', { page: tenantNavLabel('audit') }), targetId: 'audit' };
+    }
+    if (source === 'runtime') {
+      return { label: t('tenant.palette.openPage', 'Open {page}', { page: tenantNavLabel('sandbox') }), targetId: 'sandbox' };
+    }
+    return { label: t('tenant.palette.openPage', 'Open {page}', { page: tenantNavLabel('operations') }), targetId: 'operations' };
+  }
+
+  function downloadClientFile(filename, content, mimeType) {
+    const blob = new Blob([content], { type: mimeType || 'text/plain;charset=utf-8' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
+  }
+
+  function renderResultPanel(container, result, emptyText) {
+    if (!container) return;
+    if (!result) {
+      container.innerHTML = `<div class="empty-state">${escapeHtml(emptyText || 'No result yet.')}</div>`;
+      return;
+    }
+    const rows = Array.isArray(result.rows) ? result.rows : [];
+    container.innerHTML = [
+      '<article class="feed-item">',
+      `<div class="feed-meta">${makePill(result.kind || 'result', 'info')} <span class="code">${escapeHtml(formatDateTime(result.createdAt))}</span></div>`,
+      `<strong>${escapeHtml(result.title || 'Result')}</strong>`,
+      result.detail ? `<div class="muted">${escapeHtml(result.detail)}</div>` : '',
+      '</article>',
+      ...(rows.length > 0
+        ? rows.map((row) => [
+            '<article class="feed-item">',
+            `<strong>${escapeHtml(row.label || 'Value')}</strong>`,
+            `<div class="${row.code ? 'code muted' : 'muted'}">${escapeHtml(row.value || '-')}</div>`,
+            '</article>',
+          ].join(''))
+        : ['<div class="empty-state">No result details.</div>']),
+    ].join('');
   }
 
   function buildAuditQueryString(filters = {}, extra = {}) {
@@ -112,61 +524,223 @@
     tagWrap.innerHTML = (Array.isArray(tags) ? tags : []).map((tag) => makePill(tag)).join('');
   }
 
-  function fillConfigForm() {
+  function fillConfigForm(force = false) {
     const form = document.getElementById('tenantConfigForm');
     if (!form) return;
+    if (state.configEditorDirty && !force) return;
     form.elements.featureFlags.value = stringifyJson(state.tenantConfig?.featureFlags);
     form.elements.configPatch.value = stringifyJson(state.tenantConfig?.configPatch);
     form.elements.portalEnvPatch.value = stringifyJson(state.tenantConfig?.portalEnvPatch);
+    state.configPreview = null;
+    state.configEditorDirty = false;
+    renderConfigPreview();
   }
 
+  function summarizeConfigDiff(currentValue, draftValue, label) {
+    if (draftValue == null) {
+      return null;
+    }
+    const current = currentValue && typeof currentValue === 'object' ? currentValue : {};
+    const draft = draftValue && typeof draftValue === 'object' ? draftValue : {};
+    const keys = Array.from(new Set([...Object.keys(current), ...Object.keys(draft)]));
+    const changedKeys = keys.filter((key) => JSON.stringify(current[key]) !== JSON.stringify(draft[key]));
+    return {
+      label,
+      changedKeys,
+      changedCount: changedKeys.length,
+      draftKeys: Object.keys(draft).length,
+    };
+  }
+
+  function buildConfigPreview() {
+    const form = document.getElementById('tenantConfigForm');
+    if (!form) return null;
+    const featureFlags = parseOptionalJson(form.elements.featureFlags.value, 'Feature Flags');
+    const configPatch = parseOptionalJson(form.elements.configPatch.value, 'Config Patch');
+    const portalEnvPatch = parseOptionalJson(form.elements.portalEnvPatch.value, 'Portal Env Patch');
+    const sections = [
+      summarizeConfigDiff(state.tenantConfig?.featureFlags, featureFlags, 'Feature Flags'),
+      summarizeConfigDiff(state.tenantConfig?.configPatch, configPatch, 'Config Patch'),
+      summarizeConfigDiff(state.tenantConfig?.portalEnvPatch, portalEnvPatch, 'Portal Env Patch'),
+    ].filter(Boolean);
+    return {
+      createdAt: new Date().toISOString(),
+      sections,
+      hasChanges: sections.some((section) => section.changedCount > 0),
+    };
+  }
+
+  function renderConfigPreview() {
+    const wrap = document.getElementById('tenantConfigPreview');
+    if (!wrap) return;
+    const preview = state.configPreview;
+    if (!preview) {
+      wrap.innerHTML = '<div class="empty-state">Preview tenant config changes here before saving. Live values stay in place until you confirm.</div>';
+      return;
+    }
+    if (!preview.sections.length) {
+      wrap.innerHTML = '<div class="empty-state">No JSON patch groups were provided. Leave a field empty to skip it, or add valid JSON to preview changes.</div>';
+      return;
+    }
+    wrap.innerHTML = preview.sections.map((section) => {
+      const tone = section.changedCount > 0 ? 'warning' : 'success';
+      return [
+        '<article class="kv-card">',
+        `<div class="feed-meta">${makePill(section.label, tone)} <span class="code">${escapeHtml(formatDateTime(preview.createdAt))}</span></div>`,
+        `<strong>${escapeHtml(section.changedCount > 0 ? `${section.changedCount} top-level changes` : 'No live diff detected')}</strong>`,
+        `<div class="muted">Draft keys: ${escapeHtml(formatNumber(section.draftKeys, '0'))}</div>`,
+        section.changedKeys.length
+          ? `<div class="tag-row">${section.changedKeys.slice(0, 8).map((key) => makePill(key, 'info')).join('')}</div>`
+          : '<div class="muted">Draft matches current live values for this section.</div>',
+        '</article>',
+      ].join('');
+    }).join('');
+  }
+
+  // Tenant overview stays intentionally narrow: identity, commerce pressure,
+  // player support context, and quota posture. Anything deeper lives in the
+  // dedicated pages behind the left menu.
   function renderOverview() {
     const analytics = state.overview?.analytics || {};
     const delivery = analytics.delivery || {};
     const quota = state.quota?.quotas || {};
+    const ops = getTenantOperationalSnapshot();
+    const linkedPlayers = state.players.filter((item) => item?.steamId || item?.steam_id || item?.steam?.id).length;
     renderStats(document.getElementById('tenantOverviewStats'), [
       {
-        kicker: 'Tenant',
+        kicker: t('tenant.overview.identity.kicker', 'Tenant'),
         value: state.tenantConfig?.name || state.me?.tenantId || '-',
-        title: 'Scoped tenant identity',
-        detail: 'Every action on this surface stays bound to the signed-in tenant scope.',
+        title: t('tenant.overview.identity.title', 'Scoped tenant identity'),
+        detail: t('tenant.overview.identity.detail', 'Every action on this surface stays bound to the signed-in tenant scope.'),
         tags: [
-          `role ${state.me?.role || '-'}`,
-          state.me?.tenantId || 'tenant scoped',
+          t('tenant.overview.identity.roleTag', 'role {role}', { role: state.me?.role || '-' }),
+          state.me?.tenantId || t('tenant.overview.identity.scopeTag', 'tenant scoped'),
         ],
       },
       {
-        kicker: 'Commerce',
+        kicker: t('tenant.overview.operations.kicker', 'Operations'),
+        value: formatNumber(ops.incidentCount, '0'),
+        title: t('tenant.overview.operations.title', 'Open tenant attention items'),
+        detail: ops.tone === 'success'
+          ? t('tenant.overview.operations.detailCalm', 'Runtime is ready and no tenant-safe incidents are currently open.')
+          : t('tenant.overview.operations.detailBusy', 'Runtime attention, queue pressure, reconcile findings, and tenant alerts are grouped here first.'),
+        tags: [
+          t('tenant.overview.operations.runtimeTag', 'runtime {status}', { status: ops.runtimeLabel }),
+          t('tenant.overview.operations.alertsTag', 'alerts {count}', { count: formatNumber(ops.alertCount, '0') }),
+          t('tenant.overview.operations.criticalTag', 'critical {count}', { count: formatNumber(ops.criticalCount, '0') }),
+        ],
+      },
+      {
+        kicker: t('tenant.overview.commerce.kicker', 'Commerce'),
         value: formatNumber(state.dashboardCards?.metrics?.purchaseCount, formatNumber(delivery.purchaseCount30d, '0')),
-        title: 'Visible purchase workload',
-        detail: 'Recent tenant purchase and delivery pressure.',
+        title: t('tenant.overview.commerce.title', 'Visible purchase workload'),
+        detail: t('tenant.overview.commerce.detail', 'Recent tenant purchase and delivery pressure.'),
         tags: [
-          `queue ${formatNumber(state.queueItems.length, '0')}`,
-          `dead ${formatNumber(state.deadLetters.length, '0')}`,
-          `success ${formatNumber(delivery.successRate, '0')}%`,
+          t('tenant.overview.commerce.queueTag', 'queue {count}', { count: formatNumber(state.queueItems.length, '0') }),
+          t('tenant.overview.commerce.deadTag', 'dead {count}', { count: formatNumber(state.deadLetters.length, '0') }),
+          t('tenant.overview.commerce.successTag', 'success {value}%', { value: formatNumber(delivery.successRate, '0') }),
         ],
       },
       {
-        kicker: 'Players',
+        kicker: t('tenant.overview.players.kicker', 'Players'),
         value: formatNumber(state.players.length, '0'),
-        title: 'Known player accounts',
-        detail: 'Use for support, Steam-link follow-up, and transaction tracing.',
+        title: t('tenant.overview.players.title', 'Known player accounts'),
+        detail: t('tenant.overview.players.detail', 'Use for support, Steam-link follow-up, and transaction tracing.'),
         tags: [
-          `catalog ${formatNumber(state.shopItems.length, '0')}`,
-          `alerts ${formatNumber(state.notifications.length, '0')}`,
+          t('tenant.overview.players.catalogTag', 'catalog {count}', { count: formatNumber(state.shopItems.length, '0') }),
+          t('tenant.overview.players.linkedTag', 'linked {count}', { count: formatNumber(linkedPlayers, '0') }),
         ],
       },
       {
-        kicker: 'Quota',
+        kicker: t('tenant.overview.quota.kicker', 'Quota'),
         value: quota?.apiKeys ? `${formatNumber(quota.apiKeys.used, '0')}/${formatNumber(quota.apiKeys.limit, 'unlimited')}` : '-',
-        title: 'Tenant quota posture',
-        detail: 'API keys, webhooks, runtimes, and related scoped platform allowances.',
+        title: t('tenant.overview.quota.title', 'Tenant quota posture'),
+        detail: t('tenant.overview.quota.detail', 'API keys, webhooks, runtimes, and related scoped platform allowances.'),
         tags: [
-          quota?.webhooks ? `hooks ${formatNumber(quota.webhooks.used, '0')}/${formatNumber(quota.webhooks.limit, 'unlimited')}` : 'hooks -',
-          quota?.agentRuntimes ? `runtimes ${formatNumber(quota.agentRuntimes.used, '0')}/${formatNumber(quota.agentRuntimes.limit, 'unlimited')}` : 'runtimes -',
+          quota?.webhooks
+            ? t('tenant.overview.quota.hooksTag', 'hooks {used}/{limit}', {
+                used: formatNumber(quota.webhooks.used, '0'),
+                limit: formatNumber(quota.webhooks.limit, 'unlimited'),
+              })
+            : t('tenant.overview.quota.hooksEmpty', 'hooks -'),
+          quota?.agentRuntimes
+            ? t('tenant.overview.quota.runtimesTag', 'runtimes {used}/{limit}', {
+                used: formatNumber(quota.agentRuntimes.used, '0'),
+                limit: formatNumber(quota.agentRuntimes.limit, 'unlimited'),
+              })
+            : t('tenant.overview.quota.runtimesEmpty', 'runtimes -'),
         ],
       },
     ]);
+    renderQuickActions();
+  }
+
+  function renderQuickActions() {
+    const container = document.getElementById('tenantQuickActions');
+    if (!container) return;
+    const items = [
+      {
+        key: 'delivery-stuck',
+        tone: 'warning',
+        tag: t('tenant.quickAction.tag.delivery', 'delivery'),
+        title: t('tenant.quickAction.deliveryStuck.title', 'Delivery stuck'),
+        detail: t('tenant.quickAction.deliveryStuck.detail', 'Open one delivery case first, then decide whether to retry, use delivery lab, or gather audit evidence.'),
+        button: t('tenant.quickAction.deliveryStuck.button', 'Open delivery case'),
+      },
+      {
+        key: 'wallet-mismatch',
+        tone: 'info',
+        tag: t('tenant.quickAction.tag.support', 'support'),
+        title: t('tenant.quickAction.walletMismatch.title', 'Wallet mismatch'),
+        detail: t('tenant.quickAction.walletMismatch.detail', 'Jump straight to the wallet support form for scoped balance fixes or ledger follow-up.'),
+        button: t('tenant.quickAction.walletMismatch.button', 'Open wallet support'),
+      },
+      {
+        key: 'steam-link-issue',
+        tone: 'warning',
+        tag: t('tenant.quickAction.tag.support', 'support'),
+        title: t('tenant.quickAction.steamLink.title', 'Steam link issue'),
+        detail: t('tenant.quickAction.steamLink.detail', 'Open the Steam link support form first when in-game delivery readiness depends on player identity data.'),
+        button: t('tenant.quickAction.steamLink.button', 'Open Steam support'),
+      },
+      {
+        key: 'restart-announcement',
+        tone: 'info',
+        tag: t('tenant.quickAction.tag.legacy', 'legacy'),
+        title: t('tenant.quickAction.restartAnnouncement.title', 'Restart announcement'),
+        detail: t('tenant.quickAction.restartAnnouncement.detail', 'Use the deeper delivery workbench when you need the existing restart or maintenance communication path.'),
+        button: t('tenant.quickAction.restartAnnouncement.button', 'Open restart flow'),
+      },
+    ];
+    container.innerHTML = items.map((item) => [
+      '<article class="quick-action-card">',
+      `<div class="feed-meta">${makePill(item.tag, item.tone)}</div>`,
+      `<strong>${escapeHtml(item.title)}</strong>`,
+      `<p>${escapeHtml(item.detail)}</p>`,
+      `<div class="button-row"><button type="button" class="button button-primary" data-tenant-quick-action="${escapeHtml(item.key)}">${escapeHtml(item.button)}</button></div>`,
+      '</article>',
+    ].join('')).join('');
+  }
+
+  function runTenantQuickAction(actionKey) {
+    const key = String(actionKey || '').trim();
+    if (key === 'delivery-stuck') {
+      openTenantTarget('transactions', { targetId: 'tenantDeliveryCaseForm', block: 'center' });
+      return;
+    }
+    if (key === 'wallet-mismatch') {
+      openTenantTarget('support-tools', { targetId: 'tenantWalletForm', block: 'center' });
+      showToast(t('tenant.toast.walletSupportFocused', 'Wallet support form focused.'), 'info');
+      return;
+    }
+    if (key === 'steam-link-issue') {
+      openTenantTarget('support-tools', { targetId: 'tenantSteamLinkForm', block: 'center' });
+      showToast(t('tenant.toast.steamSupportFocused', 'Steam support form focused.'), 'info');
+      return;
+    }
+    if (key === 'restart-announcement') {
+      window.location.href = '/admin/legacy?tab=delivery';
+    }
   }
 
   function renderInsights() {
@@ -177,38 +751,38 @@
 
     renderStats(document.getElementById('tenantInsightStats'), [
       {
-        kicker: 'Reconcile',
+        kicker: t('tenant.insight.reconcile.kicker', 'Reconcile'),
         value: formatNumber(summary.anomalies, '0'),
-        title: 'Active anomalies',
-        detail: 'Tenant-only reconcile findings for purchase, queue, dead-letter, and audit posture.',
+        title: t('tenant.insight.reconcile.title', 'Active anomalies'),
+        detail: t('tenant.insight.reconcile.detail', 'Tenant-only reconcile findings for purchase, queue, dead-letter, and audit posture.'),
         tags: [
-          `abuse ${formatNumber(summary.abuseFindings, '0')}`,
-          `queue ${formatNumber(summary.queueJobs, '0')}`,
+          t('tenant.insight.reconcile.abuseTag', 'abuse {count}', { count: formatNumber(summary.abuseFindings, '0') }),
+          t('tenant.insight.reconcile.queueTag', 'queue {count}', { count: formatNumber(summary.queueJobs, '0') }),
         ],
       },
       {
-        kicker: 'Delivery',
+        kicker: t('tenant.insight.delivery.kicker', 'Delivery'),
         value: `${formatNumber(delivery.successRate, '0')}%`,
-        title: 'Recent delivery success',
-        detail: 'Tenant analytics success signal across scoped purchases.',
+        title: t('tenant.insight.delivery.title', 'Recent delivery success'),
+        detail: t('tenant.insight.delivery.detail', 'Tenant analytics success signal across scoped purchases.'),
         tags: [
-          `30d ${formatNumber(delivery.purchaseCount30d, '0')} purchases`,
-          `dead ${formatNumber(summary.deadLetters, '0')}`,
+          t('tenant.insight.delivery.windowTag', '30d {count} purchases', { count: formatNumber(delivery.purchaseCount30d, '0') }),
+          t('tenant.insight.delivery.deadTag', 'dead {count}', { count: formatNumber(summary.deadLetters, '0') }),
         ],
       },
       {
-        kicker: 'Quota',
+        kicker: t('tenant.insight.webhookQuota.kicker', 'Quota'),
         value: state.quota?.quotas?.webhooks
           ? `${formatNumber(state.quota.quotas.webhooks.used, '0')}/${formatNumber(state.quota.quotas.webhooks.limit, 'unlimited')}`
           : '-',
-        title: 'Webhook quota posture',
-        detail: 'Useful when integrations, alerts, or external feeds are nearing tenant allowance.',
+        title: t('tenant.insight.webhookQuota.title', 'Webhook quota posture'),
+        detail: t('tenant.insight.webhookQuota.detail', 'Useful when integrations, alerts, or external feeds are nearing tenant allowance.'),
       },
       {
-        kicker: 'Window',
+        kicker: t('tenant.insight.window.kicker', 'Window'),
         value: summary.windowMs ? `${formatNumber(Math.round(Number(summary.windowMs || 0) / 60000), '0')}m` : '-',
-        title: 'Current reconcile window',
-        detail: 'Scoped abuse heuristics and anomaly grouping are window-bound.',
+        title: t('tenant.insight.window.title', 'Current reconcile window'),
+        detail: t('tenant.insight.window.detail', 'Scoped abuse heuristics and anomaly grouping are window-bound.'),
       },
     ]);
 
@@ -259,6 +833,463 @@
       `<p>${escapeHtml(card.text)}</p>`,
       '</article>',
     ].join('')).join('');
+  }
+
+  function renderDeliveryLifecycle() {
+    const report = state.deliveryLifecycle || {};
+    const summary = report.summary || {};
+    const runtime = report.runtime || {};
+
+    renderStats(document.getElementById('tenantDeliveryLifecycleStats'), [
+      {
+        kicker: t('deliveryLifecycle.stats.queue.kicker', 'Queue'),
+        value: formatNumber(summary.queueCount, '0'),
+        title: t('deliveryLifecycle.stats.queue.title', 'Queued jobs'),
+        detail: t('deliveryLifecycle.stats.queue.detail', 'Live queue depth inside the current scoped delivery lifecycle sample.'),
+        tags: [
+          t('deliveryLifecycle.stats.inFlightTag', 'in flight {count}', { count: formatNumber(summary.inFlightCount, '0') }),
+          t('deliveryLifecycle.stats.modeTag', 'mode {value}', { value: runtime.executionMode || 'unknown' }),
+        ],
+      },
+      {
+        kicker: t('deliveryLifecycle.stats.dead.kicker', 'Dead'),
+        value: formatNumber(summary.deadLetterCount, '0'),
+        title: t('deliveryLifecycle.stats.dead.title', 'Dead-letter entries'),
+        detail: t('deliveryLifecycle.stats.dead.detail', 'Items that already left the live queue and now need guided follow-up.'),
+        tags: [
+          t('deliveryLifecycle.stats.retryableTag', 'retryable {count}', { count: formatNumber(summary.retryableDeadLetters, '0') }),
+          t('deliveryLifecycle.stats.nonRetryableTag', 'non-retryable {count}', { count: formatNumber(summary.nonRetryableDeadLetters, '0') }),
+        ],
+      },
+      {
+        kicker: t('deliveryLifecycle.stats.poison.kicker', 'Poison'),
+        value: formatNumber(summary.poisonCandidateCount, '0'),
+        title: t('deliveryLifecycle.stats.poison.title', 'Poison candidates'),
+        detail: t('deliveryLifecycle.stats.poison.detail', 'Jobs that should not be replayed blindly because retry history or flags look unsafe.'),
+        tags: [
+          t('deliveryLifecycle.stats.retryHeavyTag', 'retry-heavy {count}', { count: formatNumber(summary.retryHeavyCount, '0') }),
+        ],
+      },
+      {
+        kicker: t('deliveryLifecycle.stats.overdue.kicker', 'Overdue'),
+        value: formatNumber(summary.overdueCount, '0'),
+        title: t('deliveryLifecycle.stats.overdue.title', 'Overdue queue items'),
+        detail: t('deliveryLifecycle.stats.overdue.detail', 'Queue jobs that have been waiting longer than the configured owner/tenant threshold.'),
+        tags: [
+          runtime.workerBusy
+            ? t('deliveryLifecycle.stats.workerBusyTag', 'worker busy')
+            : t('deliveryLifecycle.stats.workerIdleTag', 'worker idle'),
+          t('deliveryLifecycle.stats.recentSuccessTag', 'recent ok {count}', { count: formatNumber(summary.recentSuccessCount, '0') }),
+        ],
+      },
+    ]);
+
+    renderList(
+      document.getElementById('tenantDeliveryLifecycleSignals'),
+      Array.isArray(report.signals) ? report.signals : [],
+      (item) => [
+        '<article class="feed-item">',
+        `<div class="feed-meta">${makePill(deliveryLifecycleSignalLabel(item.key), deliveryLifecycleSignalTone(item.key, item.tone))} ${makePill(formatNumber(item.count, '0'), 'neutral')}</div>`,
+        `<strong>${escapeHtml(deliveryLifecycleSignalLabel(item.key))}</strong>`,
+        item.detail ? `<div class="muted">${escapeHtml(item.detail)}</div>` : '',
+        '</article>',
+      ].join(''),
+      t('deliveryLifecycle.emptySignals', 'No delivery lifecycle signals are active right now.'),
+    );
+
+    renderList(
+      document.getElementById('tenantDeliveryLifecycleErrors'),
+      Array.isArray(report.topErrors) ? report.topErrors : [],
+      (item) => [
+        '<article class="feed-item">',
+        `<div class="feed-meta">${makePill(t('deliveryLifecycle.errors.count', '{count} hits', { count: formatNumber(item.count, '0') }), item.tone || 'warning')}</div>`,
+        `<strong class="code">${escapeHtml(item.key || 'UNKNOWN')}</strong>`,
+        `<div class="muted">${escapeHtml(t('deliveryLifecycle.errors.detail', 'Top repeated delivery error signature across queue and dead-letter state.'))}</div>`,
+        '</article>',
+      ].join(''),
+      t('deliveryLifecycle.emptyErrors', 'No repeated delivery error signatures in the sampled lifecycle state.'),
+    );
+
+    renderList(
+      document.getElementById('tenantDeliveryLifecycleActions'),
+      Array.isArray(report.actionPlan?.actions) ? report.actionPlan.actions : [],
+      (item) => {
+        const codes = Array.isArray(item.codes) ? item.codes.filter(Boolean) : [];
+        const firstCode = codes[0] || '';
+        const actionButtons = [];
+        if (item.key === 'review-runtime-before-retry' || item.key === 'inspect-top-error') {
+          actionButtons.push(
+            `<button type="button" class="button" data-tenant-lifecycle-nav="sandbox">${escapeHtml(t('deliveryLifecycle.action.openDeliveryLab', 'Open Delivery Lab'))}</button>`,
+          );
+        }
+        if (item.key === 'retry-queue-batch' && codes.length > 0) {
+          actionButtons.push(
+            `<button type="button" class="button button-warning" data-tenant-lifecycle-bulk="retry-many" data-codes="${escapeHtml(codes.join(','))}">${escapeHtml(t('deliveryLifecycle.action.fillQueueRetry', 'Fill Queue Retry'))}</button>`,
+          );
+        }
+        if (item.key === 'retry-dead-letter-batch' && codes.length > 0) {
+          actionButtons.push(
+            `<button type="button" class="button button-warning" data-tenant-lifecycle-bulk="dead-letter-retry-many" data-codes="${escapeHtml(codes.join(','))}">${escapeHtml(t('deliveryLifecycle.action.fillDeadRetry', 'Fill Dead-letter Retry'))}</button>`,
+          );
+        }
+        if (item.key === 'hold-poison-candidates') {
+          if (firstCode) {
+            actionButtons.push(
+              `<button type="button" class="button" data-tenant-lifecycle-case="${escapeHtml(firstCode)}">${escapeHtml(t('deliveryLifecycle.action.openDeliveryCase', 'Open Delivery Case'))}</button>`,
+            );
+          }
+          actionButtons.push(
+            `<button type="button" class="button" data-tenant-lifecycle-export="json">${escapeHtml(t('deliveryLifecycle.action.exportJson', 'Export JSON'))}</button>`,
+          );
+        }
+        if (item.key === 'lifecycle-stable') {
+          actionButtons.push(
+            `<button type="button" class="button" data-tenant-lifecycle-nav="transactions">${escapeHtml(t('deliveryLifecycle.action.openTransactions', 'Open Transactions'))}</button>`,
+          );
+        }
+        const codePreview = codes.length
+          ? `<div class="code-preview-row">${codes.slice(0, 4).map((code) => makePill(code, 'neutral')).join('')}${codes.length > 4 ? makePill(`+${formatNumber(codes.length - 4, '0')}`, 'info') : ''}</div>`
+          : '';
+        return [
+          '<article class="feed-item">',
+          `<div class="feed-meta">${makePill(deliveryLifecycleActionLabel(item.key), item.tone || 'info')} ${makePill(formatNumber(item.count, '0'), 'neutral')}</div>`,
+          `<strong>${escapeHtml(deliveryLifecycleActionLabel(item.key))}</strong>`,
+          `<div class="muted">${escapeHtml(deliveryLifecycleActionDetail(item))}</div>`,
+          item.topErrorKey ? `<div class="muted code">${escapeHtml(item.topErrorKey)}</div>` : '',
+          codePreview,
+          actionButtons.length ? `<div class="button-row button-row-compact">${actionButtons.join('')}</div>` : '',
+          '</article>',
+        ].join('');
+      },
+      t('deliveryLifecycle.emptyActions', 'No lifecycle actions are suggested right now.'),
+    );
+  }
+
+  function renderPlanIntegrations() {
+    const quotaEntries = Object.entries(state.quota?.quotas || {});
+    const pressuredQuotaCount = quotaEntries.filter(([, entry]) => {
+      const tone = quotaTone(entry);
+      return tone === 'warning' || tone === 'danger';
+    }).length;
+    renderStats(document.getElementById('tenantPlanStats'), [
+      {
+        kicker: t('tenant.planStats.planKicker', 'Plan'),
+        value: state.quota?.plan?.name || state.quota?.subscription?.planId || t('tenant.planStats.noPlan', 'No plan'),
+        title: t('tenant.planStats.planTitle', 'Current commercial plan'),
+        detail: state.quota?.subscription?.status
+          ? t('tenant.planStats.planDetailActive', 'Subscription is {status}.', { status: state.quota.subscription.status })
+          : t('tenant.planStats.planDetailEmpty', 'No active subscription metadata visible in this tenant snapshot.'),
+      },
+      {
+        kicker: t('tenant.planStats.licenseKicker', 'License'),
+        value: state.quota?.license?.status || t('tenant.planStats.none', 'none'),
+        title: t('tenant.planStats.licenseTitle', 'License state'),
+        detail: state.quota?.license?.expiresAt
+          ? t('tenant.planStats.licenseDetailExpiry', 'Expires {time}.', { time: formatDateTime(state.quota.license.expiresAt) })
+          : t('tenant.planStats.licenseDetailEmpty', 'No license expiry is currently visible for this tenant.'),
+      },
+      {
+        kicker: t('tenant.planStats.quotaKicker', 'Quota'),
+        value: formatNumber(pressuredQuotaCount, '0'),
+        title: t('tenant.planStats.quotaTitle', 'Allowance groups under pressure'),
+        detail: t('tenant.planStats.quotaDetail', 'Useful for API key, webhook, and agent planning before the tenant hits its limit.'),
+      },
+      {
+        kicker: t('tenant.planStats.integrationsKicker', 'Integrations'),
+        value: formatNumber(state.webhooks.length + state.agents.length, '0'),
+        title: t('tenant.planStats.integrationsTitle', 'Visible runtime integrations'),
+        detail: t(
+          'tenant.planStats.integrationsDetail',
+          '{webhooks} webhooks and {agents} agent runtimes are currently visible.',
+          {
+            webhooks: formatNumber(state.webhooks.length, '0'),
+            agents: formatNumber(state.agents.length, '0'),
+          },
+        ),
+      },
+    ]);
+
+    renderTable(document.getElementById('tenantPlanTable'), {
+      emptyText: t('tenant.planTable.empty', 'No plan or license snapshot is available for this tenant.'),
+      columns: [
+        {
+          label: t('tenant.planTable.asset', 'Asset'),
+          render: (row) => `<strong>${escapeHtml(row.label || '-')}</strong>`,
+        },
+        {
+          label: t('tenant.planTable.value', 'Value'),
+          render: (row) => escapeHtml(row.value || '-'),
+        },
+        {
+          label: t('tenant.planTable.detail', 'Detail'),
+          render: (row) => `<span class="${row.code ? 'code' : ''}">${escapeHtml(row.detail || '-')}</span>`,
+        },
+      ],
+      rows: [
+        {
+          label: t('tenant.planTable.planLabel', 'Plan'),
+          value: state.quota?.plan?.name || state.quota?.subscription?.planId || '-',
+          detail: state.quota?.plan?.billingCycle || '-',
+        },
+        {
+          label: t('tenant.planTable.subscriptionLabel', 'Subscription'),
+          value: state.quota?.subscription?.status || '-',
+          detail: formatDateTime(state.quota?.subscription?.renewsAt || state.quota?.subscription?.startedAt),
+        },
+        {
+          label: t('tenant.planTable.licenseLabel', 'License'),
+          value: state.quota?.license?.status || '-',
+          detail: state.quota?.license?.licenseKey || state.quota?.license?.id || '-',
+          code: true,
+        },
+      ],
+    });
+
+    renderTable(document.getElementById('tenantQuotaTable'), {
+      emptyText: t('tenant.quotaTable.empty', 'No quota allowances found for this tenant.'),
+      columns: [
+        {
+          label: t('tenant.quotaTable.quota', 'Quota'),
+          render: ([key]) => `<strong>${escapeHtml(key.replace(/([A-Z])/g, ' $1').replace(/^./, (char) => char.toUpperCase()))}</strong>`,
+        },
+        {
+          label: t('tenant.quotaTable.usage', 'Usage'),
+          render: ([, entry]) => escapeHtml(summarizeQuotaEntry(entry)),
+        },
+        {
+          label: t('tenant.quotaTable.state', 'State'),
+          render: ([, entry]) => makePill(
+            entry?.unlimited
+              ? t('tenant.quotaTable.unlimited', 'unlimited')
+              : entry?.exceeded
+                ? t('tenant.quotaTable.limitReached', 'limit reached')
+                : t('tenant.quotaTable.tracked', 'tracked'),
+            quotaTone(entry),
+          ),
+        },
+      ],
+      rows: quotaEntries,
+    });
+
+    renderTenantPlanGuides();
+
+    renderTable(document.getElementById('tenantApiKeyTable'), {
+      emptyText: t('tenant.apiKeyTable.empty', 'No API keys visible from this tenant scope.'),
+      columns: [
+        {
+          label: t('tenant.apiKeyTable.key', 'Key'),
+          render: (row) => [
+            `<strong>${escapeHtml(row.name || row.id || '-')}</strong>`,
+            `<div class="muted code">${escapeHtml(row.id || '-')}</div>`,
+          ].join(''),
+        },
+        {
+          label: t('tenant.apiKeyTable.status', 'Status'),
+          render: (row) => makePill(row.status || 'unknown'),
+        },
+        {
+          label: t('tenant.apiKeyTable.scopes', 'Scopes'),
+          render: (row) => escapeHtml(Array.isArray(row.scopes) ? row.scopes.join(', ') : '-'),
+        },
+      ],
+      rows: state.apiKeys.slice(0, 12),
+    });
+
+    renderTable(document.getElementById('tenantWebhookTable'), {
+      emptyText: t('tenant.webhookTable.empty', 'No webhooks found for this tenant.'),
+      columns: [
+        {
+          label: t('tenant.webhookTable.webhook', 'Webhook'),
+          render: (row) => [
+            `<strong>${escapeHtml(row.name || row.id || '-')}</strong>`,
+            `<div class="muted">${escapeHtml(row.eventType || '-')}</div>`,
+          ].join(''),
+        },
+        {
+          label: t('tenant.webhookTable.status', 'Status'),
+          render: (row) => makePill(row.enabled === false ? 'disabled' : row.status || 'active'),
+        },
+        {
+          label: t('tenant.webhookTable.target', 'Target'),
+          render: (row) => `<span class="code">${escapeHtml(row.targetUrl || '-')}</span>`,
+        },
+      ],
+      rows: state.webhooks.slice(0, 12),
+    });
+
+    renderTable(document.getElementById('tenantAgentTable'), {
+      emptyText: t('tenant.agentTable.empty', 'No tenant agent runtimes reported.'),
+      columns: [
+        {
+          label: t('tenant.agentTable.runtime', 'Runtime'),
+          render: (row) => [
+            `<strong>${escapeHtml(row.runtimeKey || row.name || '-')}</strong>`,
+            `<div class="muted code">${escapeHtml(row.channel || '-')}</div>`,
+          ].join(''),
+        },
+        {
+          label: t('tenant.agentTable.status', 'Status'),
+          render: (row) => makePill(row.status || 'unknown'),
+        },
+        {
+          label: t('tenant.agentTable.lastSeen', 'Last Seen'),
+          render: (row) => `<span class="code">${escapeHtml(formatDateTime(row.lastSeenAt || row.updatedAt))}</span>`,
+        },
+      ],
+      rows: state.agents.slice(0, 12),
+    });
+
+    renderResultPanel(
+      document.getElementById('tenantIntegrationResult'),
+      state.integrationResult,
+      t('tenant.integrationResult.empty', 'Create an API key or webhook to inspect the latest integration result.')
+    );
+  }
+
+  function renderTenantPlanGuides() {
+    const presetWrap = document.getElementById('tenantPresetGuides');
+    const moduleWrap = document.getElementById('tenantModuleGuides');
+    const presetItems = [
+      {
+        key: 'minimal-commerce',
+        tone: 'success',
+        tag: t('tenant.preset.tag.recommended', 'recommended'),
+        title: t('tenant.preset.minimal.title', 'Minimal commerce'),
+        detail: t('tenant.preset.minimal.detail', 'Start with wallet, shop, orders, and Steam link only. Use this when the tenant wants the shortest path to a stable player experience.'),
+        button: t('tenant.preset.minimal.button', 'Open scoped config'),
+      },
+      {
+        key: 'shop-vip',
+        tone: 'info',
+        tag: t('tenant.preset.tag.growth', 'growth'),
+        title: t('tenant.preset.commerceVip.title', 'Shop + VIP starter'),
+        detail: t('tenant.preset.commerceVip.detail', 'Focus on catalog, pricing, VIP access, and redeem flow when the tenant is ready for monetization but not full community automation yet.'),
+        button: t('tenant.preset.commerceVip.button', 'Open commerce tools'),
+      },
+      {
+        key: 'support-ready',
+        tone: 'warning',
+        tag: t('tenant.preset.tag.support', 'support'),
+        title: t('tenant.preset.supportReady.title', 'Support-ready setup'),
+        detail: t('tenant.preset.supportReady.detail', 'Prioritize delivery case, wallet support, Steam support, and audit visibility when operators need to resolve player issues quickly.'),
+        button: t('tenant.preset.supportReady.button', 'Open support tools'),
+      },
+      {
+        key: 'community-advanced',
+        tone: 'info',
+        tag: t('tenant.preset.tag.advanced', 'advanced'),
+        title: t('tenant.preset.community.title', 'Community-heavy setup'),
+        detail: t('tenant.preset.community.detail', 'Use the main tenant surface for core operations first, then step into the legacy workbench only when you truly need the deeper community feature set.'),
+        button: t('tenant.preset.community.button', 'Open legacy workbench'),
+      },
+    ];
+    const moduleItems = [
+      {
+        key: 'wallet-shop',
+        tone: 'success',
+        tag: t('tenant.module.tag.core', 'core'),
+        title: t('tenant.module.walletShop.title', 'Wallet + shop'),
+        detail: t('tenant.module.walletShop.detail', 'Essential economy layer for balance visibility, catalog management, and purchase handling.'),
+        button: t('tenant.module.walletShop.button', 'Open commerce'),
+      },
+      {
+        key: 'vip',
+        tone: 'info',
+        tag: t('tenant.module.tag.optional', 'optional'),
+        title: t('tenant.module.vip.title', 'VIP access'),
+        detail: t('tenant.module.vip.detail', 'Add VIP grants and revokes only if the tenant is actively selling or managing premium access.'),
+        button: t('tenant.module.vip.button', 'Open VIP tools'),
+      },
+      {
+        key: 'redeem',
+        tone: 'info',
+        tag: t('tenant.module.tag.optional', 'optional'),
+        title: t('tenant.module.redeem.title', 'Redeem codes'),
+        detail: t('tenant.module.redeem.detail', 'Use redeem tooling when the tenant needs campaigns, giveaways, or manual code distribution without exposing owner controls.'),
+        button: t('tenant.module.redeem.button', 'Open redeem tools'),
+      },
+      {
+        key: 'steam-support',
+        tone: 'warning',
+        tag: t('tenant.module.tag.support', 'support'),
+        title: t('tenant.module.steam.title', 'Steam identity support'),
+        detail: t('tenant.module.steam.detail', 'Keep this module visible when delivery reliability depends on Steam linking and player identity hygiene.'),
+        button: t('tenant.module.steam.button', 'Open Steam support'),
+      },
+      {
+        key: 'community-pack',
+        tone: 'neutral',
+        tag: t('tenant.module.tag.advanced', 'advanced'),
+        title: t('tenant.module.community.title', 'Community add-ons'),
+        detail: t('tenant.module.community.detail', 'Treat advanced community flows as an add-on pack. Reach for them only after the tenant is comfortable with commerce, support, and delivery basics.'),
+        button: t('tenant.module.community.button', 'Open advanced tools'),
+      },
+    ];
+    if (presetWrap) {
+      presetWrap.innerHTML = presetItems.map((item) => [
+        '<article class="quick-action-card">',
+        `<div class="feed-meta">${makePill(item.tag, item.tone)}</div>`,
+        `<strong>${escapeHtml(item.title)}</strong>`,
+        `<p>${escapeHtml(item.detail)}</p>`,
+        `<div class="button-row"><button type="button" class="button button-primary" data-tenant-preset-action="${escapeHtml(item.key)}">${escapeHtml(item.button)}</button></div>`,
+        '</article>',
+      ].join('')).join('');
+    }
+    if (moduleWrap) {
+      moduleWrap.innerHTML = moduleItems.map((item) => [
+        '<article class="quick-action-card">',
+        `<div class="feed-meta">${makePill(item.tag, item.tone)}</div>`,
+        `<strong>${escapeHtml(item.title)}</strong>`,
+        `<p>${escapeHtml(item.detail)}</p>`,
+        `<div class="button-row"><button type="button" class="button" data-tenant-module-action="${escapeHtml(item.key)}">${escapeHtml(item.button)}</button></div>`,
+        '</article>',
+      ].join('')).join('');
+    }
+  }
+
+  function runTenantPresetAction(actionKey) {
+    const key = String(actionKey || '').trim();
+    if (key === 'minimal-commerce') {
+      openTenantTarget('config', { targetId: 'tenantConfigForm', block: 'center' });
+      showToast(t('tenant.toast.presetConfigFocused', 'Scoped config editor focused.'), 'info');
+      return;
+    }
+    if (key === 'shop-vip') {
+      openTenantTarget('commerce', { targetId: 'tenantShopCreateForm', block: 'center' });
+      showToast(t('tenant.toast.presetCommerceFocused', 'Commerce tools focused.'), 'info');
+      return;
+    }
+    if (key === 'support-ready') {
+      openTenantTarget('support-tools', { targetId: 'tenantWalletForm', block: 'center' });
+      showToast(t('tenant.toast.presetSupportFocused', 'Support tools focused.'), 'info');
+      return;
+    }
+    if (key === 'community-advanced') {
+      window.location.href = '/admin/legacy';
+    }
+  }
+
+  function runTenantModuleAction(actionKey) {
+    const key = String(actionKey || '').trim();
+    if (key === 'wallet-shop') {
+      openTenantTarget('commerce', { targetId: 'tenantShopCreateForm', block: 'center' });
+      return;
+    }
+    if (key === 'vip') {
+      openTenantTarget('support-tools', { targetId: 'tenantVipForm', block: 'center' });
+      return;
+    }
+    if (key === 'redeem') {
+      openTenantTarget('support-tools', { targetId: 'tenantRedeemForm', block: 'center' });
+      return;
+    }
+    if (key === 'steam-support') {
+      openTenantTarget('support-tools', { targetId: 'tenantSteamLinkForm', block: 'center' });
+      return;
+    }
+    if (key === 'community-pack') {
+      window.location.href = '/admin/legacy';
+    }
   }
 
   function renderTables() {
@@ -434,15 +1465,198 @@
           label: 'Created',
           render: (row) => `<span class="code">${escapeHtml(formatDateTime(row.createdAt || row.updatedAt))}</span>`,
         },
+        {
+          label: t('tenant.table.actions', 'Actions'),
+          render: (row) => {
+            const code = String(row.code || row.purchaseCode || '').trim();
+            if (!code) return '<span class="muted">-</span>';
+            return `<button type="button" class="button table-inline-action" data-delivery-case-code="${escapeHtml(code)}">${escapeHtml(t('tenant.deliveryCase.openInline', 'Open Case'))}</button>`;
+          },
+        },
       ],
       rows: Array.isArray(state.purchaseLookup.items) ? state.purchaseLookup.items : [],
     });
   }
 
+  function getDeliveryCasePhase(detail) {
+    const phase = typeof getDeliveryCaseOperationalPhase === 'function'
+      ? getDeliveryCaseOperationalPhase(detail)
+      : { key: 'created', tone: 'info' };
+    const phaseLabels = {
+      'dead-letter': {
+        label: t('tenant.deliveryCase.phase.deadLetter', 'Dead Letter'),
+        detail: t('tenant.deliveryCase.phase.deadLetterDetail', 'Delivery moved to dead-letter state and needs root-cause review before retry.'),
+      },
+      failed: {
+        label: t('tenant.deliveryCase.phase.failed', 'Failed'),
+        detail: t('tenant.deliveryCase.phase.failedDetail', 'Purchase is marked failed and needs operator follow-up.'),
+      },
+      queued: {
+        label: t('tenant.deliveryCase.phase.queued', 'Queued'),
+        detail: t('tenant.deliveryCase.phase.queuedDetail', 'Purchase is still waiting in queue or pending runtime execution.'),
+      },
+      executing: {
+        label: t('tenant.deliveryCase.phase.executing', 'Executing'),
+        detail: t('tenant.deliveryCase.phase.executingDetail', 'Runtime execution started and is still in progress.'),
+      },
+      verified: {
+        label: t('tenant.deliveryCase.phase.verified', 'Verified'),
+        detail: t('tenant.deliveryCase.phase.verifiedDetail', 'Delivered status has audit evidence attached.'),
+      },
+      delivered: {
+        label: t('tenant.deliveryCase.phase.delivered', 'Delivered'),
+        detail: t('tenant.deliveryCase.phase.deliveredDetail', 'Delivered status is set but audit evidence is still thin or incomplete.'),
+      },
+      created: {
+        label: t('tenant.deliveryCase.phase.created', 'Created'),
+        detail: t('tenant.deliveryCase.phase.createdDetail', 'Purchase exists but runtime evidence has not started yet.'),
+      },
+    };
+    return {
+      key: phase.key,
+      tone: phase.tone,
+      ...(phaseLabels[phase.key] || phaseLabels.created),
+    };
+  }
+
+  function buildDeliveryCaseActions(detail) {
+    const phase = getDeliveryCasePhase(detail);
+    const actions = [];
+    const pushAction = (key, tone, detailText) => {
+      if (actions.some((item) => item.key === key)) return;
+      actions.push({ key, tone, detail: detailText });
+    };
+
+    if (phase.key === 'dead-letter') {
+      pushAction('review-dead-letter', 'danger', t('tenant.deliveryCase.action.reviewDeadLetterDetail', 'Read the dead-letter reason first, then retry only after the root cause is understood.'));
+      pushAction('validate-player-context', 'warning', t('tenant.deliveryCase.action.validatePlayerContextDetail', 'Verify Steam link, player identity, and item context before replaying this purchase.'));
+    } else if (phase.key === 'queued' || phase.key === 'executing') {
+      pushAction('check-runtime', 'warning', t('tenant.deliveryCase.action.checkRuntimeDetail', 'Check runtime readiness and queue pressure before forcing another action.'));
+      pushAction('use-delivery-lab', 'info', t('tenant.deliveryCase.action.useDeliveryLabDetail', 'Use Delivery Lab or preflight before touching live delivery state.'));
+    } else if (phase.key === 'failed') {
+      pushAction('reconcile-purchase', 'danger', t('tenant.deliveryCase.action.reconcilePurchaseDetail', 'Compare purchase status, queue, and audit evidence before changing status manually.'));
+    } else if (phase.key === 'delivered') {
+      pushAction('confirm-audit', 'warning', t('tenant.deliveryCase.action.confirmAuditDetail', 'Cross-check audit evidence and player-visible outcome before closing the case.'));
+    } else if (phase.key === 'verified') {
+      pushAction('case-quiet', 'success', t('tenant.deliveryCase.action.caseQuietDetail', 'The lifecycle looks complete. Export the case if you need a shareable support snapshot.'));
+    } else {
+      pushAction('watch-pending', 'info', t('tenant.deliveryCase.action.watchPendingDetail', 'Keep watching purchase status and queue state before intervening.'));
+    }
+
+    return actions;
+  }
+
+  // Delivery case keeps one purchase code in focus and translates raw detail
+  // into a human-readable lifecycle summary for tenant operators.
+  function renderDeliveryCase() {
+    const form = document.getElementById('tenantDeliveryCaseForm');
+    const statsWrap = document.getElementById('tenantDeliveryCaseStats');
+    const metaWrap = document.getElementById('tenantDeliveryCaseMeta');
+    const timelineWrap = document.getElementById('tenantDeliveryCaseTimeline');
+    const actionsWrap = document.getElementById('tenantDeliveryCaseActions');
+    const exportBtn = document.getElementById('tenantDeliveryCaseExportBtn');
+    const detail = state.deliveryCase;
+    const currentCode = String(detail?.purchaseCode || form?.elements?.purchaseCode?.value || '').trim();
+
+    if (form) {
+      form.elements.purchaseCode.value = currentCode || '';
+    }
+    if (exportBtn) exportBtn.disabled = !currentCode;
+
+    if (!detail) {
+      renderStats(statsWrap, []);
+      metaWrap.innerHTML = `<div class="empty-state">${escapeHtml(t('tenant.deliveryCase.empty', 'Load one purchase code to inspect lifecycle and evidence.'))}</div>`;
+      renderList(timelineWrap, [], () => '', t('tenant.deliveryCase.emptyTimeline', 'No delivery case timeline loaded yet.'));
+      renderList(actionsWrap, [], () => '', t('tenant.deliveryCase.emptyActions', 'No recommended next steps yet.'));
+      return;
+    }
+
+    const phase = getDeliveryCasePhase(detail);
+    const actions = buildDeliveryCaseActions(detail);
+    const timeline = Array.isArray(detail.timeline) ? detail.timeline : [];
+    const auditCount = Array.isArray(detail.auditRows) ? detail.auditRows.length : 0;
+    const statusHistoryCount = Array.isArray(detail.statusHistory) ? detail.statusHistory.length : 0;
+    const latestError = detail?.deadLetter?.reason || detail?.queueJob?.lastError || detail?.latestCommandSummary || '';
+
+    renderStats(statsWrap, [
+      {
+        kicker: t('tenant.deliveryCase.summary.phase', 'Phase'),
+        value: phase.label,
+        title: t('tenant.deliveryCase.summary.phaseTitle', 'Current delivery state'),
+        detail: phase.detail,
+      },
+      {
+        kicker: t('tenant.deliveryCase.summary.timeline', 'Timeline'),
+        value: formatNumber(timeline.length, '0'),
+        title: t('tenant.deliveryCase.summary.timelineTitle', 'Timeline events'),
+        detail: t('tenant.deliveryCase.summary.timelineDetail', '{count} status/audit events available.', { count: formatNumber(timeline.length, '0') }),
+      },
+      {
+        kicker: t('tenant.deliveryCase.summary.audit', 'Audit'),
+        value: formatNumber(auditCount, '0'),
+        title: t('tenant.deliveryCase.summary.auditTitle', 'Audit rows'),
+        detail: t('tenant.deliveryCase.summary.auditDetail', '{count} audit rows and {history} status changes.', {
+          count: formatNumber(auditCount, '0'),
+          history: formatNumber(statusHistoryCount, '0'),
+        }),
+      },
+      {
+        kicker: t('tenant.deliveryCase.summary.runtime', 'Runtime'),
+        value: detail.queueJob ? t('tenant.deliveryCase.runtime.queue', 'queue') : detail.deadLetter ? t('tenant.deliveryCase.runtime.dead', 'dead-letter') : t('tenant.deliveryCase.runtime.none', 'quiet'),
+        title: t('tenant.deliveryCase.summary.runtimeTitle', 'Runtime artifact'),
+        detail: latestError || t('tenant.deliveryCase.summary.runtimeDetail', 'No immediate runtime error captured.'),
+      },
+    ]);
+
+    metaWrap.innerHTML = [
+      '<article class="panel-card">',
+      `<h3>${escapeHtml(t('tenant.deliveryCase.meta.purchase', 'Purchase Context'))}</h3>`,
+      `<div class="feed-item"><strong>${escapeHtml(t('tenant.form.purchaseCode', 'Purchase Code'))}</strong><div class="muted code">${escapeHtml(detail.purchaseCode || '-')}</div></div>`,
+      `<div class="feed-item"><strong>${escapeHtml(t('tenant.deliveryCase.meta.status', 'Current Status'))}</strong><div class="muted">${escapeHtml(detail.purchase?.status || '-')}</div></div>`,
+      `<div class="feed-item"><strong>${escapeHtml(t('tenant.deliveryCase.meta.player', 'Player'))}</strong><div class="muted">${escapeHtml(detail.purchase?.userId || detail.link?.discordId || '-')}</div></div>`,
+      `<div class="feed-item"><strong>${escapeHtml(t('tenant.deliveryCase.meta.steam', 'Steam / In-game'))}</strong><div class="muted">${escapeHtml(detail.link?.steamId || detail.link?.inGameName || '-')}</div></div>`,
+      '</article>',
+      '<article class="panel-card">',
+      `<h3>${escapeHtml(t('tenant.deliveryCase.meta.runtime', 'Runtime Artifacts'))}</h3>`,
+      `<div class="feed-item"><strong>${escapeHtml(t('tenant.deliveryCase.meta.queue', 'Queue Job'))}</strong><div class="muted">${escapeHtml(detail.queueJob ? (detail.queueJob.status || detail.queueJob.purchaseCode || 'queued') : '-')}</div></div>`,
+      `<div class="feed-item"><strong>${escapeHtml(t('tenant.deliveryCase.meta.deadLetter', 'Dead Letter'))}</strong><div class="muted">${escapeHtml(detail.deadLetter ? (detail.deadLetter.reason || detail.deadLetter.errorCode || 'present') : '-')}</div></div>`,
+      `<div class="feed-item"><strong>${escapeHtml(t('tenant.deliveryCase.meta.evidence', 'Evidence'))}</strong><div class="muted">${escapeHtml(detail.latestCommandSummary || '-')}</div></div>`,
+      '</article>',
+    ].join('');
+
+    renderList(
+      timelineWrap,
+      timeline,
+      (item) => [
+        `<article class="timeline-item ${escapeHtml(item.status === 'failed' ? 'danger' : item.status === 'completed' ? 'success' : item.status === 'warning' ? 'warning' : 'info')}">`,
+        `<div class="feed-meta">${makePill(item.stage || item.source || 'event', 'neutral')} ${makePill(item.status || 'ok', item.status === 'failed' ? 'danger' : item.status === 'completed' ? 'success' : 'warning')} <span class="code">${escapeHtml(formatDateTime(item.at))}</span></div>`,
+        `<strong>${escapeHtml(item.title || item.step || 'Delivery event')}</strong>`,
+        item.message ? `<div class="muted">${escapeHtml(item.message)}</div>` : '',
+        item.errorCode ? `<div class="muted code">${escapeHtml(item.errorCode)}</div>` : '',
+        '</article>',
+      ].join(''),
+      t('tenant.deliveryCase.emptyTimeline', 'No delivery case timeline loaded yet.'),
+    );
+
+    renderList(
+      actionsWrap,
+      actions,
+      (item) => [
+        '<article class="feed-item">',
+        `<div class="feed-meta">${makePill(t(`tenant.deliveryCase.action.${item.key}`, item.key), item.tone === 'danger' ? 'danger' : item.tone === 'warning' ? 'warning' : item.tone === 'success' ? 'success' : 'info')}</div>`,
+        `<strong>${escapeHtml(t(`tenant.deliveryCase.action.${item.key}`, item.key))}</strong>`,
+        `<div class="muted">${escapeHtml(item.detail || '-')}</div>`,
+        '</article>',
+      ].join(''),
+      t('tenant.deliveryCase.emptyActions', 'No recommended next steps yet.'),
+    );
+  }
+
   function renderNotifications() {
+    const notifications = getTenantScopedNotifications();
     renderList(
       document.getElementById('tenantNotificationFeed'),
-      state.notifications,
+      notifications,
       (item) => [
         '<article class="feed-item">',
         `<div class="feed-meta">${makePill(item.severity || 'info')} ${item.type ? `<span class="code">${escapeHtml(item.type)}</span>` : ''}</div>`,
@@ -452,6 +1666,93 @@
         '</article>',
       ].join(''),
       'No active notifications for this tenant.'
+    );
+  }
+
+  function renderIncidentCenter() {
+    const form = document.getElementById('tenantIncidentQueryForm');
+    if (form) {
+      form.elements.severity.value = state.incidentFilters.severity || '';
+      form.elements.kind.value = state.incidentFilters.kind || '';
+      form.elements.source.value = state.incidentFilters.source || '';
+    }
+
+    const allRows = buildTenantIncidentRows();
+    const filteredRows = getFilteredTenantIncidents();
+    const notificationCount = getTenantScopedNotifications().length;
+    const errorCount = allRows.filter((item) => normalizeIncidentSeverity(item.severity) === 'error').length;
+    const queueCount = allRows.filter((item) => item.source === 'queue').length;
+    const deadLetterCount = allRows.filter((item) => item.source === 'dead-letter').length;
+
+    renderStats(document.getElementById('tenantIncidentStats'), [
+      {
+        kicker: 'Inbox',
+        value: formatNumber(filteredRows.length, '0'),
+        title: 'Visible incidents after filters',
+        detail: `${formatNumber(allRows.length, '0')} total tenant-safe incident rows are currently available.`,
+      },
+      {
+        kicker: 'Errors',
+        value: formatNumber(errorCount, '0'),
+        title: 'High severity incidents',
+        detail: 'Dead letters and hard runtime failures are counted here first.',
+      },
+      {
+        kicker: 'Queue',
+        value: formatNumber(queueCount, '0'),
+        title: 'Queued deliveries under review',
+        detail: `${formatNumber(deadLetterCount, '0')} dead letters are currently visible.`,
+      },
+      {
+        kicker: 'Alerts',
+        value: formatNumber(notificationCount, '0'),
+        title: 'Tenant-tagged notifications',
+        detail: 'Only notifications explicitly tagged to this tenant are shown here.',
+      },
+    ]);
+
+    document.getElementById('tenantIncidentRunbooks').innerHTML = [
+      {
+        title: 'Queue Pressure',
+        text: queueCount > 0
+          ? 'Open Commerce + Delivery to inspect queued purchases, then use Delivery Lab or bulk retry only after the runtime looks healthy.'
+          : 'Queue pressure is quiet right now. Keep watching the delivery lab before making live changes.',
+      },
+      {
+        title: 'Dead Letter Response',
+        text: deadLetterCount > 0
+          ? 'Dead letters are visible. Review the reason, verify Steam link or player data, then use scoped retry only after the root cause is understood.'
+          : 'No dead letters are currently visible for this tenant.',
+      },
+      {
+        title: 'Reconcile + Trust',
+        text: Number(state.reconcile?.summary?.anomalies || 0) > 0
+          ? 'Reconcile findings are active. Cross-check purchase codes against audit and player support tools before editing any config.'
+          : 'No active reconcile anomalies are reported in the current window.',
+      },
+    ].map((card) => [
+      '<article class="kv-card">',
+      `<h3>${escapeHtml(card.title)}</h3>`,
+      `<p>${escapeHtml(card.text)}</p>`,
+      '</article>',
+    ].join('')).join('');
+
+    renderList(
+      document.getElementById('tenantIncidentFeed'),
+      filteredRows,
+      (item) => {
+        const action = tenantIncidentActionForItem(item);
+        return [
+          `<article class="timeline-item ${escapeHtml(item.severity === 'error' ? 'danger' : item.severity === 'warn' ? 'warning' : 'info')}">`,
+          `<div class="feed-meta">${makePill(item.severity || 'info')} ${makePill(item.source || 'incident', 'info')} <span class="code">${escapeHtml(item.code || '-')}</span></div>`,
+          `<strong>${escapeHtml(item.title || item.kind || 'Incident')}</strong>`,
+          item.detail ? `<div class="muted">${escapeHtml(item.detail)}</div>` : '',
+          `<div class="feed-meta"><span>${escapeHtml(formatDateTime(item.at))}</span>${item.kind ? ` <span class="code">${escapeHtml(item.kind)}</span>` : ''}</div>`,
+          `<div class="button-row"><button type="button" class="button" data-incident-target="${escapeHtml(action.targetId)}">${escapeHtml(action.label)}</button></div>`,
+          '</article>',
+        ].join('');
+      },
+      'No tenant incidents match the current filters.'
     );
   }
 
@@ -585,19 +1886,24 @@
   function renderPresets() {
     document.getElementById('tenantPresetCards').innerHTML = [
       {
-        title: 'Catalog + Economy',
-        text: 'Use the detailed legacy workspace for large catalog edits, price tuning, and scoped economy operations.',
-        action: '<a class="ghost-link" href="/admin/legacy?tab=economy">Open economy tools</a>',
+        title: t('tenant.presetCard.config.title', 'Guided config first'),
+        text: t('tenant.presetCard.config.detail', 'Preview config diffs here before saving. Use the legacy workspace only when you need deeper hand-tuned JSON or older operator paths.'),
+        action: '<a class="ghost-link" href="#config">Stay in scoped config</a>',
       },
       {
-        title: 'Delivery Capability Presets',
-        text: 'Delivery capability presets, command catalogs, and runtime overrides remain available in the delivery workbench.',
+        title: t('tenant.presetCard.plan.title', 'Plan + integrations'),
+        text: t('tenant.presetCard.plan.detail', 'Current plan posture, allowances, API keys, webhooks, and tenant offers now live directly in this console.'),
+        action: '<a class="ghost-link" href="#plan-integrations">Review plan posture</a>',
+      },
+      {
+        title: t('tenant.presetCard.restart.title', 'Restart + maintenance preset'),
+        text: t('tenant.presetCard.restart.detail', 'Use the guided restart preset before you announce downtime, then fall back to the deeper delivery workbench only when you need the older maintenance path.'),
+        action: '<a class="ghost-link" href="#support-tools">Open restart preset</a>',
+      },
+      {
+        title: t('tenant.presetCard.legacy.title', 'Deep workbench fallback'),
+        text: t('tenant.presetCard.legacy.detail', 'Delivery capability presets, complex economy overrides, and older community workflows still remain available in the legacy workbench when needed.'),
         action: '<a class="ghost-link" href="/admin/legacy?tab=delivery">Open delivery tools</a>',
-      },
-      {
-        title: 'Player Support',
-        text: 'Use deeper player tools for manual investigation, account review, and support workflows.',
-        action: '<a class="ghost-link" href="/admin/legacy?tab=players">Open player tools</a>',
       },
     ].map((card) => [
       '<article class="panel-card">',
@@ -608,7 +1914,111 @@
     ].join('')).join('');
   }
 
+  function renderSupportToolkit() {
+    const toolkit = document.getElementById('tenantSupportToolkit');
+    const checklist = document.getElementById('tenantRestartPresetChecklist');
+    if (toolkit) {
+      const items = [
+        {
+          key: 'delivery-case',
+          tone: 'warning',
+          tag: t('tenant.supportToolkit.tag.delivery', 'delivery'),
+          title: t('tenant.supportToolkit.delivery.title', 'Open delivery case'),
+          detail: t('tenant.supportToolkit.delivery.detail', 'Start from one concrete purchase code when a player reports a missing or delayed item.'),
+          button: t('tenant.supportToolkit.delivery.button', 'Open delivery case'),
+        },
+        {
+          key: 'wallet',
+          tone: 'info',
+          tag: t('tenant.supportToolkit.tag.wallet', 'wallet'),
+          title: t('tenant.supportToolkit.wallet.title', 'Wallet support'),
+          detail: t('tenant.supportToolkit.wallet.detail', 'Go straight to scoped wallet actions when balance or ledger history needs manual follow-up.'),
+          button: t('tenant.supportToolkit.wallet.button', 'Open wallet support'),
+        },
+        {
+          key: 'steam',
+          tone: 'warning',
+          tag: t('tenant.supportToolkit.tag.steam', 'steam'),
+          title: t('tenant.supportToolkit.steam.title', 'Steam support'),
+          detail: t('tenant.supportToolkit.steam.detail', 'Use this first when delivery readiness depends on Steam identity, linking, or player context.'),
+          button: t('tenant.supportToolkit.steam.button', 'Open Steam support'),
+        },
+        {
+          key: 'restart',
+          tone: 'danger',
+          tag: t('tenant.supportToolkit.tag.maintenance', 'maintenance'),
+          title: t('tenant.supportToolkit.restart.title', 'Restart announcement'),
+          detail: t('tenant.supportToolkit.restart.detail', 'Use the restart preset when you need to communicate downtime and then step into the deeper workbench flow.'),
+          button: t('tenant.supportToolkit.restart.button', 'Open restart preset'),
+        },
+      ];
+      toolkit.innerHTML = items.map((item) => [
+        '<article class="quick-action-card">',
+        `<div class="feed-meta">${makePill(item.tag, item.tone)}</div>`,
+        `<strong>${escapeHtml(item.title)}</strong>`,
+        `<p>${escapeHtml(item.detail)}</p>`,
+        `<div class="button-row"><button type="button" class="button button-primary" data-tenant-support-tool="${escapeHtml(item.key)}">${escapeHtml(item.button)}</button></div>`,
+        '</article>',
+      ].join('')).join('');
+    }
+    if (checklist) {
+      const steps = [
+        {
+          tone: 'info',
+          title: t('tenant.restartPreset.step1.title', 'Check queue and delivery posture'),
+          detail: t('tenant.restartPreset.step1.detail', 'Review delivery lifecycle first so you know whether queue pressure or dead letters are already high before announcing downtime.'),
+        },
+        {
+          tone: 'warning',
+          title: t('tenant.restartPreset.step2.title', 'Announce with one flow'),
+          detail: t('tenant.restartPreset.step2.detail', 'Use one communication path for restart timing instead of mixing ad hoc messages across multiple admin tools.'),
+        },
+        {
+          tone: 'info',
+          title: t('tenant.restartPreset.step3.title', 'Recheck delivery after maintenance'),
+          detail: t('tenant.restartPreset.step3.detail', 'Come back to delivery case, lifecycle, and support tools after the restart so stuck purchases do not linger silently.'),
+        },
+      ];
+      renderList(
+        checklist,
+        steps,
+        (item) => [
+          '<article class="feed-item">',
+          `<div class="feed-meta">${makePill(item.tone === 'warning' ? t('tenant.supportToolkit.tag.maintenance', 'maintenance') : t('tenant.supportToolkit.tag.support', 'support'), item.tone)}</div>`,
+          `<strong>${escapeHtml(item.title)}</strong>`,
+          `<div class="muted">${escapeHtml(item.detail)}</div>`,
+          '</article>',
+        ].join(''),
+        t('tenant.restartPreset.empty', 'No restart guidance loaded.'),
+      );
+    }
+  }
+
+  function runTenantSupportToolkitAction(actionKey) {
+    const key = String(actionKey || '').trim();
+    if (key === 'delivery-case') {
+      openTenantTarget('transactions', { targetId: 'tenantDeliveryCaseForm', block: 'center' });
+      showToast(t('tenant.toast.deliverySupportFocused', 'Delivery case form focused.'), 'info');
+      return;
+    }
+    if (key === 'wallet') {
+      openTenantTarget('support-tools', { targetId: 'tenantWalletForm', block: 'center' });
+      showToast(t('tenant.toast.walletSupportFocused', 'Wallet support form focused.'), 'info');
+      return;
+    }
+    if (key === 'steam') {
+      openTenantTarget('support-tools', { targetId: 'tenantSteamLinkForm', block: 'center' });
+      showToast(t('tenant.toast.steamSupportFocused', 'Steam support form focused.'), 'info');
+      return;
+    }
+    if (key === 'restart') {
+      openTenantTarget('support-tools', { targetId: 'tenantRestartPresetChecklist', block: 'center' });
+      showToast(t('tenant.toast.restartPresetFocused', 'Restart preset focused.'), 'info');
+    }
+  }
+
   function buildActivityItems() {
+    const scopedNotifications = getTenantScopedNotifications();
     const queued = state.queueItems.slice(0, 4).map((item) => ({
       tone: 'warning',
       type: 'queue',
@@ -623,7 +2033,7 @@
       detail: item.reason || item.errorCode || '',
       at: item.updatedAt || item.createdAt,
     }));
-    const alerts = state.notifications.slice(0, 4).map((item) => ({
+    const alerts = scopedNotifications.slice(0, 4).map((item) => ({
       tone: item.severity === 'error' ? 'danger' : item.severity || 'warning',
       type: item.type || 'alert',
       title: item.title || item.detail || 'Tenant alert',
@@ -643,41 +2053,57 @@
       (item) => [
         `<article class="timeline-item ${escapeHtml(item.tone || 'info')}">`,
         `<div class="feed-meta">${makePill(item.type || 'event')} <span class="code">${escapeHtml(formatDateTime(item.at))}</span></div>`,
-        `<strong>${escapeHtml(item.title || 'Activity')}</strong>`,
+        `<strong>${escapeHtml(item.title || t('tenant.activity.title', 'Activity'))}</strong>`,
         item.detail ? `<div class="muted">${escapeHtml(item.detail)}</div>` : '',
         '</article>',
       ].join(''),
-      'Waiting for tenant activity.'
+      t('tenant.activity.empty', 'Waiting for tenant activity.')
     );
   }
 
+  // Tenant render pass keeps the page shell, data widgets, and language
+  // overlays synchronized after each refresh without changing backend shape.
   function renderAll() {
-    const queueDepth = state.queueItems.length;
-    const deadCount = state.deadLetters.length;
-    const runtimeStatus = String(state.deliveryRuntime?.mode || state.deliveryRuntime?.status || 'ready');
+    const ops = getTenantOperationalSnapshot();
     document.getElementById('tenantScopeText').textContent =
-      `Tenant ID: ${state.me?.tenantId || '-'} | role: ${state.me?.role || '-'} | user: ${state.me?.user || '-'}`;
+      t('tenant.banner.scope', 'Tenant ID: {tenantId} | role: {role} | user: {user}', {
+        tenantId: state.me?.tenantId || '-',
+        role: state.me?.role || '-',
+        user: state.me?.user || '-',
+      });
     setBanner(
-      state.tenantConfig?.name || `Tenant ${state.me?.tenantId || ''}`,
-      'Tenant-facing operations stay isolated from owner-only platform controls and recovery workflows.',
+      state.tenantConfig?.name || t('tenant.banner.title', 'Tenant {tenantId}', { tenantId: state.me?.tenantId || '' }),
+      t('tenant.banner.detail', 'Tenant-facing operations stay isolated from owner-only platform controls and recovery workflows.'),
       [
-        `queue ${formatNumber(queueDepth, '0')}`,
-        `dead ${formatNumber(deadCount, '0')}`,
-        `anomalies ${formatNumber(state.reconcile?.summary?.anomalies, '0')}`,
-        `delivery ${runtimeStatus}`,
+        t('tenant.banner.tag.queue', 'queue {count}', { count: formatNumber(ops.queueDepth, '0') }),
+        t('tenant.banner.tag.dead', 'dead {count}', { count: formatNumber(ops.deadCount, '0') }),
+        t('tenant.banner.tag.incidents', 'incidents {count}', { count: formatNumber(ops.incidentCount, '0') }),
+        t('tenant.banner.tag.delivery', 'delivery {value}', { value: ops.runtimeLabel }),
       ],
-      queueDepth > 0 || deadCount > 0 || Number(state.reconcile?.summary?.anomalies || 0) > 0 ? 'warning' : 'success'
+      ops.tone
     );
     fillConfigForm();
     renderOverview();
+    renderIncidentCenter();
     renderInsights();
+    renderDeliveryLifecycle();
+    renderPlanIntegrations();
     renderTables();
     renderNotifications();
     renderDeliveryLab();
     renderPresets();
+    renderSupportToolkit();
     renderActivity();
     renderPurchaseInspector();
+    renderDeliveryCase();
     renderAudit();
+    renderConfigPreview();
+    renderResultPanel(
+      document.getElementById('tenantBulkDeliveryResult'),
+      state.bulkDeliveryResult,
+      t('tenant.bulk.empty', 'Run a bulk queue or dead-letter action to inspect the latest batch result.')
+    );
+    window.AdminUiI18n?.translateLiterals?.(document);
   }
 
   function scheduleRefresh(delayMs = 1200) {
@@ -753,7 +2179,7 @@
   async function refreshSurface(options = {}) {
     const refreshButton = document.getElementById('tenantRefreshBtn');
     if (!options.silent) {
-      setBusy(refreshButton, true, 'Refreshing...');
+      setBusy(refreshButton, true, t('common.refreshing', 'Refreshing...'));
     }
     try {
       const me = await api('/admin/api/me');
@@ -768,10 +2194,16 @@
         reconcile,
         quota,
         tenantConfig,
+        subscriptions,
+        licenses,
+        apiKeys,
+        webhooks,
+        agents,
         dashboardCards,
         shopItems,
         queueItems,
         deadLetters,
+        deliveryLifecycle,
         players,
         notifications,
         deliveryRuntime,
@@ -782,10 +2214,16 @@
         safeApi(`/admin/api/platform/reconcile?tenantId=${tenantId}&windowMs=3600000&pendingOverdueMs=1200000`, {}),
         safeApi(`/admin/api/platform/quota?tenantId=${tenantId}`, {}),
         safeApi(`/admin/api/platform/tenant-config?tenantId=${tenantId}`, {}),
+        safeApi(`/admin/api/platform/subscriptions?tenantId=${tenantId}&limit=6`, []),
+        safeApi(`/admin/api/platform/licenses?tenantId=${tenantId}&limit=6`, []),
+        safeApi(`/admin/api/platform/apikeys?tenantId=${tenantId}&limit=12`, []),
+        safeApi(`/admin/api/platform/webhooks?tenantId=${tenantId}&limit=12`, []),
+        safeApi(`/admin/api/platform/agents?tenantId=${tenantId}&limit=12`, []),
         safeApi(`/admin/api/dashboard/cards?tenantId=${tenantId}`, null),
         safeApi(`/admin/api/shop/list?tenantId=${tenantId}&limit=24`, { items: [] }),
         safeApi(`/admin/api/delivery/queue?tenantId=${tenantId}&limit=20`, { items: [] }),
         safeApi(`/admin/api/delivery/dead-letter?tenantId=${tenantId}&limit=20`, { items: [] }),
+        safeApi(`/admin/api/delivery/lifecycle?tenantId=${tenantId}&limit=80&pendingOverdueMs=1200000`, {}),
         safeApi(`/admin/api/player/accounts?tenantId=${tenantId}&limit=20`, { items: [] }),
         safeApi('/admin/api/notifications?acknowledged=false&limit=10', { items: [] }),
         safeApi('/admin/api/delivery/runtime', {}),
@@ -804,15 +2242,34 @@
       state.reconcile = reconcile || {};
       state.quota = quota || {};
       state.tenantConfig = tenantConfig || me.tenantConfig || {};
+      state.subscriptions = listFromPayload(subscriptions);
+      state.licenses = listFromPayload(licenses);
+      state.apiKeys = listFromPayload(apiKeys);
+      state.webhooks = listFromPayload(webhooks);
+      state.agents = listFromPayload(agents);
       state.dashboardCards = dashboardCards;
       state.shopItems = listFromPayload(shopItems);
       state.queueItems = listFromPayload(queueItems);
       state.deadLetters = listFromPayload(deadLetters);
+      state.deliveryLifecycle = deliveryLifecycle || {};
       state.players = listFromPayload(players);
       state.notifications = listFromPayload(notifications);
       state.deliveryRuntime = deliveryRuntime || {};
       state.purchaseStatusCatalog = purchaseStatusCatalog || { knownStatuses: [], allowedTransitions: [] };
       state.audit = audit || { cards: [], tableRows: [] };
+      {
+        const selectedDeliveryCode = String(
+          state.deliveryCase?.purchaseCode
+          || document.getElementById('tenantDeliveryCaseForm')?.elements?.purchaseCode?.value
+          || '',
+        ).trim();
+        if (selectedDeliveryCode) {
+          state.deliveryCase = await safeApi(
+            `/admin/api/delivery/detail?tenantId=${tenantId}&code=${encodeURIComponent(selectedDeliveryCode)}&limit=80`,
+            state.deliveryCase,
+          );
+        }
+      }
       renderAll();
       connectLive();
     } catch (error) {
@@ -853,7 +2310,7 @@
       if (!window.confirm('Save tenant configuration changes for this tenant?')) {
         return;
       }
-      setBusy(button, true, 'Saving...');
+      setBusy(button, true, t('common.saving', 'Saving...'));
       await api('/admin/api/platform/tenant-config', {
         method: 'POST',
         body: {
@@ -863,13 +2320,30 @@
           portalEnvPatch,
         },
       });
-      showToast('Tenant configuration saved.', 'success');
+      state.configEditorDirty = false;
+      state.configPreview = null;
+      showToast(t('tenant.toast.configSaved', 'Tenant configuration saved.'), 'success');
       await refreshSurface();
     } catch (error) {
       setBanner('Tenant config update failed', String(error.message || error), ['config'], 'danger');
     } finally {
       setBusy(button, false);
     }
+  }
+
+  function previewTenantConfig() {
+    try {
+      state.configPreview = buildConfigPreview();
+      renderConfigPreview();
+      showToast(t('tenant.toast.configPreviewUpdated', 'Config preview updated.'), 'info');
+    } catch (error) {
+      setBanner('Config preview failed', String(error.message || error), ['config'], 'danger');
+    }
+  }
+
+  function resetTenantConfigForm() {
+    fillConfigForm(true);
+      showToast(t('tenant.toast.configResetToLive', 'Tenant config form reset to live values.'), 'info');
   }
 
   async function handleWalletSubmit(event) {
@@ -890,7 +2364,7 @@
     if (!window.confirm(`Confirm ${action} for user ${userId}?`)) return;
     const button = form.querySelector('button[type="submit"]');
     try {
-      setBusy(button, true, 'Applying...');
+      setBusy(button, true, t('common.applying', 'Applying...'));
       await api(endpoint, {
         method: 'POST',
         body: action === 'set'
@@ -898,7 +2372,7 @@
           : { userId, amount: Math.trunc(amount) },
       });
       form.reset();
-      showToast('Wallet action applied.', 'success');
+      showToast(t('tenant.toast.walletApplied', 'Wallet action applied.'), 'success');
       await refreshSurface();
     } catch (error) {
       setBanner('Wallet action failed', String(error.message || error), ['wallet'], 'danger');
@@ -924,13 +2398,13 @@
     if (!window.confirm(`Run ${action} for ${code}?`)) return;
     const button = form.querySelector('button[type="submit"]');
     try {
-      setBusy(button, true, 'Running...');
+      setBusy(button, true, t('common.running', 'Running...'));
       await api(endpoint, {
         method: 'POST',
         body: { code },
       });
       form.reset();
-      showToast('Delivery recovery action completed.', 'success');
+      showToast(t('tenant.toast.deliveryRecoveryCompleted', 'Delivery recovery action completed.'), 'success');
       await refreshSurface();
     } catch (error) {
       setBanner('Delivery action failed', String(error.message || error), ['delivery'], 'danger');
@@ -965,7 +2439,7 @@
     }
     if (!window.confirm(`Add catalog entry ${payload.id}?`)) return;
     try {
-      setBusy(button, true, 'Saving...');
+      setBusy(button, true, t('common.saving', 'Saving...'));
       await api('/admin/api/shop/add', {
         method: 'POST',
         body: payload,
@@ -973,7 +2447,7 @@
       form.reset();
       form.elements.kind.value = 'item';
       form.elements.quantity.value = '1';
-      showToast('Catalog entry created.', 'success');
+      showToast(t('tenant.toast.catalogCreated', 'Catalog entry created.'), 'success');
       await refreshSurface();
     } catch (error) {
       setBanner('Catalog create failed', String(error.message || error), ['catalog'], 'danger');
@@ -994,7 +2468,7 @@
     }
     if (!window.confirm(`Update price for ${idOrName}?`)) return;
     try {
-      setBusy(button, true, 'Updating...');
+      setBusy(button, true, t('common.updating', 'Updating...'));
       await api('/admin/api/shop/price', {
         method: 'POST',
         body: {
@@ -1004,7 +2478,7 @@
         },
       });
       form.reset();
-      showToast('Catalog price updated.', 'success');
+      showToast(t('tenant.toast.catalogPriceUpdated', 'Catalog price updated.'), 'success');
       await refreshSurface();
     } catch (error) {
       setBanner('Price update failed', String(error.message || error), ['catalog'], 'danger');
@@ -1024,7 +2498,7 @@
     }
     if (!window.confirm(`Delete catalog entry ${idOrName}?`)) return;
     try {
-      setBusy(button, true, 'Deleting...');
+      setBusy(button, true, t('common.deleting', 'Deleting...'));
       await api('/admin/api/shop/delete', {
         method: 'POST',
         body: {
@@ -1033,10 +2507,190 @@
         },
       });
       form.reset();
-      showToast('Catalog entry removed.', 'success');
+      showToast(t('tenant.toast.catalogRemoved', 'Catalog entry removed.'), 'success');
       await refreshSurface();
     } catch (error) {
       setBanner('Catalog delete failed', String(error.message || error), ['catalog'], 'danger');
+    } finally {
+      setBusy(button, false);
+    }
+  }
+
+  async function handleTenantApiKeySubmit(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const button = form.querySelector('button[type="submit"]');
+    const name = String(form.elements.name.value || '').trim();
+    if (!name) {
+      setBanner('API key form is incomplete', 'Provide a key name before creating a tenant API key.', ['integrations'], 'danger');
+      return;
+    }
+    try {
+      if (!window.confirm(`Create tenant API key ${name}?`)) return;
+      setBusy(button, true, t('common.creating', 'Creating...'));
+      const result = await api('/admin/api/platform/apikey', {
+        method: 'POST',
+        body: {
+          id: `tenant-key-${Date.now()}`,
+          tenantId: state.me?.tenantId,
+          name,
+          status: String(form.elements.status.value || 'active').trim(),
+          scopes: String(form.elements.scopes.value || '').split(',').map((entry) => entry.trim()).filter(Boolean),
+        },
+      });
+      state.integrationResult = {
+        kind: 'api-key',
+        title: 'Tenant API key created',
+        detail: 'Store the raw key now. Listing endpoints will not show the secret again.',
+        createdAt: new Date().toISOString(),
+        rows: [
+          { label: 'Key ID', value: result.apiKey?.id || result.id || '-', code: true },
+          { label: 'Raw Key', value: result.rawKey || '-', code: true },
+          { label: 'Scopes', value: Array.isArray(result.apiKey?.scopes) ? result.apiKey.scopes.join(', ') : String(form.elements.scopes.value || '').trim() || '-', code: false },
+        ],
+      };
+      form.reset();
+      form.elements.status.value = 'active';
+      showToast(t('tenant.toast.apiKeyCreated', 'Tenant API key created.'), 'success');
+      await refreshSurface();
+    } catch (error) {
+      setBanner('API key create failed', String(error.message || error), ['integrations'], 'danger');
+    } finally {
+      setBusy(button, false);
+    }
+  }
+
+  async function handleTenantWebhookSubmit(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const button = form.querySelector('button[type="submit"]');
+    const name = String(form.elements.name.value || '').trim();
+    const targetUrl = String(form.elements.targetUrl.value || '').trim();
+    if (!name || !targetUrl) {
+      setBanner('Webhook form is incomplete', 'Provide both name and target URL before creating a tenant webhook.', ['integrations'], 'danger');
+      return;
+    }
+    try {
+      if (!window.confirm(`Create tenant webhook ${name}?`)) return;
+      setBusy(button, true, t('common.creating', 'Creating...'));
+      const result = await api('/admin/api/platform/webhook', {
+        method: 'POST',
+        body: {
+          id: `tenant-hook-${Date.now()}`,
+          tenantId: state.me?.tenantId,
+          name,
+          eventType: String(form.elements.eventType.value || '*').trim() || '*',
+          targetUrl,
+          secretValue: String(form.elements.secretValue.value || '').trim(),
+          enabled: String(form.elements.enabled.value || 'true') === 'true',
+        },
+      });
+      state.integrationResult = {
+        kind: 'webhook',
+        title: 'Tenant webhook created',
+        detail: 'If a raw secret was returned, store it now.',
+        createdAt: new Date().toISOString(),
+        rows: [
+          { label: 'Webhook ID', value: result.id || '-', code: true },
+          { label: 'Event Type', value: result.eventType || '-', code: false },
+          { label: 'Target URL', value: result.targetUrl || targetUrl, code: false },
+          { label: 'Secret', value: result.secretValue || String(form.elements.secretValue.value || '').trim() || '(generated and hidden)', code: true },
+        ],
+      };
+      form.reset();
+      form.elements.enabled.value = 'true';
+      showToast(t('tenant.toast.webhookCreated', 'Tenant webhook created.'), 'success');
+      await refreshSurface();
+    } catch (error) {
+      setBanner('Webhook create failed', String(error.message || error), ['integrations'], 'danger');
+    } finally {
+      setBusy(button, false);
+    }
+  }
+
+  async function handleTenantWebhookTestSubmit(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const button = form.querySelector('button[type="submit"]');
+    try {
+      if (!window.confirm('Dispatch tenant webhook test event?')) return;
+      setBusy(button, true, t('common.dispatching', 'Dispatching...'));
+      const payloadText = String(form.elements.payload.value || '').trim();
+      const result = await api('/admin/api/platform/webhook/test', {
+        method: 'POST',
+        body: {
+          tenantId: state.me?.tenantId,
+          eventType: String(form.elements.eventType.value || 'platform.admin.test').trim() || 'platform.admin.test',
+          payload: payloadText ? parseOptionalJson(payloadText, 'Webhook payload') : null,
+        },
+      });
+      state.integrationResult = {
+        kind: 'webhook-test',
+        title: 'Webhook test dispatched',
+        detail: 'The tenant-scoped webhook dispatch completed.',
+        createdAt: new Date().toISOString(),
+        rows: [
+          { label: 'Event Type', value: result.eventType || '-', code: false },
+          { label: 'Result Count', value: String(Array.isArray(result.results) ? result.results.length : 0), code: false },
+        ],
+      };
+      showToast(t('tenant.toast.webhookTestDispatched', 'Tenant webhook test dispatched.'), 'success');
+      renderPlanIntegrations();
+    } catch (error) {
+      setBanner('Webhook test failed', String(error.message || error), ['integrations'], 'danger');
+    } finally {
+      setBusy(button, false);
+    }
+  }
+
+  function parseCodesInput(raw) {
+    return Array.from(new Set(
+      String(raw || '')
+        .split(/[\s,]+/)
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ));
+  }
+
+  async function handleBulkDeliverySubmit(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const button = form.querySelector('button[type="submit"]');
+    const action = String(form.elements.action.value || 'retry-many').trim();
+    const codes = parseCodesInput(form.elements.codes.value);
+    if (codes.length === 0) {
+      setBanner('Bulk delivery action is incomplete', 'Provide at least one purchase code before running a batch action.', ['delivery'], 'danger');
+      return;
+    }
+    const endpoint = action === 'dead-letter-retry-many'
+      ? '/admin/api/delivery/dead-letter/retry-many'
+      : '/admin/api/delivery/retry-many';
+    try {
+      if (!window.confirm(`Run ${action} for ${codes.length} purchase codes?`)) return;
+      setBusy(button, true, t('common.running', 'Running...'));
+      const result = await api(endpoint, {
+        method: 'POST',
+        body: {
+          tenantId: state.me?.tenantId,
+          codes,
+        },
+      });
+      const count = Array.isArray(result) ? result.length : Array.isArray(result?.results) ? result.results.length : codes.length;
+      state.bulkDeliveryResult = {
+        kind: action,
+        title: 'Bulk delivery action completed',
+        detail: `Processed ${count} code(s) inside the current tenant scope.`,
+        createdAt: new Date().toISOString(),
+        rows: [
+          { label: 'Action', value: action, code: false },
+          { label: 'Codes', value: codes.join(', '), code: true },
+          { label: 'Processed', value: String(count), code: false },
+        ],
+      };
+      showToast(t('tenant.toast.bulkDeliveryCompleted', 'Bulk delivery action completed.'), 'success');
+      await refreshSurface();
+    } catch (error) {
+      setBanner('Bulk delivery action failed', String(error.message || error), ['delivery'], 'danger');
     } finally {
       setBusy(button, false);
     }
@@ -1050,7 +2704,7 @@
     }
     try {
       if (button) {
-        setBusy(button, true, 'Loading...');
+      setBusy(button, true, t('common.loading', 'Loading...'));
       }
       const tenantId = getTenantId();
       const encodedUser = encodeURIComponent(userId);
@@ -1063,7 +2717,7 @@
       };
       renderPurchaseInspector();
       if (showSuccess) {
-        showToast('Purchase list loaded.', 'success');
+      showToast(t('tenant.toast.purchaseListLoaded', 'Purchase list loaded.'), 'success');
       }
       return true;
     } catch (error) {
@@ -1075,6 +2729,35 @@
       if (button) {
         setBusy(button, false);
       }
+    }
+  }
+
+  async function loadDeliveryCase(purchaseCode, options = {}) {
+    const code = String(purchaseCode || '').trim();
+    const button = options.button || document.getElementById('tenantDeliveryCaseLoadBtn');
+    if (!code) {
+      state.deliveryCase = null;
+      renderDeliveryCase();
+      return false;
+    }
+    try {
+      if (button) setBusy(button, true, t('common.loading', 'Loading...'));
+      state.deliveryCase = await api(`/admin/api/delivery/detail?tenantId=${getTenantId()}&code=${encodeURIComponent(code)}&limit=80`);
+      renderDeliveryCase();
+      if (options.focus !== false) {
+        openTenantTarget('transactions', { targetId: 'tenantDeliveryCaseStats', block: 'center' });
+      }
+      if (options.toast !== false) {
+        showToast(t('tenant.toast.deliveryCaseLoaded', 'Delivery case loaded.'), 'success');
+      }
+      return true;
+    } catch (error) {
+      state.deliveryCase = null;
+      renderDeliveryCase();
+      setBanner('Delivery case failed to load', String(error.message || error), ['delivery-case'], 'danger');
+      return false;
+    } finally {
+      if (button) setBusy(button, false);
     }
   }
 
@@ -1100,7 +2783,7 @@
     }
     if (!window.confirm(`Set ${code} to ${status}?`)) return;
     try {
-      setBusy(button, true, 'Applying...');
+      setBusy(button, true, t('common.applying', 'Applying...'));
       await api('/admin/api/purchase/status', {
         method: 'POST',
         body: {
@@ -1110,7 +2793,10 @@
           reason,
         },
       });
-      showToast('Purchase status updated.', 'success');
+      showToast(t('tenant.toast.purchaseStatusUpdated', 'Purchase status updated.'), 'success');
+      if (code && state.deliveryCase?.purchaseCode === code) {
+        await loadDeliveryCase(code, { toast: false, focus: false });
+      }
       if (state.purchaseLookup.userId) {
         await loadPurchases(state.purchaseLookup.userId, state.purchaseLookup.status || '', { showSuccess: false });
       } else {
@@ -1141,7 +2827,7 @@
     }
     if (!window.confirm(`Run ${action} steam link support action for ${userId}?`)) return;
     try {
-      setBusy(button, true, 'Applying...');
+      setBusy(button, true, t('common.applying', 'Applying...'));
       await api(action === 'remove' ? '/admin/api/link/remove' : '/admin/api/link/set', {
         method: 'POST',
         body: action === 'remove'
@@ -1150,7 +2836,7 @@
       });
       form.reset();
       form.elements.action.value = 'set';
-      showToast('Steam link support action completed.', 'success');
+      showToast(t('tenant.toast.steamLinkCompleted', 'Steam link support action completed.'), 'success');
       await refreshSurface();
     } catch (error) {
       setBanner('Steam link support failed', String(error.message || error), ['support'], 'danger');
@@ -1177,7 +2863,7 @@
     }
     if (!window.confirm(`Run ${action} VIP action for ${userId}?`)) return;
     try {
-      setBusy(button, true, 'Applying...');
+      setBusy(button, true, t('common.applying', 'Applying...'));
       await api(action === 'remove' ? '/admin/api/vip/remove' : '/admin/api/vip/set', {
         method: 'POST',
         body: action === 'remove'
@@ -1187,7 +2873,7 @@
       form.reset();
       form.elements.action.value = 'set';
       form.elements.durationDays.value = '30';
-      showToast('VIP action completed.', 'success');
+      showToast(t('tenant.toast.vipCompleted', 'VIP action completed.'), 'success');
       await refreshSurface();
     } catch (error) {
       setBanner('VIP action failed', String(error.message || error), ['support'], 'danger');
@@ -1225,7 +2911,7 @@
     }
     if (!window.confirm(`Run redeem action ${action} for ${code}?`)) return;
     try {
-      setBusy(button, true, 'Applying...');
+      setBusy(button, true, t('common.applying', 'Applying...'));
       const endpoint = action === 'delete'
         ? '/admin/api/redeem/delete'
         : action === 'reset-usage'
@@ -1246,7 +2932,7 @@
       form.reset();
       form.elements.action.value = 'add';
       form.elements.type.value = 'coins';
-      showToast('Redeem support action completed.', 'success');
+      showToast(t('tenant.toast.redeemCompleted', 'Redeem support action completed.'), 'success');
     } catch (error) {
       setBanner('Redeem support action failed', String(error.message || error), ['support'], 'danger');
     } finally {
@@ -1297,14 +2983,19 @@
       return;
     }
     try {
-      setBusy(button, true, action === 'test-send' ? 'Sending...' : 'Running...');
+      setBusy(button, true, action === 'test-send' ? t('common.sending', 'Sending...') : t('common.running', 'Running...'));
       const data = await api(endpointMap[action], {
         method: 'POST',
         body: payload,
       });
       state.deliveryLabResult = { action, data };
       renderDeliveryLab();
-      showToast(`Delivery lab ${action} completed.`, action === 'test-send' ? 'warning' : 'success');
+      showToast(
+        t('tenant.toast.deliveryLabCompleted', 'Delivery lab {action} completed.', {
+          action: t(`tenant.labAction.${action}`, action),
+        }),
+        action === 'test-send' ? 'warning' : 'success'
+      );
     } catch (error) {
       state.deliveryLabResult = { action, data: { error: String(error.message || error) } };
       renderDeliveryLab();
@@ -1335,11 +3026,11 @@
     });
     const button = options.button || null;
     try {
-      if (button) setBusy(button, true, 'Loading...');
+      if (button) setBusy(button, true, t('common.loading', 'Loading...'));
       state.audit = await api(`/admin/api/audit/query?${queryString}`);
       renderAudit();
       if (options.toast === true) {
-        showToast('Tenant audit view loaded.', 'success');
+        showToast(t('tenant.toast.auditLoaded', 'Tenant audit view loaded.'), 'success');
       }
       return true;
     } catch (error) {
@@ -1378,21 +3069,21 @@
 
   async function acknowledgeAlerts() {
     const button = document.getElementById('tenantAckAlertsBtn');
-    const ids = state.notifications.map((item) => item.id).filter(Boolean);
+    const ids = getTenantScopedNotifications().map((item) => item.id).filter(Boolean);
     if (ids.length === 0) {
-      showToast('No alerts to acknowledge.', 'info');
+      showToast(t('tenant.toast.noAlertsToAcknowledge', 'No alerts to acknowledge.'), 'info');
       return;
     }
     if (!window.confirm('Acknowledge current tenant notifications?')) {
       return;
     }
-    setBusy(button, true, 'Acknowledging...');
+      setBusy(button, true, t('common.acknowledging', 'Acknowledging...'));
     try {
       await api('/admin/api/notifications/ack', {
         method: 'POST',
         body: { ids },
       });
-      showToast('Tenant alerts acknowledged.', 'success');
+      showToast(t('tenant.toast.alertsAcknowledged', 'Tenant alerts acknowledged.'), 'success');
       await refreshSurface();
     } catch (error) {
       setBanner('Acknowledge alerts failed', String(error.message || error), ['alerts'], 'danger');
@@ -1400,6 +3091,67 @@
       setBusy(button, false);
     }
   }
+
+  window.AdminUiI18n?.init?.(['tenantLanguageSelect']);
+
+  workspaceController = wireWorkspaceSwitcher({
+    switchId: 'tenantWorkspaceSwitch',
+    summaryId: 'tenantWorkspaceSummary',
+    hintId: 'tenantWorkspaceHint',
+    navListId: 'tenantNavList',
+    defaultWorkspace: 'operations',
+    workspaces: [
+      {
+        key: 'operations',
+        label: t('tenant.workspace.operations.label', 'Operations'),
+        short: 'live',
+        title: t('tenant.workspace.operations.title', 'Operations workspace'),
+        description: t('tenant.workspace.operations.description', 'Start here for tenant status, runtime alerts, incident review, and health insights before acting on commerce or support.'),
+        sidebarHint: t('tenant.workspace.operations.sidebar', 'Use this workspace for tenant snapshot, runtime alerts, incident review, and scoped insights.'),
+        tag: t('tenant.workspace.operations.tag', 'tenant'),
+      },
+      {
+        key: 'commerce',
+        label: t('tenant.workspace.commerce.label', 'Commerce'),
+        short: 'orders',
+        title: t('tenant.workspace.commerce.title', 'Commerce workspace'),
+        description: t('tenant.workspace.commerce.description', 'Plan posture, integrations, catalog management, purchase handling, and delivery controls stay grouped here for daily commerce work.'),
+        sidebarHint: t('tenant.workspace.commerce.sidebar', 'Use this workspace for plans, integrations, commerce, catalog tools, and transaction handling.'),
+        tag: t('tenant.workspace.commerce.tag', 'commerce'),
+      },
+      {
+        key: 'support',
+        label: t('tenant.workspace.support.label', 'Support'),
+        short: 'players',
+        title: t('tenant.workspace.support.title', 'Player support workspace'),
+        description: t('tenant.workspace.support.description', 'Player activity, support tools, and audit traces stay together so tenant operators can resolve requests without config noise.'),
+        sidebarHint: t('tenant.workspace.support.sidebar', 'Use this workspace for player activity, support actions, and audit review.'),
+        tag: t('tenant.workspace.support.tag', 'support'),
+      },
+      {
+        key: 'config',
+        label: t('tenant.workspace.config.label', 'Config'),
+        short: 'safe',
+        title: t('tenant.workspace.config.title', 'Config and safe actions workspace'),
+        description: t('tenant.workspace.config.description', 'Delivery lab, scoped config editing, and guarded tenant actions stay isolated for safer change management.'),
+        sidebarHint: t('tenant.workspace.config.sidebar', 'Use this workspace for sandbox checks, tenant config editing, and safe actions.'),
+        tag: t('tenant.workspace.config.tag', 'guarded'),
+      },
+    ],
+    sectionsByWorkspace: {
+      operations: ['overview', 'operations', 'incidents', 'insights'],
+      commerce: ['plan-integrations', 'commerce', 'catalog-tools', 'transactions'],
+      support: ['players', 'support-tools', 'audit'],
+      config: ['sandbox', 'config', 'actions'],
+    },
+  });
+  sidebarController = wireSidebarShell({
+    sidebarId: 'tenantSidebar',
+    navListId: 'tenantNavList',
+    toggleButtonId: 'tenantSidebarToggleBtn',
+    backdropId: 'tenantSidebarBackdrop',
+  });
+  document.getElementById('tenantSidebarHint').textContent = t('tenant.sidebarHint', 'Use the area tabs above to switch context. The menu on the left only shows the pages that belong to the active tenant area.');
 
   const palette = wireCommandPalette({
     openButtonId: 'tenantPaletteBtn',
@@ -1409,90 +3161,113 @@
     listId: 'tenantPaletteList',
     emptyId: 'tenantPaletteEmpty',
     getActions() {
+      const sectionMeta = t('tenant.palette.meta.sections', 'Tenant pages');
+      const actionMeta = t('tenant.palette.meta.actions', 'Tenant actions');
+      const legacyMeta = t('tenant.palette.meta.legacy', 'Legacy workbench');
       return [
         {
-          label: 'Jump to Overview',
-          meta: 'Tenant sections',
-          run: () => document.getElementById('overview')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+          label: t('tenant.palette.openPage', 'Open {page}', { page: tenantNavLabel('overview') }),
+          meta: sectionMeta,
+          run: () => openTenantTarget('overview'),
         },
         {
-          label: 'Jump to Runtime + Alerts',
-          meta: 'Tenant sections',
-          run: () => document.getElementById('operations')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+          label: t('tenant.palette.openPage', 'Open {page}', { page: tenantNavLabel('operations') }),
+          meta: sectionMeta,
+          run: () => openTenantTarget('operations'),
         },
         {
-          label: 'Jump to Insights',
-          meta: 'Tenant sections',
-          run: () => document.getElementById('insights')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+          label: t('tenant.palette.openPage', 'Open {page}', { page: tenantNavLabel('incidents') }),
+          meta: sectionMeta,
+          run: () => openTenantTarget('incidents'),
         },
         {
-          label: 'Jump to Commerce + Delivery',
-          meta: 'Tenant sections',
-          run: () => document.getElementById('commerce')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+          label: t('tenant.palette.openPage', 'Open {page}', { page: tenantNavLabel('insights') }),
+          meta: sectionMeta,
+          run: () => openTenantTarget('insights'),
         },
         {
-          label: 'Jump to Delivery Lab',
-          meta: 'Tenant sections',
-          run: () => document.getElementById('sandbox')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+          label: t('tenant.palette.openPage', 'Open {page}', { page: tenantNavLabel('plan-integrations') }),
+          meta: sectionMeta,
+          run: () => openTenantTarget('plan-integrations'),
         },
         {
-          label: 'Jump to Catalog Tools',
-          meta: 'Tenant sections',
-          run: () => document.getElementById('catalog-tools')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+          label: t('tenant.palette.openPage', 'Open {page}', { page: tenantNavLabel('commerce') }),
+          meta: sectionMeta,
+          run: () => openTenantTarget('commerce'),
         },
         {
-          label: 'Jump to Transactions',
-          meta: 'Tenant sections',
-          run: () => document.getElementById('transactions')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+          label: t('tenant.palette.openPage', 'Open {page}', { page: tenantNavLabel('sandbox') }),
+          meta: sectionMeta,
+          run: () => openTenantTarget('sandbox'),
         },
         {
-          label: 'Jump to Support Tools',
-          meta: 'Tenant sections',
-          run: () => document.getElementById('support-tools')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+          label: t('tenant.palette.openPage', 'Open {page}', { page: tenantNavLabel('catalog-tools') }),
+          meta: sectionMeta,
+          run: () => openTenantTarget('catalog-tools'),
         },
         {
-          label: 'Jump to Tenant Config',
-          meta: 'Tenant sections',
-          run: () => document.getElementById('config')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+          label: t('tenant.palette.openPage', 'Open {page}', { page: tenantNavLabel('transactions') }),
+          meta: sectionMeta,
+          run: () => openTenantTarget('transactions'),
         },
         {
-          label: 'Jump to Audit Trail',
-          meta: 'Tenant sections',
-          run: () => document.getElementById('audit')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+          label: t('tenant.palette.openPage', 'Open {page}', { page: tenantNavLabel('support-tools') }),
+          meta: sectionMeta,
+          run: () => openTenantTarget('support-tools'),
         },
         {
-          label: 'Refresh Tenant Console',
-          meta: 'Tenant action',
+          label: t('tenant.palette.openPage', 'Open {page}', { page: tenantNavLabel('config') }),
+          meta: sectionMeta,
+          run: () => openTenantTarget('config'),
+        },
+        {
+          label: t('tenant.palette.openPage', 'Open {page}', { page: tenantNavLabel('audit') }),
+          meta: sectionMeta,
+          run: () => openTenantTarget('audit'),
+        },
+        {
+          label: t('tenant.palette.refresh', 'Refresh tenant console'),
+          meta: actionMeta,
           run: () => refreshSurface(),
         },
         {
-          label: 'Acknowledge Alerts',
-          meta: 'Tenant action',
+          label: t('tenant.palette.acknowledgeAlerts', 'Acknowledge alerts'),
+          meta: actionMeta,
           run: acknowledgeAlerts,
         },
         {
-          label: 'Open Delivery Workbench',
-          meta: 'Legacy workbench',
+          label: t('tenant.palette.openLegacyDelivery', 'Open delivery workbench'),
+          meta: legacyMeta,
           run: () => { window.location.href = '/admin/legacy?tab=delivery'; },
         },
         {
-          label: 'Focus Delivery Lab',
-          meta: 'Tenant action',
-          run: () => document.getElementById('tenantDeliveryLabForm')?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
+          label: t('tenant.palette.focusLab', 'Focus delivery lab'),
+          meta: actionMeta,
+          run: () => openTenantTarget('sandbox', { targetId: 'tenantDeliveryLabForm', block: 'center' }),
         },
         {
-          label: 'Focus Audit Query',
-          meta: 'Tenant action',
-          run: () => document.getElementById('tenantAuditQueryForm')?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
+          label: t('tenant.palette.focusDeliveryCase', 'Focus delivery case'),
+          meta: actionMeta,
+          run: () => openTenantTarget('transactions', { targetId: 'tenantDeliveryCaseForm', block: 'center' }),
         },
         {
-          label: 'Open Economy Tools',
-          meta: 'Legacy workbench',
+          label: t('tenant.palette.focusAudit', 'Focus audit query'),
+          meta: actionMeta,
+          run: () => openTenantTarget('audit', { targetId: 'tenantAuditQueryForm', block: 'center' }),
+        },
+        {
+          label: t('tenant.palette.focusIncidents', 'Focus incident query'),
+          meta: actionMeta,
+          run: () => openTenantTarget('incidents', { targetId: 'tenantIncidentQueryForm', block: 'center' }),
+        },
+        {
+          label: t('tenant.palette.openLegacyEconomy', 'Open economy tools'),
+          meta: legacyMeta,
           run: () => { window.location.href = '/admin/legacy?tab=economy'; },
         },
         {
-          label: 'Open Player Tools',
-          meta: 'Legacy workbench',
+          label: t('tenant.palette.openLegacyPlayers', 'Open player tools'),
+          meta: legacyMeta,
           run: () => { window.location.href = '/admin/legacy?tab=players'; },
         },
       ];
@@ -1501,13 +3276,153 @@
 
   document.getElementById('tenantRefreshBtn').addEventListener('click', () => refreshSurface());
   document.getElementById('tenantAckAlertsBtn').addEventListener('click', acknowledgeAlerts);
+  document.getElementById('tenantIncidentQueryForm').addEventListener('submit', (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    state.incidentFilters.severity = String(form.elements.severity.value || '').trim();
+    state.incidentFilters.kind = String(form.elements.kind.value || '').trim();
+    state.incidentFilters.source = String(form.elements.source.value || '').trim();
+    renderIncidentCenter();
+        showToast(t('tenant.toast.incidentViewUpdated', 'Tenant incident view updated.'), 'info');
+  });
+  document.getElementById('tenantIncidentExportJsonBtn').addEventListener('click', () => {
+    const rows = getFilteredTenantIncidents();
+    if (!rows.length) {
+      showToast(t('tenant.toast.noIncidentsToExport', 'No tenant incidents to export.'), 'info');
+      return;
+    }
+    downloadClientFile(
+      `tenant-incidents-${String(state.me?.tenantId || 'tenant')}.json`,
+      `${JSON.stringify(rows, null, 2)}\n`,
+      'application/json;charset=utf-8'
+    );
+  });
+  document.getElementById('tenantIncidentExportCsvBtn').addEventListener('click', () => {
+    const rows = getFilteredTenantIncidents();
+    if (!rows.length) {
+      showToast(t('tenant.toast.noIncidentsToExport', 'No tenant incidents to export.'), 'info');
+      return;
+    }
+    downloadClientFile(
+      `tenant-incidents-${String(state.me?.tenantId || 'tenant')}.csv`,
+      buildTenantIncidentCsv(rows),
+      'text/csv;charset=utf-8'
+    );
+  });
+  document.getElementById('tenantIncidentFeed').addEventListener('click', (event) => {
+    const button = event.target.closest('[data-incident-target]');
+    if (!button) return;
+    const targetId = String(button.dataset.incidentTarget || '').trim();
+    if (targetId) {
+      openTenantTarget(targetId);
+    }
+  });
+  document.getElementById('tenantQuickActions')?.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-tenant-quick-action]');
+    if (!button) return;
+    runTenantQuickAction(button.getAttribute('data-tenant-quick-action'));
+  });
+  document.getElementById('tenantPresetGuides')?.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-tenant-preset-action]');
+    if (!button) return;
+    runTenantPresetAction(button.getAttribute('data-tenant-preset-action'));
+  });
+  document.getElementById('tenantModuleGuides')?.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-tenant-module-action]');
+    if (!button) return;
+    runTenantModuleAction(button.getAttribute('data-tenant-module-action'));
+  });
+  document.getElementById('tenantSupportToolkit')?.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-tenant-support-tool]');
+    if (!button) return;
+    runTenantSupportToolkitAction(button.getAttribute('data-tenant-support-tool'));
+  });
+  document.getElementById('tenantRestartPresetBtn')?.addEventListener('click', () => {
+    showToast(t('tenant.toast.restartPresetOpened', 'Restart flow opened.'), 'info');
+    window.location.href = '/admin/legacy?tab=delivery';
+  });
+  document.getElementById('tenantDeliveryLifecycleExportJsonBtn')?.addEventListener('click', () => {
+    openDeliveryLifecycleExport('json');
+  });
+  document.getElementById('tenantDeliveryLifecycleActions')?.addEventListener('click', async (event) => {
+    const navButton = event.target.closest('[data-tenant-lifecycle-nav]');
+    if (navButton) {
+      openTenantTarget(navButton.getAttribute('data-tenant-lifecycle-nav'));
+      return;
+    }
+    const bulkButton = event.target.closest('[data-tenant-lifecycle-bulk]');
+    if (bulkButton) {
+      populateBulkDeliveryForm(
+        String(bulkButton.getAttribute('data-tenant-lifecycle-bulk') || '').trim(),
+        String(bulkButton.getAttribute('data-codes') || '').split(','),
+      );
+      return;
+    }
+    const exportButton = event.target.closest('[data-tenant-lifecycle-export]');
+    if (exportButton) {
+      openDeliveryLifecycleExport(exportButton.getAttribute('data-tenant-lifecycle-export'));
+      return;
+    }
+    const caseButton = event.target.closest('[data-tenant-lifecycle-case]');
+    if (caseButton) {
+      const purchaseCode = String(caseButton.getAttribute('data-tenant-lifecycle-case') || '').trim();
+      if (!purchaseCode) return;
+      await loadDeliveryCase(purchaseCode, {
+        button: caseButton,
+        focus: true,
+        toast: true,
+      });
+    }
+  });
+  document.getElementById('tenantConfigPreviewBtn').addEventListener('click', previewTenantConfig);
+  document.getElementById('tenantConfigResetBtn').addEventListener('click', resetTenantConfigForm);
   document.getElementById('tenantConfigForm').addEventListener('submit', handleTenantConfigSubmit);
+  document.getElementById('tenantConfigForm').addEventListener('input', () => {
+    state.configEditorDirty = true;
+  });
   document.getElementById('tenantWalletForm').addEventListener('submit', handleWalletSubmit);
   document.getElementById('tenantDeliveryForm').addEventListener('submit', handleDeliverySubmit);
+  document.getElementById('tenantDeliveryBulkForm').addEventListener('submit', handleBulkDeliverySubmit);
   document.getElementById('tenantShopCreateForm').addEventListener('submit', handleShopCreateSubmit);
   document.getElementById('tenantShopPriceForm').addEventListener('submit', handleShopPriceSubmit);
   document.getElementById('tenantShopDeleteForm').addEventListener('submit', handleShopDeleteSubmit);
+  document.getElementById('tenantApiKeyForm').addEventListener('submit', handleTenantApiKeySubmit);
+  document.getElementById('tenantWebhookForm').addEventListener('submit', handleTenantWebhookSubmit);
+  document.getElementById('tenantWebhookTestForm').addEventListener('submit', handleTenantWebhookTestSubmit);
   document.getElementById('tenantPurchaseLookupForm').addEventListener('submit', handlePurchaseLookupSubmit);
+  document.getElementById('tenantDeliveryCaseForm').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const purchaseCode = String(form.elements.purchaseCode.value || '').trim();
+    await loadDeliveryCase(purchaseCode, {
+      button: document.getElementById('tenantDeliveryCaseLoadBtn'),
+      focus: true,
+      toast: true,
+    });
+  });
+  document.getElementById('tenantDeliveryCaseExportBtn').addEventListener('click', () => {
+    const purchaseCode = String(state.deliveryCase?.purchaseCode || document.getElementById('tenantDeliveryCaseForm')?.elements?.purchaseCode?.value || '').trim();
+    if (!purchaseCode) {
+      showToast(t('tenant.toast.deliveryCaseMissing', 'Choose a purchase code first.'), 'info');
+      return;
+    }
+    window.open(
+      `/admin/api/delivery/detail?tenantId=${getTenantId()}&code=${encodeURIComponent(purchaseCode)}&limit=80`,
+      '_blank',
+      'noopener,noreferrer',
+    );
+    showToast(t('tenant.toast.deliveryCaseExportStarted', 'Delivery case JSON opened.'), 'info');
+  });
+  document.getElementById('tenantPurchaseTable').addEventListener('click', (event) => {
+    const button = event.target.closest('[data-delivery-case-code]');
+    if (!button) return;
+    const purchaseCode = String(button.getAttribute('data-delivery-case-code') || '').trim();
+    loadDeliveryCase(purchaseCode, {
+      button,
+      focus: true,
+      toast: true,
+    });
+  });
   document.getElementById('tenantPurchaseStatusForm').addEventListener('submit', handlePurchaseStatusSubmit);
   document.getElementById('tenantSteamLinkForm').addEventListener('submit', handleSteamLinkSubmit);
   document.getElementById('tenantVipForm').addEventListener('submit', handleVipSubmit);
@@ -1536,6 +3451,13 @@
     if (intervalHandle) {
       window.clearInterval(intervalHandle);
     }
+  });
+
+  window.addEventListener('ui-language-change', () => {
+    workspaceController?.refresh?.();
+    sidebarController?.refresh?.();
+    palette.refresh();
+    renderAll();
   });
 
   refreshSurface();

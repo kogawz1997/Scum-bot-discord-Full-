@@ -41,8 +41,8 @@ function createAdminEnvRuntime(deps = {}) {
   );
   const sessionBindUserAgent = envBool('ADMIN_WEB_SESSION_BIND_USER_AGENT', true);
   const sessionCookiePath = normalizeCookiePath(
-    processEnv.ADMIN_WEB_SESSION_COOKIE_PATH || '/admin',
-    '/admin',
+    processEnv.ADMIN_WEB_SESSION_COOKIE_PATH || '/',
+    '/',
   );
   const sessionCookieSameSite = normalizeSameSite(
     processEnv.ADMIN_WEB_SESSION_COOKIE_SAMESITE || 'strict',

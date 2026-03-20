@@ -1,3 +1,5 @@
+const { resolveDatabaseRuntime } = require('./dbEngine');
+
 function isSnowflake(value) {
   return /^\d{15,25}$/.test(String(value || ''));
 }
@@ -73,9 +75,14 @@ function getProductionSecurityErrors(env = process.env) {
   const playerBaseUrlParsed = playerBaseUrl ? parseOriginList(playerBaseUrl)[0] || null : null;
   const agentBaseUrl = String(env.SCUM_CONSOLE_AGENT_BASE_URL || '').trim();
   const agentPort = String(env.SCUM_CONSOLE_AGENT_PORT || '').trim();
+  const adminLocalRecovery = isTruthy(env.ADMIN_WEB_LOCAL_RECOVERY);
   const adminTwoFactorEnabled = isTruthy(env.ADMIN_WEB_2FA_ENABLED);
   const adminTwoFactorSecret = String(env.ADMIN_WEB_2FA_SECRET || '').trim();
   const adminStepUpEnabled = isTruthy(env.ADMIN_WEB_STEP_UP_ENABLED);
+  const dbRuntime = resolveDatabaseRuntime({
+    databaseUrl: env.DATABASE_URL,
+    provider: env.PRISMA_SCHEMA_PROVIDER || env.DATABASE_PROVIDER || '',
+  });
 
   if (!discordToken || isLikelyPlaceholder(discordToken)) {
     errors.push('Production requires a valid DISCORD_TOKEN (not placeholder).');
@@ -91,50 +98,52 @@ function getProductionSecurityErrors(env = process.env) {
     );
   }
 
-  if (
-    !adminPassword ||
-    adminPassword.length < 12 ||
-    isLikelyPlaceholder(adminPassword)
-  ) {
-    errors.push(
-      'Production requires ADMIN_WEB_PASSWORD with at least 12 characters.',
-    );
-  }
+  if (!adminLocalRecovery) {
+    if (
+      !adminPassword ||
+      adminPassword.length < 12 ||
+      isLikelyPlaceholder(adminPassword)
+    ) {
+      errors.push(
+        'Production requires ADMIN_WEB_PASSWORD with at least 12 characters.',
+      );
+    }
 
-  if (!adminToken || adminToken.length < 24 || isLikelyPlaceholder(adminToken)) {
-    errors.push(
-      'Production requires ADMIN_WEB_TOKEN with at least 24 characters.',
-    );
-  }
+    if (!adminToken || adminToken.length < 24 || isLikelyPlaceholder(adminToken)) {
+      errors.push(
+        'Production requires ADMIN_WEB_TOKEN with at least 24 characters.',
+      );
+    }
 
-  if (!isTruthy(env.ADMIN_WEB_SECURE_COOKIE)) {
-    errors.push('Production requires ADMIN_WEB_SECURE_COOKIE=true.');
-  }
+    if (!isTruthy(env.ADMIN_WEB_SECURE_COOKIE)) {
+      errors.push('Production requires ADMIN_WEB_SECURE_COOKIE=true.');
+    }
 
-  if (!isTruthy(env.ADMIN_WEB_HSTS_ENABLED)) {
-    errors.push('Production requires ADMIN_WEB_HSTS_ENABLED=true.');
-  }
+    if (!isTruthy(env.ADMIN_WEB_HSTS_ENABLED)) {
+      errors.push('Production requires ADMIN_WEB_HSTS_ENABLED=true.');
+    }
 
-  if (
-    String(env.ADMIN_WEB_ALLOW_TOKEN_QUERY || '').trim().toLowerCase() !==
-    'false'
-  ) {
-    errors.push('Production requires ADMIN_WEB_ALLOW_TOKEN_QUERY=false.');
-  }
+    if (
+      String(env.ADMIN_WEB_ALLOW_TOKEN_QUERY || '').trim().toLowerCase() !==
+      'false'
+    ) {
+      errors.push('Production requires ADMIN_WEB_ALLOW_TOKEN_QUERY=false.');
+    }
 
-  if (!isTruthy(env.ADMIN_WEB_ENFORCE_ORIGIN_CHECK)) {
-    errors.push('Production requires ADMIN_WEB_ENFORCE_ORIGIN_CHECK=true.');
-  }
+    if (!isTruthy(env.ADMIN_WEB_ENFORCE_ORIGIN_CHECK)) {
+      errors.push('Production requires ADMIN_WEB_ENFORCE_ORIGIN_CHECK=true.');
+    }
 
-  if (!allowedOrigins || allowedOrigins.includes('http://')) {
-    errors.push(
-      'Production requires strict HTTPS ADMIN_WEB_ALLOWED_ORIGINS (no http://).',
-    );
-  }
-  if (allowedOriginUrls.length === 0 || allowedOriginUrls.some(isLocalOrExampleOrigin)) {
-    errors.push(
-      'Production requires non-local ADMIN_WEB_ALLOWED_ORIGINS (no localhost/127.0.0.1/example.com).',
-    );
+    if (!allowedOrigins || allowedOrigins.includes('http://')) {
+      errors.push(
+        'Production requires strict HTTPS ADMIN_WEB_ALLOWED_ORIGINS (no http://).',
+      );
+    }
+    if (allowedOriginUrls.length === 0 || allowedOriginUrls.some(isLocalOrExampleOrigin)) {
+      errors.push(
+        'Production requires non-local ADMIN_WEB_ALLOWED_ORIGINS (no localhost/127.0.0.1/example.com).',
+      );
+    }
   }
 
   if (!playerBaseUrlParsed || playerBaseUrlParsed.protocol !== 'https:' || isLocalOrExampleOrigin(playerBaseUrlParsed)) {
@@ -143,14 +152,16 @@ function getProductionSecurityErrors(env = process.env) {
     );
   }
 
-  if (!adminTwoFactorEnabled) {
-    errors.push('Production requires ADMIN_WEB_2FA_ENABLED=true.');
-  }
-  if (!adminTwoFactorSecret || adminTwoFactorSecret.length < 16 || isLikelyPlaceholder(adminTwoFactorSecret)) {
-    errors.push('Production requires ADMIN_WEB_2FA_SECRET with at least 16 characters.');
-  }
-  if (!adminStepUpEnabled) {
-    errors.push('Production requires ADMIN_WEB_STEP_UP_ENABLED=true.');
+  if (!adminLocalRecovery) {
+    if (!adminTwoFactorEnabled) {
+      errors.push('Production requires ADMIN_WEB_2FA_ENABLED=true.');
+    }
+    if (!adminTwoFactorSecret || adminTwoFactorSecret.length < 16 || isLikelyPlaceholder(adminTwoFactorSecret)) {
+      errors.push('Production requires ADMIN_WEB_2FA_SECRET with at least 16 characters.');
+    }
+    if (!adminStepUpEnabled) {
+      errors.push('Production requires ADMIN_WEB_STEP_UP_ENABLED=true.');
+    }
   }
 
   if (!isTruthy(env.PERSIST_REQUIRE_DB)) {
@@ -159,6 +170,12 @@ function getProductionSecurityErrors(env = process.env) {
 
   if (isTruthy(env.PERSIST_LEGACY_SNAPSHOTS)) {
     errors.push('Production requires PERSIST_LEGACY_SNAPSHOTS=false.');
+  }
+
+  if (dbRuntime.engine !== 'postgresql') {
+    errors.push(
+      'Production requires PostgreSQL DATABASE_URL; SQLite/MySQL are not supported as the primary production runtime path.',
+    );
   }
 
   if (deliveryExecutionMode === 'agent') {
@@ -178,6 +195,55 @@ function getProductionSecurityErrors(env = process.env) {
   return errors;
 }
 
+function getDatabaseRuntimeErrors(env = process.env) {
+  const errors = [];
+  const dbRuntime = resolveDatabaseRuntime({
+    databaseUrl: env.DATABASE_URL,
+    provider: env.PRISMA_SCHEMA_PROVIDER || env.DATABASE_PROVIDER || '',
+  });
+  const topologyMode = String(env.TENANT_DB_TOPOLOGY_MODE || 'shared')
+    .trim()
+    .toLowerCase() || 'shared';
+
+  if (dbRuntime.engine === 'unsupported') {
+    errors.push(
+      `Unsupported DATABASE_URL engine: ${String(env.DATABASE_URL || '').trim()}`,
+    );
+    return errors;
+  }
+
+  // Tenant database topology beyond shared mode is a PostgreSQL-first path here.
+  if (
+    ['schema-per-tenant', 'database-per-tenant'].includes(topologyMode)
+    && dbRuntime.engine !== 'postgresql'
+  ) {
+    errors.push(
+      `TENANT_DB_TOPOLOGY_MODE=${topologyMode} requires PostgreSQL DATABASE_URL.`,
+    );
+  }
+
+  return errors;
+}
+
+function getRuntimeOwnershipErrors(env = process.env) {
+  const errors = [];
+  const botDeliveryEnabled = isTruthy(
+    env.BOT_ENABLE_DELIVERY_WORKER == null ? 'true' : env.BOT_ENABLE_DELIVERY_WORKER,
+  );
+  const workerDeliveryEnabled = isTruthy(
+    env.WORKER_ENABLE_DELIVERY == null ? 'true' : env.WORKER_ENABLE_DELIVERY,
+  );
+
+  // Do not let bot and worker both own the delivery worker role at once.
+  if (botDeliveryEnabled && workerDeliveryEnabled) {
+    errors.push(
+      'Do not enable delivery worker on both bot and worker at the same time (BOT_ENABLE_DELIVERY_WORKER + WORKER_ENABLE_DELIVERY).',
+    );
+  }
+
+  return errors;
+}
+
 function getWorkerRuntimeErrors(env = process.env) {
   const errors = [];
   const workerRentEnabled = isTruthy(
@@ -191,6 +257,8 @@ function getWorkerRuntimeErrors(env = process.env) {
       'Worker requires at least one enabled service: WORKER_ENABLE_RENTBIKE or WORKER_ENABLE_DELIVERY.',
     );
   }
+  errors.push(...getDatabaseRuntimeErrors(env));
+  errors.push(...getRuntimeOwnershipErrors(env));
   return errors;
 }
 
@@ -214,6 +282,8 @@ function assertBotEnv(env = process.env) {
   }
 
   errors.push(...getProductionSecurityErrors(env));
+  errors.push(...getDatabaseRuntimeErrors(env));
+  errors.push(...getRuntimeOwnershipErrors(env));
 
   if (errors.length) exitWithErrors(errors);
 }
@@ -270,6 +340,8 @@ module.exports = {
   isLikelyPlaceholder,
   getMissingEnv,
   getProductionSecurityErrors,
+  getDatabaseRuntimeErrors,
+  getRuntimeOwnershipErrors,
   getWorkerRuntimeErrors,
   assertBotEnv,
   assertRegisterEnv,

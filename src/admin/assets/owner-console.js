@@ -14,12 +14,25 @@
     setBusy,
     showToast,
     wireCommandPalette,
+    wireSidebarShell,
+    wireWorkspaceSwitcher,
   } = window.ConsoleSurface;
 
+  const {
+    getConfigApplyOperationalPhase,
+    getRestoreOperationalPhase,
+  } = window.AdminOperationalStateModel || {};
+
+  const t = (key, fallback, params) => window.AdminUiI18n?.t?.(key, fallback, params) ?? fallback ?? key;
+
+  // UI-only state for the owner surface.
+  // If you want to reorder or simplify pages later, start here and then trace
+  // the matching render* function further down in this file.
   const state = {
     me: null,
     overview: null,
     observability: null,
+    deliveryLifecycle: null,
     reconcile: null,
     opsState: null,
     tenants: [],
@@ -28,7 +41,10 @@
     apiKeys: [],
     webhooks: [],
     agents: [],
+    marketplaceOffers: [],
+    tenantQuotaSnapshots: [],
     notifications: [],
+    incidentInbox: [],
     securityEvents: [],
     runtimeSupervisor: null,
     dashboardCards: null,
@@ -41,28 +57,183 @@
     sessions: [],
     users: [],
     audit: null,
+    rotationReport: null,
     auditFilters: {
       view: 'wallet',
       userId: '',
       query: '',
       windowMs: '604800000',
     },
+    supportCase: null,
+    incidentFilters: {
+      severity: '',
+      acknowledged: 'false',
+      kind: '',
+    },
     assetResult: null,
     liveEvents: [],
+    automationReport: null,
+    controlApplyResult: null,
   };
 
   let liveConnection = null;
   let refreshTimer = null;
   let intervalHandle = null;
+  let workspaceController = null;
+  let sidebarController = null;
 
+  // Small metric cards shown on the observability page.
+  // Keep this list short so the owner surface stays readable instead of turning
+  // back into the old everything-at-once dashboard.
+
+  function deliveryLifecycleSignalLabel(key) {
+    const labels = {
+      healthy: t('deliveryLifecycle.signal.healthy', 'Stable'),
+      overdue: t('deliveryLifecycle.signal.overdue', 'Overdue'),
+      retryHeavy: t('deliveryLifecycle.signal.retryHeavy', 'Retry Heavy'),
+      poisonCandidate: t('deliveryLifecycle.signal.poisonCandidate', 'Poison Candidate'),
+      retryableDeadLetter: t('deliveryLifecycle.signal.retryableDeadLetter', 'Retryable Dead Letter'),
+      nonRetryableDeadLetter: t('deliveryLifecycle.signal.nonRetryableDeadLetter', 'Non-Retryable Dead Letter'),
+      queued: t('deliveryLifecycle.signal.queued', 'Queued'),
+      deadLetter: t('deliveryLifecycle.signal.deadLetter', 'Dead Letter'),
+    };
+    return labels[key] || key || t('deliveryLifecycle.signal.queued', 'Queued');
+  }
+
+  function deliveryLifecycleSignalTone(key, fallbackTone) {
+    if (key === 'healthy') return 'success';
+    if (key === 'poisonCandidate' || key === 'nonRetryableDeadLetter') return 'danger';
+    if (key === 'overdue' || key === 'retryHeavy' || key === 'retryableDeadLetter' || key === 'deadLetter') return 'warning';
+    return fallbackTone || 'info';
+  }
+
+  function deliveryLifecycleActionLabel(key) {
+    const labels = {
+      'review-runtime-before-retry': t('deliveryLifecycle.action.reviewRuntimeBeforeRetry', 'Review runtime before retry'),
+      'retry-queue-batch': t('deliveryLifecycle.action.retryQueueBatch', 'Retry queue batch'),
+      'retry-dead-letter-batch': t('deliveryLifecycle.action.retryDeadLetterBatch', 'Retry dead-letter batch'),
+      'hold-poison-candidates': t('deliveryLifecycle.action.holdPoisonCandidates', 'Hold poison candidates'),
+      'inspect-top-error': t('deliveryLifecycle.action.inspectTopError', 'Inspect top error'),
+      'lifecycle-stable': t('deliveryLifecycle.action.lifecycleStable', 'Lifecycle looks stable'),
+    };
+    return labels[key] || key || t('deliveryLifecycle.action.lifecycleStable', 'Lifecycle looks stable');
+  }
+
+  function deliveryLifecycleActionDetail(action) {
+    const key = String(action?.key || '').trim();
+    if (key === 'review-runtime-before-retry') {
+      return t(
+        'deliveryLifecycle.action.ownerReviewRuntimeDetail',
+        'Review runtime health and automation state before asking a tenant operator to replay queued work.',
+      );
+    }
+    if (key === 'retry-queue-batch') {
+      return t(
+        'deliveryLifecycle.action.ownerRetryQueueBatchDetail',
+        'Retryable queue jobs are visible. Confirm runtime stability, then hand off to the tenant recovery flow if replay is still needed.',
+      );
+    }
+    if (key === 'retry-dead-letter-batch') {
+      return t(
+        'deliveryLifecycle.action.ownerRetryDeadLetterBatchDetail',
+        'Retryable dead-letter entries are present. Export the lifecycle snapshot and verify tenant context before replay.',
+      );
+    }
+    if (key === 'hold-poison-candidates') {
+      return t(
+        'deliveryLifecycle.action.ownerHoldPoisonCandidatesDetail',
+        'Potential poison jobs are present. Keep them in review, export evidence, and open a tenant support case instead of forcing replay.',
+      );
+    }
+    if (key === 'inspect-top-error') {
+      return t(
+        'deliveryLifecycle.action.ownerInspectTopErrorDetail',
+        'Use observability and support tooling to understand the most repeated error signature before any manual intervention.',
+      );
+    }
+    return t(
+      'deliveryLifecycle.action.ownerLifecycleStableDetail',
+      'No immediate owner intervention is recommended from the current lifecycle snapshot.',
+    );
+  }
+
+  // These phase presenters keep owner labels/details in one place so the HTML
+  // can stay simple and we do not scatter lifecycle wording across renderers.
+  function getRestorePhasePresentation(restoreState, restorePreview) {
+    const phase = typeof getRestoreOperationalPhase === 'function'
+      ? getRestoreOperationalPhase(restoreState, restorePreview)
+      : { key: 'idle', tone: 'neutral' };
+    const labels = {
+      idle: {
+        label: t('owner.recovery.phase.idle', 'Idle'),
+        detail: t('owner.recovery.phase.idleDetail', 'No restore preview or restore execution is active right now.'),
+      },
+      previewed: {
+        label: t('owner.recovery.phase.previewed', 'Previewed'),
+        detail: t('owner.recovery.phase.previewedDetail', 'A dry-run preview exists and is ready for operator review before any restore execution.'),
+      },
+      executing: {
+        label: t('owner.recovery.phase.executing', 'Executing'),
+        detail: t('owner.recovery.phase.executingDetail', 'A restore workflow is actively running and should be watched until verification finishes.'),
+      },
+      completed: {
+        label: t('owner.recovery.phase.completed', 'Completed'),
+        detail: t('owner.recovery.phase.completedDetail', 'The latest restore run completed successfully and verification can be reviewed below.'),
+      },
+      'rolled-back': {
+        label: t('owner.recovery.phase.rolledBack', 'Rolled Back'),
+        detail: t('owner.recovery.phase.rolledBackDetail', 'The latest restore failed and rollback completed, so operators should review the failure before retrying.'),
+      },
+      failed: {
+        label: t('owner.recovery.phase.failed', 'Failed'),
+        detail: t('owner.recovery.phase.failedDetail', 'The latest restore failed and needs operator attention before recovery continues.'),
+      },
+    };
+    const selected = labels[phase.key] || labels.idle;
+    return { ...phase, ...selected };
+  }
+
+  function getConfigApplyPhasePresentation(applyState) {
+    const phase = typeof getConfigApplyOperationalPhase === 'function'
+      ? getConfigApplyOperationalPhase(applyState)
+      : { key: 'idle', tone: 'neutral' };
+    const labels = {
+      idle: {
+        label: t('owner.control.apply.phase.idle', 'Idle'),
+        detail: t('owner.control.apply.phase.idleDetail', 'No guarded config apply has been recorded in this browser session yet.'),
+      },
+      validated: {
+        label: t('owner.control.apply.phase.validated', 'Validated'),
+        detail: t('owner.control.apply.phase.validatedDetail', 'The latest submit validated successfully but did not change any editable environment keys.'),
+      },
+      applied: {
+        label: t('owner.control.apply.phase.applied', 'Applied'),
+        detail: t('owner.control.apply.phase.appliedDetail', 'The latest guarded config patch applied successfully and did not require a runtime restart.'),
+      },
+      'requires-restart': {
+        label: t('owner.control.apply.phase.requiresRestart', 'Requires Restart'),
+        detail: t('owner.control.apply.phase.requiresRestartDetail', 'The latest config patch applied successfully, but one or more runtime services still need restart.'),
+      },
+      'applied-restarted': {
+        label: t('owner.control.apply.phase.appliedRestarted', 'Applied + Restarted'),
+        detail: t('owner.control.apply.phase.appliedRestartedDetail', 'The latest config patch applied successfully and the selected runtime services were restarted.'),
+      },
+      'rolled-back': {
+        label: t('owner.control.apply.phase.rolledBack', 'Rolled Back'),
+        detail: t('owner.control.apply.phase.rolledBackDetail', 'The latest config apply was rolled back in the current operator session.'),
+      },
+    };
+    const selected = labels[phase.key] || labels.idle;
+    return { ...phase, ...selected };
+  }
   const OBSERVABILITY_SERIES_META = [
-    { key: 'deliveryQueueLength', title: 'Delivery Queue', mode: 'integer' },
-    { key: 'deliveryFailRate', title: 'Delivery Fail Rate', mode: 'percent' },
-    { key: 'deliveryDeadLetters', title: 'Dead Letters', mode: 'integer' },
-    { key: 'webhookErrorRate', title: 'Webhook Errors', mode: 'percent' },
-    { key: 'loginFailures', title: 'Login Failures', mode: 'integer' },
-    { key: 'adminRequestErrors', title: 'Request Errors', mode: 'integer' },
-    { key: 'runtimeDegraded', title: 'Degraded Runtime', mode: 'integer' },
+    { key: 'deliveryQueueLength', titleKey: 'owner.series.deliveryQueue', fallback: 'Delivery Queue', mode: 'integer' },
+    { key: 'deliveryFailRate', titleKey: 'owner.series.deliveryFailRate', fallback: 'Delivery Fail Rate', mode: 'percent' },
+    { key: 'deliveryDeadLetters', titleKey: 'owner.series.deadLetters', fallback: 'Dead Letters', mode: 'integer' },
+    { key: 'webhookErrorRate', titleKey: 'owner.series.webhookErrors', fallback: 'Webhook Errors', mode: 'percent' },
+    { key: 'loginFailures', titleKey: 'owner.series.loginFailures', fallback: 'Login Failures', mode: 'integer' },
+    { key: 'adminRequestErrors', titleKey: 'owner.series.requestErrors', fallback: 'Request Errors', mode: 'integer' },
+    { key: 'runtimeDegraded', titleKey: 'owner.series.degradedRuntime', fallback: 'Degraded Runtime', mode: 'integer' },
   ];
 
   function normalizeRuntimeRows(snapshot) {
@@ -85,11 +256,90 @@
     }
   }
 
+  function openTenantSupportCaseExport(tenantId, format = 'json') {
+    const scopedTenantId = String(tenantId || '').trim();
+    if (!scopedTenantId) return;
+    const query = new URLSearchParams({
+      tenantId: scopedTenantId,
+      format: String(format || 'json').trim() || 'json',
+    });
+    window.open(
+      `/admin/api/platform/tenant-support-case/export?${query.toString()}`,
+      '_blank',
+      'noopener,noreferrer',
+    );
+    showToast(
+      t('owner.toast.tenantSupportCaseExportStarted', 'Tenant support case export opened.'),
+      'success',
+    );
+  }
+
+  function openTenantDiagnosticsExport(tenantId, format = 'json') {
+    const scopedTenantId = String(tenantId || '').trim();
+    if (!scopedTenantId) return false;
+    const query = new URLSearchParams({
+      tenantId: scopedTenantId,
+      format: String(format || 'json').trim() || 'json',
+    });
+    window.open(
+      `/admin/api/platform/tenant-diagnostics/export?${query.toString()}`,
+      '_blank',
+      'noopener,noreferrer',
+    );
+    showToast(
+      t('owner.toast.tenantDiagnosticsExportStarted', 'Tenant diagnostics export opened.'),
+      'success',
+    );
+    return true;
+  }
+
+  function openRotationExport(format = 'json') {
+    const normalizedFormat = String(format || 'json').trim().toLowerCase() || 'json';
+    window.open(
+      `/admin/api/security/rotation-check/export?format=${encodeURIComponent(normalizedFormat)}`,
+      '_blank',
+      'noopener,noreferrer',
+    );
+    showToast(
+      t('owner.toast.rotationExportStarted', 'Secret rotation export opened.'),
+      'success',
+    );
+  }
+
+  function openDeliveryLifecycleExport(format = 'json') {
+    const normalizedFormat = String(format || 'json').trim().toLowerCase() || 'json';
+    window.open(
+      `/admin/api/delivery/lifecycle/export?format=${encodeURIComponent(normalizedFormat)}`,
+      '_blank',
+      'noopener,noreferrer',
+    );
+    showToast(
+      t('owner.toast.deliveryLifecycleExportStarted', 'Delivery lifecycle export opened.'),
+      'info',
+    );
+  }
+
   function listFromPayload(payload) {
     if (Array.isArray(payload)) return payload;
     if (Array.isArray(payload?.items)) return payload.items;
     if (Array.isArray(payload?.data)) return payload.data;
     return [];
+  }
+
+  function openOwnerTarget(sectionId, options = {}) {
+    if (workspaceController) {
+      workspaceController.openSection(sectionId, options);
+      return;
+    }
+    const targetId = options.targetId || sectionId;
+    document.getElementById(targetId)?.scrollIntoView({
+      behavior: 'smooth',
+      block: options.block || 'start',
+    });
+  }
+
+  function ownerNavLabel(sectionId) {
+    return String(document.querySelector(`#ownerNavList a[href="#${sectionId}"]`)?.textContent || '').trim() || sectionId;
   }
 
   function parseOptionalJson(raw, label) {
@@ -135,6 +385,140 @@
     return formatNumber(number, '0');
   }
 
+  function getAutomationState() {
+    const opsAutomation = state.opsState?.automation;
+    if (opsAutomation && typeof opsAutomation === 'object') return opsAutomation;
+    const overviewAutomation = state.overview?.automationState;
+    if (overviewAutomation && typeof overviewAutomation === 'object') return overviewAutomation;
+    return {};
+  }
+
+  function summarizeQuotaEntry(entry) {
+    if (!entry || typeof entry !== 'object') return '-';
+    if (entry.unlimited) return `${formatNumber(entry.used, '0')} / unlimited`;
+    return `${formatNumber(entry.used, '0')} / ${formatNumber(entry.limit, '0')}`;
+  }
+
+  function quotaEntryTone(entry) {
+    if (!entry || typeof entry !== 'object') return 'neutral';
+    if (entry.exceeded === true) return 'danger';
+    if (entry.unlimited) return 'info';
+    const limit = Number(entry.limit || 0);
+    const used = Number(entry.used || 0);
+    if (!Number.isFinite(limit) || limit <= 0) return 'neutral';
+    if (used >= limit) return 'danger';
+    if (used / limit >= 0.75) return 'warning';
+    return 'success';
+  }
+
+  function summarizePlanQuotas(plan) {
+    const quotas = plan?.quotas && typeof plan.quotas === 'object' ? plan.quotas : {};
+    const labels = Object.entries(quotas).map(([key, value]) => {
+      const title = key
+        .replace(/([A-Z])/g, ' $1')
+        .replace(/^./, (char) => char.toUpperCase());
+      return `${title}: ${value == null ? 'unlimited' : value}`;
+    });
+    return labels.length > 0 ? labels.join(' | ') : 'No explicit plan quotas';
+  }
+
+  function supportToneToPill(tone) {
+    if (tone === 'danger') return 'danger';
+    if (tone === 'warning') return 'warning';
+    if (tone === 'success') return 'success';
+    return 'info';
+  }
+
+  function supportPhaseLabel(key) {
+    const normalized = String(key || '').trim().toLowerCase();
+    if (normalized === 'blocked') return t('owner.support.phase.blocked', 'Blocked');
+    if (normalized === 'commercial-gate') return t('owner.support.phase.commercialGate', 'Commercial Gate');
+    if (normalized === 'trial') return t('owner.support.phase.trial', 'Trial');
+    if (normalized === 'attention') return t('owner.support.phase.attention', 'Needs Attention');
+    if (normalized === 'active') return t('owner.support.phase.active', 'Active');
+    return t('owner.support.phase.setup', 'Setup');
+  }
+
+  function supportChecklistLabel(key) {
+    const labels = {
+      'tenant-record': t('owner.support.step.tenantRecord', 'Tenant Record'),
+      'operational-gate': t('owner.support.step.operationalGate', 'Operational Gate'),
+      subscription: t('owner.support.step.subscription', 'Subscription'),
+      license: t('owner.support.step.license', 'License'),
+      'api-credential': t('owner.support.step.apiCredential', 'API Credential'),
+      'webhook-route': t('owner.support.step.webhookRoute', 'Webhook Route'),
+      'agent-runtime': t('owner.support.step.agentRuntime', 'Agent Runtime'),
+    };
+    return labels[key] || key || '-';
+  }
+
+  function supportChecklistStatusLabel(status, required) {
+    const normalized = String(status || '').trim().toLowerCase();
+    if (normalized === 'done') return t('owner.support.status.done', 'Done');
+    if (normalized === 'blocked') return t('owner.support.status.blocked', 'Blocked');
+    if (normalized === 'warning') return t('owner.support.status.warning', 'Warning');
+    if (normalized === 'optional') {
+      return required
+        ? t('owner.support.status.missing', 'Missing')
+        : t('owner.support.status.optional', 'Optional');
+    }
+    return t('owner.support.status.missing', 'Missing');
+  }
+
+  function supportChecklistStatusTone(status, required) {
+    const normalized = String(status || '').trim().toLowerCase();
+    if (normalized === 'done') return 'success';
+    if (normalized === 'blocked') return 'danger';
+    if (normalized === 'warning') return 'warning';
+    if (normalized === 'optional' && !required) return 'neutral';
+    return 'warning';
+  }
+
+  function supportSignalLabel(key) {
+    const labels = {
+      'commercial-gate': t('owner.support.signal.commercialGate', 'Commercial Gate'),
+      'dead-letters': t('owner.support.signal.deadLetters', 'Dead Letters'),
+      'delivery-anomalies': t('owner.support.signal.deliveryAnomalies', 'Delivery Anomalies'),
+      'runtime-degraded': t('owner.support.signal.runtimeDegraded', 'Runtime Degraded'),
+      'request-errors': t('owner.support.signal.requestErrors', 'Request Errors'),
+      'open-alerts': t('owner.support.signal.openAlerts', 'Open Alerts'),
+      'quota-hotspots': t('owner.support.signal.quotaHotspots', 'Quota Hotspots'),
+      'abuse-signals': t('owner.support.signal.abuseSignals', 'Abuse Signals'),
+    };
+    return labels[key] || key || '-';
+  }
+
+  function supportActionLabel(key) {
+    const labels = {
+      'review-commercial-gate': t('owner.support.action.reviewCommercialGate', 'Review Commercial Gate'),
+      'inspect-dead-letters': t('owner.support.action.inspectDeadLetters', 'Inspect Dead Letters'),
+      'reconcile-delivery': t('owner.support.action.reconcileDelivery', 'Reconcile Delivery'),
+      'review-runtime': t('owner.support.action.reviewRuntime', 'Review Runtime'),
+      'review-request-errors': t('owner.support.action.reviewRequestErrors', 'Review Request Errors'),
+      'clear-alerts': t('owner.support.action.clearAlerts', 'Clear Open Alerts'),
+      'confirm-integrations': t('owner.support.action.confirmIntegrations', 'Confirm Integrations'),
+      'case-quiet': t('owner.support.action.caseQuiet', 'Case Looks Quiet'),
+    };
+    return labels[key] || key || '-';
+  }
+
+  function buildQuotaPressureRows() {
+    return state.tenantQuotaSnapshots
+      .map((snapshot) => {
+        const entries = Object.entries(snapshot?.quotas || {});
+        const hot = entries.filter(([, value]) => quotaEntryTone(value) !== 'success' && quotaEntryTone(value) !== 'info');
+        return {
+          tenantId: snapshot?.tenantId || snapshot?.tenant?.id || '',
+          tenantName: snapshot?.tenant?.name || snapshot?.tenant?.slug || snapshot?.tenantId || '-',
+          planName: snapshot?.plan?.name || snapshot?.subscription?.planId || '-',
+          hot,
+          entries,
+        };
+      })
+      .sort((left, right) => right.hot.length - left.hot.length)
+      .slice(0, 10);
+  }
+
   function buildSparkBars(points = [], tone = 'info') {
     const values = (Array.isArray(points) ? points : [])
       .map((point) => Number(point?.value || 0))
@@ -167,7 +551,7 @@
       return [
         '<article class="series-card">',
         `<span class="section-kicker">${escapeHtml(meta.key)}</span>`,
-        `<h4>${escapeHtml(meta.title)}</h4>`,
+        `<h4>${escapeHtml(t(meta.titleKey, meta.fallback))}</h4>`,
         `<strong class="series-value">${escapeHtml(formatMetricValue(latest, meta.mode))}</strong>`,
         buildSparkBars(points, tone),
         `<div class="series-meta">${makePill(`${points.length} points`, 'neutral')}</div>`,
@@ -253,13 +637,24 @@
     return params.toString();
   }
 
+  function buildIncidentQueryString(filters = {}, extra = {}) {
+    const params = new URLSearchParams();
+    const merged = { ...filters, ...extra };
+    Object.entries(merged).forEach(([key, value]) => {
+      const normalized = String(value ?? '').trim();
+      if (!normalized && normalized !== 'false') return;
+      params.set(key, normalized);
+    });
+    return params.toString();
+  }
+
   function setBanner(title, detail, tags, tone) {
     const banner = document.getElementById('ownerStatusBanner');
     const tagWrap = document.getElementById('ownerStatusTags');
     document.getElementById('ownerStatusTitle').textContent = title;
     document.getElementById('ownerStatusDetail').textContent = detail;
     banner.className = `status-banner banner-${tone || 'info'}`;
-    tagWrap.innerHTML = (Array.isArray(tags) ? tags : []).map((tag) => makePill(tag)).join('');
+    tagWrap.innerHTML = (Array.isArray(tags) ? tags : []).filter(Boolean).map((tag) => makePill(tag)).join('');
   }
 
   function buildIncidentItems() {
@@ -292,12 +687,25 @@
       .slice(0, 12);
   }
 
+  // Owner overview is the "front page" of the console.
+  // Keep it limited to a few summary cards so the owner can scan platform
+  // health quickly before diving into a deeper page from the sidebar.
   function renderOverview() {
     const analytics = state.overview?.analytics || {};
     const tenants = analytics.tenants || {};
     const delivery = analytics.delivery || {};
     const subscriptions = analytics.subscriptions || {};
     const runtimeRows = normalizeRuntimeRows(state.runtimeSupervisor);
+    const automation = getAutomationState();
+    const automationConfig =
+      state.automationReport?.automationConfig
+      || state.opsState?.automationConfig
+      || state.overview?.automationConfig
+      || null;
+    const rotationWarnings = Array.isArray(state.rotationReport?.warnings) ? state.rotationReport.warnings.length : 0;
+    const rotationErrors = Array.isArray(state.rotationReport?.errors) ? state.rotationReport.errors.length : 0;
+    const recoveryResults = Object.values(automation?.lastRecoveryResultByKey || {});
+    const failedRecoveries = recoveryResults.filter((row) => row?.ok === false).length;
     const readyServices = runtimeRows.filter((row) => String(row.status || '').toLowerCase() === 'ready').length;
     const degradedServices = runtimeRows.filter((row) => {
       const status = String(row.status || '').toLowerCase();
@@ -307,92 +715,443 @@
 
     renderStats(document.getElementById('ownerOverviewStats'), [
       {
-        kicker: 'Tenants',
+        kicker: t('owner.overview.tenants.kicker', 'Tenants'),
         value: formatNumber(tenants.total || state.tenants.length, '0'),
-        title: 'Active platform tenants',
-        detail: 'Includes trialing and reseller entries visible from the owner scope.',
+        title: t('owner.overview.tenants.title', 'Active platform tenants'),
+        detail: t('owner.overview.tenants.detail', 'Includes trialing and reseller entries visible from the owner scope.'),
         tags: [
-          `active ${formatNumber(tenants.active, '0')}`,
-          `trial ${formatNumber(tenants.trialing, '0')}`,
-          `reseller ${formatNumber(tenants.reseller, '0')}`,
+          t('owner.overview.tenants.activeTag', 'active {count}', { count: formatNumber(tenants.active, '0') }),
+          t('owner.overview.tenants.trialTag', 'trial {count}', { count: formatNumber(tenants.trialing, '0') }),
+          t('owner.overview.tenants.resellerTag', 'reseller {count}', { count: formatNumber(tenants.reseller, '0') }),
         ],
       },
       {
-        kicker: 'Delivery',
+        kicker: t('owner.overview.delivery.kicker', 'Delivery'),
         value: `${formatNumber(delivery.successRate, '0')}%`,
-        title: '30-day delivery success',
-        detail: 'Platform-wide purchase-to-delivery signal.',
+        title: t('owner.overview.delivery.title', '30-day delivery success'),
+        detail: t('owner.overview.delivery.detail', 'Platform-wide purchase-to-delivery signal.'),
         tags: [
-          `purchases ${formatNumber(delivery.purchaseCount30d, '0')}`,
-          `queue ${formatNumber(delivery.queueJobs, '0')}`,
-          `dead ${formatNumber(delivery.deadLetters, '0')}`,
+          t('owner.overview.delivery.purchasesTag', 'purchases {count}', { count: formatNumber(delivery.purchaseCount30d, '0') }),
+          t('owner.overview.delivery.queueTag', 'queue {count}', { count: formatNumber(delivery.queueJobs, '0') }),
+          t('owner.overview.delivery.deadTag', 'dead {count}', { count: formatNumber(delivery.deadLetters, '0') }),
         ],
       },
       {
-        kicker: 'Runtime',
+        kicker: t('owner.overview.runtime.kicker', 'Runtime'),
         value: `${formatNumber(readyServices, '0')}/${formatNumber(runtimeRows.length, '0')}`,
-        title: 'Managed services ready',
-        detail: 'Bot, worker, watcher, admin web, and auxiliary services.',
+        title: t('owner.overview.runtime.title', 'Managed services ready'),
+        detail: t('owner.overview.runtime.detail', 'Bot, worker, watcher, admin web, and auxiliary services.'),
         tags: [
-          `degraded ${formatNumber(degradedServices, '0')}`,
-          `agents ${formatNumber(state.agents.length, '0')}`,
+          t('owner.overview.runtime.degradedTag', 'degraded {count}', { count: formatNumber(degradedServices, '0') }),
+          t('owner.overview.runtime.agentsTag', 'agents {count}', { count: formatNumber(state.agents.length, '0') }),
         ],
       },
       {
-        kicker: 'Incidents',
+        kicker: t('owner.overview.incidents.kicker', 'Incidents'),
         value: formatNumber(state.notifications.length + requestErrors, '0'),
-        title: 'Open owner attention items',
-        detail: 'Aggregates notifications and latest request anomalies.',
+        title: t('owner.overview.incidents.title', 'Open owner attention items'),
+        detail: t('owner.overview.incidents.detail', 'Aggregates notifications and latest request anomalies.'),
         tags: [
-          `alerts ${formatNumber(state.notifications.length, '0')}`,
-          `request errors ${formatNumber(requestErrors, '0')}`,
-          `subs ${formatNumber(subscriptions.active, '0')}`,
+          t('owner.overview.incidents.alertsTag', 'alerts {count}', { count: formatNumber(state.notifications.length, '0') }),
+          t('owner.overview.incidents.requestErrorsTag', 'request errors {count}', { count: formatNumber(requestErrors, '0') }),
+          t('owner.overview.incidents.subsTag', 'subs {count}', { count: formatNumber(subscriptions.active, '0') }),
+        ],
+      },
+      {
+        kicker: t('owner.overview.automation.kicker', 'Automation'),
+        value: automationConfig?.enabled === false
+          ? t('owner.overview.automation.off', 'off')
+          : automation?.lastAutomationAt
+            ? t('owner.overview.automation.active', 'active')
+            : t('owner.overview.automation.idle', 'idle'),
+        title: t('owner.overview.automation.title', 'Guarded recovery posture'),
+        detail: automation?.lastAutomationAt
+          ? t('owner.overview.automation.detailRecent', 'Last automation cycle: {time}', {
+              time: formatDateTime(automation.lastAutomationAt),
+            })
+          : t('owner.overview.automation.detailIdle', 'No automation cycle has been recorded yet.'),
+        tags: [
+          t(
+            'owner.overview.automation.servicesTag',
+            'services {count}',
+            { count: formatNumber(automationConfig?.restartServices?.length || 0, '0') },
+          ),
+          t(
+            'owner.overview.automation.windowTag',
+            'windows {count}',
+            { count: formatNumber(Object.keys(automation?.recoveryAttemptsByKey || {}).length, '0') },
+          ),
+          t(
+            'owner.overview.automation.failedTag',
+            'failed {count}',
+            { count: formatNumber(failedRecoveries, '0') },
+          ),
         ],
       },
     ]);
+    renderQuickActions();
+  }
+
+  function renderQuickActions() {
+    const container = document.getElementById('ownerQuickActions');
+    if (!container) return;
+    const items = [
+      {
+        key: 'delivery-stuck',
+        tone: 'warning',
+        tag: t('owner.quickAction.tag.runtime', 'runtime'),
+        title: t('owner.quickAction.deliveryStuck.title', 'Delivery stuck'),
+        detail: t('owner.quickAction.deliveryStuck.detail', 'Open delivery lifecycle watch first, then decide whether the issue needs tenant support, export evidence, or runtime review.'),
+        button: t('owner.quickAction.deliveryStuck.button', 'Open delivery watch'),
+      },
+      {
+        key: 'wallet-mismatch',
+        tone: 'info',
+        tag: t('owner.quickAction.tag.audit', 'audit'),
+        title: t('owner.quickAction.walletMismatch.title', 'Wallet mismatch'),
+        detail: t('owner.quickAction.walletMismatch.detail', 'Jump straight to the wallet audit view when coins, rewards, or ledger changes need owner-level review.'),
+        button: t('owner.quickAction.walletMismatch.button', 'Open wallet audit'),
+      },
+      {
+        key: 'steam-link-issue',
+        tone: 'warning',
+        tag: t('owner.quickAction.tag.support', 'support'),
+        title: t('owner.quickAction.steamLink.title', 'Steam link issue'),
+        detail: t('owner.quickAction.steamLink.detail', 'Open the tenant support case flow first when the issue is player identity, Steam readiness, or onboarding drift.'),
+        button: t('owner.quickAction.steamLink.button', 'Open support case'),
+      },
+      {
+        key: 'restart-announcement',
+        tone: 'info',
+        tag: t('owner.quickAction.tag.legacy', 'legacy'),
+        title: t('owner.quickAction.restartAnnouncement.title', 'Restart announcement'),
+        detail: t('owner.quickAction.restartAnnouncement.detail', 'Use the existing delivery workbench when you need the deeper restart or maintenance communication workflow.'),
+        button: t('owner.quickAction.restartAnnouncement.button', 'Open restart flow'),
+      },
+    ];
+    container.innerHTML = items.map((item) => [
+      '<article class="quick-action-card">',
+      `<div class="feed-meta">${makePill(item.tag, item.tone)}</div>`,
+      `<strong>${escapeHtml(item.title)}</strong>`,
+      `<p>${escapeHtml(item.detail)}</p>`,
+      `<div class="button-row"><button type="button" class="button button-primary" data-owner-quick-action="${escapeHtml(item.key)}">${escapeHtml(item.button)}</button></div>`,
+      '</article>',
+    ].join('')).join('');
+  }
+
+  function focusOwnerAuditView(view) {
+    const nextView = String(view || 'wallet').trim() || 'wallet';
+    state.auditFilters = {
+      ...state.auditFilters,
+      view: nextView,
+    };
+    renderAudit();
+    openOwnerTarget('audit', { targetId: 'ownerAuditQueryForm', block: 'center' });
+  }
+
+  function runOwnerQuickAction(actionKey) {
+    const key = String(actionKey || '').trim();
+    if (key === 'delivery-stuck') {
+      openOwnerTarget('observability', { targetId: 'ownerDeliveryLifecycleActions', block: 'center' });
+      return;
+    }
+    if (key === 'wallet-mismatch') {
+      focusOwnerAuditView('wallet');
+      showToast(t('owner.toast.walletAuditFocused', 'Wallet audit view focused.'), 'info');
+      return;
+    }
+    if (key === 'steam-link-issue') {
+      openOwnerTarget('fleet', { targetId: 'ownerSupportCaseForm', block: 'center' });
+      return;
+    }
+    if (key === 'restart-announcement') {
+      window.location.href = '/admin/legacy?tab=delivery';
+    }
   }
 
   function renderTenantTable() {
     renderTable(document.getElementById('ownerTenantTable'), {
-      emptyText: 'No tenants found.',
+      emptyText: t('owner.table.empty.tenants', 'No tenants found.'),
       columns: [
         {
-          label: 'Tenant',
+          label: t('owner.table.tenant', 'Tenant'),
           render: (row) => [
             `<strong>${escapeHtml(row.name || row.slug || row.id || '-')}</strong>`,
             `<div class="muted code">${escapeHtml(row.id || '-')}</div>`,
           ].join(''),
         },
         {
-          label: 'Status',
+          label: t('owner.table.status', 'Status'),
           render: (row) => makePill(row.status || 'unknown'),
         },
         {
-          label: 'Type',
+          label: t('owner.table.type', 'Type'),
           render: (row) => escapeHtml(row.type || row.plan || '-'),
         },
         {
-          label: 'Owner',
+          label: t('owner.table.owner', 'Owner'),
           render: (row) => [
             `<div>${escapeHtml(row.ownerName || '-')}</div>`,
             row.ownerEmail ? `<div class="muted">${escapeHtml(row.ownerEmail)}</div>` : '',
           ].join(''),
         },
         {
-          label: 'Updated',
+          label: t('owner.table.updated', 'Updated'),
           render: (row) => `<span class="code">${escapeHtml(formatDateTime(row.updatedAt || row.createdAt))}</span>`,
+        },
+        {
+          // Keep support review a one-click workflow from the fleet view.
+          // If you want a richer drawer later, start from this action column.
+          label: t('owner.table.actions', 'Actions'),
+          render: (row) => {
+            const tenantId = String(row.id || '').trim();
+            if (!tenantId) return '<span class="muted">-</span>';
+            return `<button type="button" class="button table-inline-action" data-owner-support-case="${escapeHtml(tenantId)}">${escapeHtml(t('owner.table.openCase', 'Open Case'))}</button>`;
+          },
         },
       ],
       rows: state.tenants.slice(0, 20),
     });
   }
 
+  function renderSupportCase() {
+    const select = document.getElementById('ownerSupportTenantSelect');
+    const statsWrap = document.getElementById('ownerSupportCaseStats');
+    const metaWrap = document.getElementById('ownerSupportCaseMeta');
+    const checklistWrap = document.getElementById('ownerSupportCaseChecklist');
+    const signalsWrap = document.getElementById('ownerSupportCaseSignals');
+    const actionsWrap = document.getElementById('ownerSupportCaseActions');
+    const exportJsonBtn = document.getElementById('ownerSupportCaseExportJsonBtn');
+    const exportCsvBtn = document.getElementById('ownerSupportCaseExportCsvBtn');
+    const selectedTenantId = String(state.supportCase?.tenantId || select?.value || '').trim();
+
+    if (select) {
+      const current = selectedTenantId;
+      select.innerHTML = [
+        `<option value="">${escapeHtml(t('owner.form.chooseTenant', 'Choose tenant'))}</option>`,
+        ...state.tenants.map((row) => {
+          const tenantId = String(row.id || '').trim();
+          const label = row.name || row.slug || tenantId || '-';
+          const selected = tenantId && tenantId === current ? ' selected' : '';
+          return `<option value="${escapeHtml(tenantId)}"${selected}>${escapeHtml(label)} (${escapeHtml(tenantId)})</option>`;
+        }),
+      ].join('');
+      if (current) {
+        select.value = current;
+      }
+    }
+
+    if (exportJsonBtn) exportJsonBtn.disabled = !selectedTenantId;
+    if (exportCsvBtn) exportCsvBtn.disabled = !selectedTenantId;
+
+    if (!state.supportCase) {
+      statsWrap.innerHTML = '';
+      metaWrap.innerHTML = `<div class="empty-state">${escapeHtml(t('owner.support.empty', 'Choose a tenant to load lifecycle, onboarding, and support context.'))}</div>`;
+      checklistWrap.innerHTML = `<div class="empty-state">${escapeHtml(t('owner.support.emptyChecklist', 'No support checklist loaded yet.'))}</div>`;
+      signalsWrap.innerHTML = `<div class="empty-state">${escapeHtml(t('owner.support.emptySignals', 'No support signals loaded yet.'))}</div>`;
+      actionsWrap.innerHTML = `<div class="empty-state">${escapeHtml(t('owner.support.emptyActions', 'No recommended next steps yet.'))}</div>`;
+      return;
+    }
+
+    const bundle = state.supportCase;
+    const onboarding = bundle?.onboarding || {};
+    const signals = bundle?.signals || {};
+    const lifecycle = bundle?.lifecycle || {};
+    const diagnostics = bundle?.diagnostics || {};
+    const ownerContact = [
+      diagnostics?.tenant?.ownerName || diagnostics?.tenant?.ownerEmail || '',
+      diagnostics?.tenant?.ownerEmail && diagnostics?.tenant?.ownerEmail !== diagnostics?.tenant?.ownerName
+        ? diagnostics.tenant.ownerEmail
+        : '',
+    ].filter(Boolean).join(' | ') || '-';
+
+    renderStats(statsWrap, [
+      {
+        kicker: t('owner.support.summary.phase', 'Phase'),
+        title: supportPhaseLabel(lifecycle.key),
+        detail: lifecycle.detail || '-',
+      },
+      {
+        kicker: t('owner.support.summary.required', 'Required Ready'),
+        title: `${formatNumber(onboarding.requiredCompleted, '0')} / ${formatNumber(onboarding.requiredTotal, '0')}`,
+        detail: t('owner.support.summary.requiredDetail', 'Required onboarding checks completed'),
+      },
+      {
+        kicker: t('owner.support.summary.signals', 'Signals'),
+        title: formatNumber(signals.total, '0'),
+        detail: t('owner.support.summary.signalsDetail', 'Open support or incident signals'),
+      },
+      {
+        kicker: t('owner.support.summary.exports', 'Export'),
+        title: formatDateTime(bundle.generatedAt),
+        detail: t('owner.support.summary.exportsDetail', 'Latest owner support snapshot time'),
+      },
+    ]);
+
+    metaWrap.innerHTML = [
+      '<article class="panel-card">',
+      `<h3>${escapeHtml(t('owner.support.caseOverview', 'Case Overview'))}</h3>`,
+      `<p>${escapeHtml(lifecycle.detail || '-')}</p>`,
+      `<div class="tag-row">${[
+        makePill(supportPhaseLabel(lifecycle.key), supportToneToPill(lifecycle.tone)),
+        makePill(`${t('owner.support.meta.tenantStatus', 'tenant')} ${lifecycle.tenantStatus || '-'}`, 'neutral'),
+        makePill(`${t('owner.support.meta.subscriptionStatus', 'subscription')} ${lifecycle.subscriptionStatus || '-'}`, 'neutral'),
+        makePill(`${t('owner.support.meta.licenseStatus', 'license')} ${lifecycle.licenseStatus || '-'}`, 'neutral'),
+      ].join(' ')}</div>`,
+      '</article>',
+      '<article class="panel-card">',
+      `<h3>${escapeHtml(t('owner.support.caseMeta', 'Case Metadata'))}</h3>`,
+      `<div class="feed-item"><strong>${escapeHtml(t('owner.support.meta.tenantId', 'Tenant ID'))}</strong><div class="muted code">${escapeHtml(bundle.tenantId || '-')}</div></div>`,
+      `<div class="feed-item"><strong>${escapeHtml(t('owner.support.meta.owner', 'Owner Contact'))}</strong><div class="muted">${escapeHtml(ownerContact)}</div></div>`,
+      `<div class="feed-item"><strong>${escapeHtml(t('owner.support.meta.monitoring', 'Last Monitoring'))}</strong><div class="muted">${escapeHtml(formatDateTime(diagnostics?.platform?.lastMonitoringAt))}</div></div>`,
+      `<div class="feed-item"><strong>${escapeHtml(t('owner.support.meta.reconcile', 'Last Reconcile'))}</strong><div class="muted">${escapeHtml(formatDateTime(diagnostics?.platform?.lastReconcileAt))}</div></div>`,
+      '</article>',
+    ].join('');
+
+    renderList(
+      checklistWrap,
+      Array.isArray(onboarding.items) ? onboarding.items : [],
+      (item) => [
+        '<article class="feed-item">',
+        `<div class="feed-meta">${makePill(supportChecklistStatusLabel(item.status, item.required), supportChecklistStatusTone(item.status, item.required))}${item.required ? ` ${makePill(t('owner.support.required', 'required'), 'info')}` : ` ${makePill(t('owner.support.optional', 'optional'), 'neutral')}`}</div>`,
+        `<strong>${escapeHtml(supportChecklistLabel(item.key))}</strong>`,
+        `<div class="muted">${escapeHtml(item.detail || '-')}</div>`,
+        '</article>',
+      ].join(''),
+      t('owner.support.emptyChecklist', 'No support checklist loaded yet.'),
+    );
+
+    renderList(
+      signalsWrap,
+      Array.isArray(signals.items) ? signals.items : [],
+      (item) => [
+        '<article class="feed-item">',
+        `<div class="feed-meta">${makePill(supportSignalLabel(item.key), supportToneToPill(item.tone))} ${makePill(formatNumber(item.count, '0'), 'neutral')}</div>`,
+        `<strong>${escapeHtml(supportSignalLabel(item.key))}</strong>`,
+        `<div class="muted">${escapeHtml(item.detail || '-')}</div>`,
+        '</article>',
+      ].join(''),
+      t('owner.support.emptySignalsLoaded', 'No active support signals for this tenant.'),
+    );
+
+    renderList(
+      actionsWrap,
+      Array.isArray(bundle.actions) ? bundle.actions : [],
+      (item) => [
+        '<article class="feed-item">',
+        `<div class="feed-meta">${makePill(supportActionLabel(item.key), supportToneToPill(item.tone))}</div>`,
+        `<strong>${escapeHtml(supportActionLabel(item.key))}</strong>`,
+        `<div class="muted">${escapeHtml(item.detail || '-')}</div>`,
+        '</article>',
+      ].join(''),
+      t('owner.support.emptyActions', 'No recommended next steps yet.'),
+    );
+  }
+
+  function getOwnerSupportScopedTenantId() {
+    return String(
+      state.supportCase?.tenantId
+      || document.getElementById('ownerSupportTenantSelect')?.value
+      || ''
+    ).trim();
+  }
+
+  // Keep owner support shortcuts intentionally small: load one tenant case,
+  // export diagnostics, inspect lifecycle posture, or step into maintenance.
+  function renderOwnerSupportToolkit() {
+    const container = document.getElementById('ownerSupportToolkit');
+    if (!container) return;
+    const scopedTenantId = getOwnerSupportScopedTenantId();
+    const hasTenantContext = Boolean(scopedTenantId);
+    const items = [
+      {
+        key: 'support-case',
+        tone: 'warning',
+        tag: t('owner.supportToolkit.tag.support', 'support'),
+        title: t('owner.supportToolkit.supportCase.title', 'Open tenant support case'),
+        detail: hasTenantContext
+          ? t('owner.supportToolkit.supportCase.detailActive', 'Continue working on tenant {tenantId} with onboarding, signals, and next-step guidance already in view.', { tenantId: scopedTenantId })
+          : t('owner.supportToolkit.supportCase.detail', 'Start from one tenant case before you export evidence or jump into deeper runtime tools.'),
+        button: t('owner.supportToolkit.supportCase.button', 'Open support case'),
+      },
+      {
+        key: 'diagnostics',
+        tone: 'info',
+        tag: t('owner.supportToolkit.tag.diagnostics', 'diagnostics'),
+        title: t('owner.supportToolkit.diagnostics.title', 'Export tenant diagnostics'),
+        detail: hasTenantContext
+          ? t('owner.supportToolkit.diagnostics.detailActive', 'Export the current tenant diagnostics bundle for support handoff or incident notes.')
+          : t('owner.supportToolkit.diagnostics.detail', 'Choose a tenant support case first, then export the diagnostics bundle without opening raw API routes manually.'),
+        button: t('owner.supportToolkit.diagnostics.button', 'Export diagnostics'),
+      },
+      {
+        key: 'lifecycle',
+        tone: 'warning',
+        tag: t('owner.supportToolkit.tag.runtime', 'runtime'),
+        title: t('owner.supportToolkit.lifecycle.title', 'Inspect delivery lifecycle'),
+        detail: t('owner.supportToolkit.lifecycle.detail', 'Jump to the lifecycle watch when queue pressure, retries, or poison candidates need owner review before tenant replay.'),
+        button: t('owner.supportToolkit.lifecycle.button', 'Open lifecycle watch'),
+      },
+      {
+        key: 'restart',
+        tone: 'danger',
+        tag: t('owner.supportToolkit.tag.maintenance', 'maintenance'),
+        title: t('owner.supportToolkit.restart.title', 'Open restart workflow'),
+        detail: t('owner.supportToolkit.restart.detail', 'Use the existing maintenance flow when you need restart communication or a planned downtime runbook.'),
+        button: t('owner.supportToolkit.restart.button', 'Open restart flow'),
+      },
+    ];
+
+    container.innerHTML = items.map((item) => [
+      '<article class="quick-action-card">',
+      `<div class="feed-meta">${makePill(item.tag, item.tone)}</div>`,
+      `<strong>${escapeHtml(item.title)}</strong>`,
+      `<p>${escapeHtml(item.detail)}</p>`,
+      `<div class="button-row"><button type="button" class="button button-primary" data-owner-support-tool="${escapeHtml(item.key)}">${escapeHtml(item.button)}</button></div>`,
+      '</article>',
+    ].join('')).join('');
+  }
+
+  function runOwnerSupportToolkitAction(actionKey) {
+    const key = String(actionKey || '').trim();
+    const scopedTenantId = getOwnerSupportScopedTenantId();
+    if (key === 'support-case') {
+      openOwnerTarget('fleet', {
+        targetId: scopedTenantId ? 'ownerSupportCaseStats' : 'ownerSupportCaseForm',
+        block: 'center',
+      });
+      if (!scopedTenantId) {
+        showToast(t('owner.toast.supportToolkitNeedsTenant', 'Choose a tenant support case first.'), 'info');
+      }
+      return;
+    }
+    if (key === 'diagnostics') {
+      if (openTenantDiagnosticsExport(scopedTenantId, 'json')) {
+        return;
+      }
+      openOwnerTarget('fleet', { targetId: 'ownerSupportCaseForm', block: 'center' });
+      showToast(t('owner.toast.supportToolkitNeedsTenant', 'Choose a tenant support case first.'), 'info');
+      return;
+    }
+    if (key === 'lifecycle') {
+      openOwnerTarget('observability', { targetId: 'ownerDeliveryLifecycleActions', block: 'center' });
+      return;
+    }
+    if (key === 'restart') {
+      showToast(t('owner.toast.restartFlowOpened', 'Restart flow opened.'), 'info');
+      window.location.href = '/admin/legacy?tab=delivery';
+    }
+  }
+
   function renderFleetAssets() {
+    // These tables map directly to the owner-only commercial/integration
+    // surface. If you want to hide or reorder one asset type, edit this
+    // function first before touching the HTML.
     const tenantSelects = Array.from(document.querySelectorAll('.owner-tenant-select'));
     tenantSelects.forEach((select) => {
       const current = String(select.value || '').trim();
       select.innerHTML = [
-        '<option value="">Choose tenant</option>',
+        `<option value="">${escapeHtml(t('owner.form.chooseTenant', 'Choose tenant'))}</option>`,
         ...state.tenants.map((row) => {
           const tenantId = String(row.id || '').trim();
           const label = row.name || row.slug || tenantId || '-';
@@ -406,29 +1165,29 @@
     });
 
     renderTable(document.getElementById('ownerSubscriptionTable'), {
-      emptyText: 'No subscriptions found.',
+      emptyText: t('owner.table.empty.subscriptions', 'No subscriptions found.'),
       columns: [
         {
-          label: 'Tenant',
+          label: t('owner.table.tenant', 'Tenant'),
           render: (row) => [
             `<strong>${escapeHtml(row.tenantName || row.tenantId || '-')}</strong>`,
             row.tenantId ? `<div class="muted code">${escapeHtml(row.tenantId)}</div>` : '',
           ].join(''),
         },
         {
-          label: 'Plan',
+          label: t('owner.table.plan', 'Plan'),
           render: (row) => escapeHtml(row.planId || row.planName || '-'),
         },
         {
-          label: 'Status',
+          label: t('owner.table.status', 'Status'),
           render: (row) => makePill(row.status || 'unknown'),
         },
         {
-          label: 'Billing',
+          label: t('owner.table.billing', 'Billing'),
           render: (row) => escapeHtml(row.billingCycle || row.currency || '-'),
         },
         {
-          label: 'Renews',
+          label: t('owner.table.renews', 'Renews'),
           render: (row) => `<span class="code">${escapeHtml(formatDateTime(row.renewsAt || row.startedAt))}</span>`,
         },
       ],
@@ -436,29 +1195,29 @@
     });
 
     renderTable(document.getElementById('ownerLicenseTable'), {
-      emptyText: 'No licenses found.',
+      emptyText: t('owner.table.empty.licenses', 'No licenses found.'),
       columns: [
         {
-          label: 'Tenant',
+          label: t('owner.table.tenant', 'Tenant'),
           render: (row) => [
             `<strong>${escapeHtml(row.tenantName || row.tenantId || '-')}</strong>`,
             row.tenantId ? `<div class="muted code">${escapeHtml(row.tenantId)}</div>` : '',
           ].join(''),
         },
         {
-          label: 'License',
+          label: t('owner.table.license', 'License'),
           render: (row) => `<span class="code">${escapeHtml(maskTail(row.licenseKey || row.id || '-'))}</span>`,
         },
         {
-          label: 'Status',
+          label: t('owner.table.status', 'Status'),
           render: (row) => makePill(row.status || 'unknown'),
         },
         {
-          label: 'Seats',
+          label: t('owner.table.seats', 'Seats'),
           render: (row) => formatNumber(row.seats, '-'),
         },
         {
-          label: 'Expires',
+          label: t('owner.table.expires', 'Expires'),
           render: (row) => `<span class="code">${escapeHtml(formatDateTime(row.expiresAt || row.updatedAt))}</span>`,
         },
       ],
@@ -466,28 +1225,28 @@
     });
 
     renderTable(document.getElementById('ownerApiKeyTable'), {
-      emptyText: 'No API keys found.',
+      emptyText: t('owner.table.empty.apiKeys', 'No API keys found.'),
       columns: [
         {
-          label: 'Tenant',
+          label: t('owner.table.tenant', 'Tenant'),
           render: (row) => [
             `<strong>${escapeHtml(row.tenantName || row.tenantId || '-')}</strong>`,
             row.tenantId ? `<div class="muted code">${escapeHtml(row.tenantId)}</div>` : '',
           ].join(''),
         },
         {
-          label: 'Key',
+          label: t('owner.table.key', 'Key'),
           render: (row) => [
             `<strong>${escapeHtml(row.name || row.id || 'API key')}</strong>`,
             `<div class="muted code">${escapeHtml(maskTail(row.key || row.id || row.name || '-'))}</div>`,
           ].join(''),
         },
         {
-          label: 'Status',
+          label: t('owner.table.status', 'Status'),
           render: (row) => makePill(row.status || 'unknown'),
         },
         {
-          label: 'Scopes',
+          label: t('owner.table.scopes', 'Scopes'),
           render: (row) => escapeHtml(Array.isArray(row.scopes) ? row.scopes.join(', ') : '-'),
         },
       ],
@@ -495,28 +1254,28 @@
     });
 
     renderTable(document.getElementById('ownerWebhookTable'), {
-      emptyText: 'No webhook endpoints found.',
+      emptyText: t('owner.table.empty.webhooks', 'No webhook endpoints found.'),
       columns: [
         {
-          label: 'Tenant',
+          label: t('owner.table.tenant', 'Tenant'),
           render: (row) => [
             `<strong>${escapeHtml(row.tenantName || row.tenantId || '-')}</strong>`,
             row.tenantId ? `<div class="muted code">${escapeHtml(row.tenantId)}</div>` : '',
           ].join(''),
         },
         {
-          label: 'Endpoint',
+          label: t('owner.table.endpoint', 'Endpoint'),
           render: (row) => [
             `<strong>${escapeHtml(row.name || row.id || 'Webhook')}</strong>`,
             row.url ? `<div class="muted">${escapeHtml(row.url)}</div>` : '',
           ].join(''),
         },
         {
-          label: 'Event',
+          label: t('owner.table.event', 'Event'),
           render: (row) => escapeHtml(row.eventType || row.type || '-'),
         },
         {
-          label: 'Status',
+          label: t('owner.table.status', 'Status'),
           render: (row) => makePill(row.status || 'unknown'),
         },
       ],
@@ -527,7 +1286,7 @@
     const result = state.assetResult;
     if (!resultWrap) return;
     if (!result) {
-      resultWrap.innerHTML = '<div class="empty-state">Create an asset or run a webhook test to see the latest owner action result here.</div>';
+      resultWrap.innerHTML = `<div class="empty-state">${escapeHtml(t('owner.assetResult.empty', 'Create an asset or run a webhook test to see the latest owner action result here.'))}</div>`;
       return;
     }
     const tags = [
@@ -537,7 +1296,7 @@
     ];
     resultWrap.innerHTML = [
       '<article class="panel-card">',
-      `<h3>${escapeHtml(result.title || 'Owner asset result')}</h3>`,
+      `<h3>${escapeHtml(result.title || t('owner.assetResult.title', 'Owner asset result'))}</h3>`,
       result.detail ? `<p>${escapeHtml(result.detail)}</p>` : '',
       `<div class="tag-row">${tags.map((tag) => makePill(tag, 'info')).join('')}</div>`,
       '</article>',
@@ -548,31 +1307,31 @@
             `<div class="muted ${row.code ? 'code' : ''}">${escapeHtml(row.value || '-')}</div>`,
             '</article>',
           ].join(''))
-        : ['<div class="empty-state">No result details.</div>']),
+        : [`<div class="empty-state">${escapeHtml(t('owner.assetResult.noDetails', 'No result details.'))}</div>`]),
     ].join('');
   }
 
   function renderRuntimeTables() {
     renderTable(document.getElementById('ownerRuntimeTable'), {
-      emptyText: 'No runtime services reported.',
+      emptyText: t('owner.table.empty.runtime', 'No runtime services reported.'),
       columns: [
         {
-          label: 'Service',
+          label: t('owner.table.service', 'Service'),
           render: (row) => [
             `<strong>${escapeHtml(row.label || row.name || row.service || '-')}</strong>`,
-            row.required === true ? '<div class="muted">required runtime</div>' : '',
+            row.required === true ? `<div class="muted">${escapeHtml(t('owner.table.requiredRuntime', 'required runtime'))}</div>` : '',
           ].join(''),
         },
         {
-          label: 'Status',
+          label: t('owner.table.status', 'Status'),
           render: (row) => makePill(row.status || 'unknown'),
         },
         {
-          label: 'Detail',
+          label: t('owner.table.detail', 'Detail'),
           render: (row) => escapeHtml(row.detail || row.reason || row.summary || '-'),
         },
         {
-          label: 'Updated',
+          label: t('owner.table.updated', 'Updated'),
           render: (row) => `<span class="code">${escapeHtml(formatDateTime(row.updatedAt || row.checkedAt || row.lastSeenAt))}</span>`,
         },
       ],
@@ -580,30 +1339,227 @@
     });
 
     renderTable(document.getElementById('ownerAgentsTable'), {
-      emptyText: 'No agent runtimes reported yet.',
+      emptyText: t('owner.table.empty.agents', 'No agent runtimes reported yet.'),
       columns: [
         {
-          label: 'Runtime',
+          label: t('owner.table.runtime', 'Runtime'),
           render: (row) => [
             `<strong>${escapeHtml(row.runtimeKey || row.name || '-')}</strong>`,
             `<div class="muted code">${escapeHtml(row.channel || '-')}</div>`,
           ].join(''),
         },
         {
-          label: 'Status',
+          label: t('owner.table.status', 'Status'),
           render: (row) => makePill(row.status || 'unknown'),
         },
         {
-          label: 'Version',
+          label: t('owner.table.version', 'Version'),
           render: (row) => escapeHtml(row.version || '-'),
         },
         {
-          label: 'Last Seen',
+          label: t('owner.table.lastSeen', 'Last Seen'),
           render: (row) => `<span class="code">${escapeHtml(formatDateTime(row.lastSeenAt))}</span>`,
         },
       ],
       rows: state.agents.slice(0, 20),
     });
+  }
+
+  function renderIncidentCenter() {
+    const form = document.getElementById('ownerIncidentQueryForm');
+    if (form) {
+      form.elements.severity.value = state.incidentFilters.severity || '';
+      form.elements.acknowledged.value = state.incidentFilters.acknowledged ?? 'false';
+      form.elements.kind.value = state.incidentFilters.kind || '';
+    }
+
+    const openNotifications = state.notifications.length;
+    const inboxRows = state.incidentInbox;
+    const acknowledgedRows = inboxRows.filter((row) => row.acknowledgedAt).length;
+    const kinds = Array.from(new Set(inboxRows.map((row) => row.kind || row.type).filter(Boolean)));
+
+    renderStats(document.getElementById('ownerIncidentStats'), [
+      {
+        kicker: 'Open',
+        value: formatNumber(openNotifications, '0'),
+        title: 'Open owner notifications',
+        detail: 'Current unacknowledged notifications from monitoring, backup, reconcile, and security-adjacent operational signals.',
+      },
+      {
+        kicker: 'Inbox',
+        value: formatNumber(inboxRows.length, '0'),
+        title: 'Filtered incident inbox size',
+        detail: 'Matches the current incident query form filters.',
+      },
+      {
+        kicker: 'Acknowledged',
+        value: formatNumber(acknowledgedRows, '0'),
+        title: 'Acknowledged entries in filter',
+        detail: 'Useful for exporting and cleaning up handled incidents.',
+      },
+      {
+        kicker: 'Kinds',
+        value: formatNumber(kinds.length, '0'),
+        title: 'Distinct alert kinds',
+        detail: kinds.slice(0, 3).join(', ') || 'No incident kinds in current filter.',
+      },
+    ]);
+
+    renderList(
+      document.getElementById('ownerIncidentFeed'),
+      inboxRows,
+      (item) => [
+        '<article class="feed-item">',
+        `<div class="feed-meta">${makePill(item.severity || 'info')} ${item.kind ? `<span class="code">${escapeHtml(item.kind)}</span>` : ''}</div>`,
+        `<strong>${escapeHtml(item.title || 'Incident')}</strong>`,
+        item.message ? `<div class="muted">${escapeHtml(item.message)}</div>` : '',
+        `<div class="feed-meta"><span>${escapeHtml(formatDateTime(item.createdAt))}</span>${item.acknowledgedAt ? `<span>${escapeHtml(`ack ${formatDateTime(item.acknowledgedAt)}`)}</span>` : '<span>open</span>'}</div>`,
+        '</article>',
+      ].join(''),
+      'No incidents matched the current query.'
+    );
+
+    const runbookKinds = kinds.slice(0, 3);
+    document.getElementById('ownerIncidentRunbooks').innerHTML = (
+      runbookKinds.length > 0
+        ? runbookKinds
+        : ['queue-pressure', 'delivery-reconcile-anomaly', 'tenant-quota-near-limit']
+    ).map((kind) => {
+      const text =
+        kind === 'queue-pressure'
+          ? 'Review queue depth, dead letters, and the latest runtime status before intervening. Use delivery tooling only after confirming it is not a transient spike.'
+          : kind === 'delivery-reconcile-anomaly'
+            ? 'Export the incident set, inspect reconcile sample codes, and confirm whether queue/runtime/audit state disagrees before retrying or restoring.'
+            : kind === 'tenant-quota-near-limit' || kind === 'tenant-quota-exceeded'
+              ? 'Review tenant plan posture, active keys/webhooks/agents/offers, and decide whether to raise plan limits or clean up unused assets.'
+              : 'Review the incident detail, correlate with runtime and security feeds, then export evidence before making any destructive change.';
+      return [
+        '<article class="kv-card">',
+        `<h4>${escapeHtml(kind)}</h4>`,
+        `<p>${escapeHtml(text)}</p>`,
+        '</article>',
+      ].join('');
+    }).join('');
+  }
+
+  function renderDeliveryLifecycle() {
+    const report = state.deliveryLifecycle || {};
+    const summary = report.summary || {};
+    const runtime = report.runtime || {};
+
+    renderStats(document.getElementById('ownerDeliveryLifecycleStats'), [
+      {
+        kicker: t('deliveryLifecycle.stats.queue.kicker', 'Queue'),
+        value: formatNumber(summary.queueCount, '0'),
+        title: t('deliveryLifecycle.stats.queue.title', 'Queued jobs'),
+        detail: t('deliveryLifecycle.stats.queue.detail', 'Live queue depth inside the current scoped delivery lifecycle sample.'),
+        tags: [
+          t('deliveryLifecycle.stats.inFlightTag', 'in flight {count}', { count: formatNumber(summary.inFlightCount, '0') }),
+          t('deliveryLifecycle.stats.modeTag', 'mode {value}', { value: runtime.executionMode || 'unknown' }),
+        ],
+      },
+      {
+        kicker: t('deliveryLifecycle.stats.dead.kicker', 'Dead'),
+        value: formatNumber(summary.deadLetterCount, '0'),
+        title: t('deliveryLifecycle.stats.dead.title', 'Dead-letter entries'),
+        detail: t('deliveryLifecycle.stats.dead.detail', 'Items that already left the live queue and now need guided follow-up.'),
+        tags: [
+          t('deliveryLifecycle.stats.retryableTag', 'retryable {count}', { count: formatNumber(summary.retryableDeadLetters, '0') }),
+          t('deliveryLifecycle.stats.nonRetryableTag', 'non-retryable {count}', { count: formatNumber(summary.nonRetryableDeadLetters, '0') }),
+        ],
+      },
+      {
+        kicker: t('deliveryLifecycle.stats.poison.kicker', 'Poison'),
+        value: formatNumber(summary.poisonCandidateCount, '0'),
+        title: t('deliveryLifecycle.stats.poison.title', 'Poison candidates'),
+        detail: t('deliveryLifecycle.stats.poison.detail', 'Jobs that should not be replayed blindly because retry history or flags look unsafe.'),
+        tags: [
+          t('deliveryLifecycle.stats.retryHeavyTag', 'retry-heavy {count}', { count: formatNumber(summary.retryHeavyCount, '0') }),
+        ],
+      },
+      {
+        kicker: t('deliveryLifecycle.stats.overdue.kicker', 'Overdue'),
+        value: formatNumber(summary.overdueCount, '0'),
+        title: t('deliveryLifecycle.stats.overdue.title', 'Overdue queue items'),
+        detail: t('deliveryLifecycle.stats.overdue.detail', 'Queue jobs that have been waiting longer than the configured owner/tenant threshold.'),
+        tags: [
+          runtime.workerBusy
+            ? t('deliveryLifecycle.stats.workerBusyTag', 'worker busy')
+            : t('deliveryLifecycle.stats.workerIdleTag', 'worker idle'),
+          t('deliveryLifecycle.stats.recentSuccessTag', 'recent ok {count}', { count: formatNumber(summary.recentSuccessCount, '0') }),
+        ],
+      },
+    ]);
+
+    renderList(
+      document.getElementById('ownerDeliveryLifecycleSignals'),
+      Array.isArray(report.signals) ? report.signals : [],
+      (item) => [
+        '<article class="feed-item">',
+        `<div class="feed-meta">${makePill(deliveryLifecycleSignalLabel(item.key), deliveryLifecycleSignalTone(item.key, item.tone))} ${makePill(formatNumber(item.count, '0'), 'neutral')}</div>`,
+        `<strong>${escapeHtml(deliveryLifecycleSignalLabel(item.key))}</strong>`,
+        item.detail ? `<div class="muted">${escapeHtml(item.detail)}</div>` : '',
+        '</article>',
+      ].join(''),
+      t('deliveryLifecycle.emptySignals', 'No delivery lifecycle signals are active right now.'),
+    );
+
+    renderList(
+      document.getElementById('ownerDeliveryLifecycleErrors'),
+      Array.isArray(report.topErrors) ? report.topErrors : [],
+      (item) => [
+        '<article class="feed-item">',
+        `<div class="feed-meta">${makePill(t('deliveryLifecycle.errors.count', '{count} hits', { count: formatNumber(item.count, '0') }), item.tone || 'warning')}</div>`,
+        `<strong class="code">${escapeHtml(item.key || 'UNKNOWN')}</strong>`,
+        `<div class="muted">${escapeHtml(t('deliveryLifecycle.errors.detail', 'Top repeated delivery error signature across queue and dead-letter state.'))}</div>`,
+        '</article>',
+      ].join(''),
+      t('deliveryLifecycle.emptyErrors', 'No repeated delivery error signatures in the sampled lifecycle state.'),
+    );
+
+    renderList(
+      document.getElementById('ownerDeliveryLifecycleActions'),
+      Array.isArray(report.actionPlan?.actions) ? report.actionPlan.actions : [],
+      (item) => {
+        const actionButtons = [];
+        if (item.key === 'review-runtime-before-retry' || item.key === 'inspect-top-error') {
+          actionButtons.push(
+            `<button type="button" class="button" data-owner-lifecycle-nav="observability" data-owner-lifecycle-target="ownerOpsStateStats">${escapeHtml(t('deliveryLifecycle.action.openObservability', 'Open Observability'))}</button>`,
+          );
+        }
+        if (item.key === 'retry-queue-batch' || item.key === 'retry-dead-letter-batch') {
+          actionButtons.push(
+            `<button type="button" class="button" data-owner-lifecycle-nav="incidents" data-owner-lifecycle-target="ownerReconcileFeed">${escapeHtml(t('deliveryLifecycle.action.openIncidents', 'Open Incidents'))}</button>`,
+          );
+          actionButtons.push(
+            `<button type="button" class="button" data-owner-lifecycle-export="json">${escapeHtml(t('deliveryLifecycle.action.exportJson', 'Export JSON'))}</button>`,
+          );
+        }
+        if (item.key === 'hold-poison-candidates') {
+          actionButtons.push(
+            `<button type="button" class="button" data-owner-lifecycle-nav="fleet" data-owner-lifecycle-target="ownerSupportCaseStats">${escapeHtml(t('deliveryLifecycle.action.openSupport', 'Open Support'))}</button>`,
+          );
+          actionButtons.push(
+            `<button type="button" class="button button-warning" data-owner-lifecycle-export="csv">${escapeHtml(t('deliveryLifecycle.action.exportCsv', 'Export CSV'))}</button>`,
+          );
+        }
+        if (item.key === 'lifecycle-stable') {
+          actionButtons.push(
+            `<button type="button" class="button" data-owner-lifecycle-nav="observability" data-owner-lifecycle-target="ownerDeliveryLifecycleStats">${escapeHtml(t('deliveryLifecycle.action.openObservability', 'Open Observability'))}</button>`,
+          );
+        }
+        return [
+          '<article class="feed-item">',
+          `<div class="feed-meta">${makePill(deliveryLifecycleActionLabel(item.key), item.tone || 'info')} ${makePill(formatNumber(item.count, '0'), 'neutral')}</div>`,
+          `<strong>${escapeHtml(deliveryLifecycleActionLabel(item.key))}</strong>`,
+          `<div class="muted">${escapeHtml(deliveryLifecycleActionDetail(item))}</div>`,
+          item.topErrorKey ? `<div class="muted code">${escapeHtml(item.topErrorKey)}</div>` : '',
+          actionButtons.length ? `<div class="button-row button-row-compact">${actionButtons.join('')}</div>` : '',
+          '</article>',
+        ].join('');
+      },
+      t('deliveryLifecycle.emptyActions', 'No lifecycle actions are suggested right now.'),
+    );
   }
 
   function renderObservability() {
@@ -614,6 +1570,53 @@
     const requestLog = data.requestLog || {};
     const runtimeCounts = state.runtimeSupervisor?.counts || data.runtimeSupervisor?.counts || {};
     const reconcile = state.reconcile || {};
+    const latestAutomationReport = state.automationReport;
+    const automationConfig =
+      latestAutomationReport?.automationConfig
+      || state.opsState?.automationConfig
+      || state.overview?.automationConfig
+      || null;
+    const automation = getAutomationState();
+    const recoveryResults = Object.entries(automation?.lastRecoveryResultByKey || {})
+      .map(([serviceKey, row]) => ({
+        serviceKey,
+        ...(row && typeof row === 'object' ? row : {}),
+      }))
+      .sort((left, right) => new Date(right.at || 0) - new Date(left.at || 0));
+    const activeBudgetCount = Object.values(automation?.recoveryAttemptsByKey || {})
+      .filter((value) => Number(value) > 0)
+      .length;
+    const trackedRuntimeCount = Object.keys(automation?.lastRecoveryAtByKey || {}).length;
+    const automationActions = Array.isArray(latestAutomationReport?.actions) ? latestAutomationReport.actions : [];
+    const automationPolicyTags = [
+      makePill(
+        automationConfig?.enabled === false
+          ? t('owner.automation.policyDisabled', 'disabled')
+          : t('owner.automation.policyLoaded', 'policy loaded'),
+        automationConfig?.enabled === false ? 'danger' : 'info'
+      ),
+      automationConfig
+        ? makePill(
+            t('owner.automation.policyActions', 'max actions {count}', {
+              count: formatNumber(automationConfig.maxActionsPerCycle, '0'),
+            }),
+            'neutral'
+          )
+        : '',
+      automationConfig
+        ? makePill(
+            t('owner.automation.policyServices', 'services {count}', {
+              count: formatNumber(automationConfig.restartServices?.length || 0, '0'),
+            }),
+            'neutral'
+          )
+        : '',
+      automationConfig?.runMonitoringAfterRecovery === true
+        ? makePill(t('owner.automation.policyFollowup', 'monitor after recovery'), 'success')
+        : '',
+    ].filter(Boolean);
+
+    renderDeliveryLifecycle();
 
     renderStats(document.getElementById('ownerObservabilityStats'), [
       {
@@ -741,6 +1744,79 @@
       },
     ]);
 
+    renderStats(document.getElementById('ownerAutomationStats'), [
+      {
+        kicker: t('owner.automation.lastCycle', 'Automation'),
+        value: automation?.lastAutomationAt ? t('owner.automation.recent', 'recent') : t('owner.automation.idle', 'idle'),
+        title: t('owner.automation.lastCycleTitle', 'Last automation cycle'),
+        detail: automation?.lastAutomationAt
+          ? formatDateTime(automation.lastAutomationAt)
+          : t('owner.automation.lastCycleDetail', 'No automation cycle has been recorded yet.'),
+      },
+      {
+        kicker: t('owner.automation.followup', 'Follow-up'),
+        value: automation?.lastForcedMonitoringAt ? t('owner.automation.run', 'run') : t('owner.automation.pending', 'pending'),
+        title: t('owner.automation.followupTitle', 'Last forced monitoring'),
+        detail: automation?.lastForcedMonitoringAt
+          ? formatDateTime(automation.lastForcedMonitoringAt)
+          : t('owner.automation.followupDetail', 'No forced monitoring follow-up has been recorded yet.'),
+      },
+      {
+        kicker: t('owner.automation.targets', 'Targets'),
+        value: formatMetricValue(trackedRuntimeCount, 'integer'),
+        title: t('owner.automation.targetsTitle', 'Tracked recovery runtimes'),
+        detail: t('owner.automation.targetsDetail', 'Services with recorded automated recovery history or cooldown state.'),
+      },
+      {
+        kicker: t('owner.automation.budget', 'Budget'),
+        value: formatMetricValue(activeBudgetCount, 'integer'),
+        title: t('owner.automation.budgetTitle', 'Active attempt windows'),
+        detail: t('owner.automation.budgetDetail', 'Services currently carrying recovery-attempt counters in the active automation window.'),
+      },
+    ]);
+
+    const automationPolicyWrap = document.getElementById('ownerAutomationPolicy');
+    if (automationPolicyWrap) {
+      automationPolicyWrap.innerHTML = automationPolicyTags.length > 0
+        ? automationPolicyTags.join('')
+        : makePill(t('owner.automation.policyUnknown', 'run a dry run to inspect policy'), 'neutral');
+    }
+
+    const automationFeedItems = automationActions.length > 0
+      ? automationActions.map((action) => ({
+          title: action.runtimeLabel || action.runtimeKey || action.serviceKey || t('owner.automation.action', 'Automation action'),
+          detail: [
+            action.serviceKey ? `${t('owner.automation.service', 'service')} ${action.serviceKey}` : '',
+            action.reason ? `${t('owner.automation.reason', 'reason')} ${action.reason}` : '',
+            latestAutomationReport?.dryRun === true ? t('owner.automation.dryRunResult', 'dry run') : '',
+          ].filter(Boolean).join(' | '),
+          at: action.at || latestAutomationReport?.generatedAt,
+          ok: action.ok === true,
+        }))
+      : recoveryResults.map((row) => ({
+          title: row.runtimeKey || row.serviceKey || t('owner.automation.action', 'Automation action'),
+          detail: [
+            row.serviceKey ? `${t('owner.automation.service', 'service')} ${row.serviceKey}` : '',
+            row.status ? `${t('owner.automation.status', 'status')} ${row.status}` : '',
+            row.reason ? `${t('owner.automation.reason', 'reason')} ${row.reason}` : '',
+          ].filter(Boolean).join(' | '),
+          at: row.at,
+          ok: row.ok === true,
+        }));
+
+    renderList(
+      document.getElementById('ownerAutomationFeed'),
+      automationFeedItems.slice(0, 10),
+      (item) => [
+        '<article class="feed-item">',
+        `<div class="feed-meta">${makePill(item.ok ? t('owner.automation.resultOk', 'ok') : t('owner.automation.resultFailed', 'failed'), item.ok ? 'success' : 'danger')} <span class="code">${escapeHtml(formatDateTime(item.at))}</span></div>`,
+        `<strong>${escapeHtml(item.title || t('owner.automation.action', 'Automation action'))}</strong>`,
+        item.detail ? `<div class="muted">${escapeHtml(item.detail)}</div>` : '',
+        '</article>',
+      ].join(''),
+      t('owner.automation.feedEmpty', 'No automation recovery history yet.')
+    );
+
     renderTable(document.getElementById('ownerObservabilityRequestTable'), {
       emptyText: 'No recent requests in observability snapshot.',
       columns: [
@@ -775,6 +1851,164 @@
     });
   }
 
+  function renderCommercial() {
+    const plans = Array.isArray(state.overview?.plans)
+      ? state.overview.plans
+      : Array.isArray(state.overview?.publicOverview?.billing?.plans)
+        ? state.overview.publicOverview.billing.plans
+        : [];
+    const marketplace = state.marketplaceOffers.slice(0, 12);
+    const quotaRows = buildQuotaPressureRows();
+    const subscriptionsByStatus = state.subscriptions.reduce((map, row) => {
+      const key = String(row?.status || 'unknown').trim() || 'unknown';
+      map.set(key, (map.get(key) || 0) + 1);
+      return map;
+    }, new Map());
+    const pressuredTenants = quotaRows.filter((row) => row.hot.length > 0).length;
+
+    renderStats(document.getElementById('ownerCommercialStats'), [
+      {
+        kicker: 'Plans',
+        value: formatNumber(plans.length, '0'),
+        title: 'Cataloged billing plans',
+        detail: 'Long-lived plan definitions used by tenant subscriptions and allowance snapshots.',
+        tags: plans.slice(0, 3).map((plan) => plan.id || plan.name || '-'),
+      },
+      {
+        kicker: 'Subscriptions',
+        value: formatNumber(state.subscriptions.length, '0'),
+        title: 'Tracked tenant subscriptions',
+        detail: 'Lifecycle view across trialing, active, paused, and past-due tenant agreements.',
+        tags: Array.from(subscriptionsByStatus.entries()).slice(0, 3).map(([key, count]) => `${key} ${count}`),
+      },
+      {
+        kicker: 'Marketplace',
+        value: formatNumber(marketplace.length, '0'),
+        title: 'Visible extension offers',
+        detail: 'Tenant-facing offers for commercial upsell, extensions, and service bundles.',
+        tags: [
+          `draft ${formatNumber(marketplace.filter((row) => row.status === 'draft').length, '0')}`,
+          `active ${formatNumber(marketplace.filter((row) => row.status === 'active').length, '0')}`,
+        ],
+      },
+      {
+        kicker: 'Quota',
+        value: formatNumber(pressuredTenants, '0'),
+        title: 'Tenants under quota pressure',
+        detail: 'Top visible tenants where allowance usage is nearing or exceeding plan limits.',
+        tags: [
+          `sample ${formatNumber(state.tenantQuotaSnapshots.length, '0')}`,
+          `pressured ${formatNumber(pressuredTenants, '0')}`,
+        ],
+      },
+    ]);
+
+    renderTable(document.getElementById('ownerPlanTable'), {
+      emptyText: 'No plan catalog entries found.',
+      columns: [
+        {
+          label: 'Plan',
+          render: (row) => [
+            `<strong>${escapeHtml(row.name || row.id || '-')}</strong>`,
+            `<div class="muted code">${escapeHtml(row.id || '-')}</div>`,
+          ].join(''),
+        },
+        {
+          label: 'Billing',
+          render: (row) => escapeHtml(row.billingCycle || '-'),
+        },
+        {
+          label: 'Quotas',
+          render: (row) => `<div class="muted">${escapeHtml(summarizePlanQuotas(row))}</div>`,
+        },
+      ],
+      rows: plans,
+    });
+
+    renderList(
+      document.getElementById('ownerQuotaFeed'),
+      quotaRows,
+      (row) => [
+        '<article class="feed-item">',
+        `<div class="feed-meta">${makePill(row.planName || 'plan', 'info')} <span class="code">${escapeHtml(row.tenantId || '-')}</span></div>`,
+        `<strong>${escapeHtml(row.tenantName || 'Tenant')}</strong>`,
+        row.hot.length
+          ? `<div class="tag-row">${row.hot.slice(0, 4).map(([key, value]) => {
+              const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, (char) => char.toUpperCase());
+              return makePill(`${label} ${summarizeQuotaEntry(value)}`, quotaEntryTone(value));
+            }).join('')}</div>`
+          : '<div class="muted">No active quota pressure in the sampled allowance set.</div>',
+        '</article>',
+      ].join(''),
+      'No quota pressure found in the sampled tenant allowance set.'
+    );
+
+    renderTable(document.getElementById('ownerPermissionCatalogTable'), {
+      emptyText: 'No permission catalog entries found.',
+      shellClass: 'compact-scroll catalog-table',
+      columns: [
+        {
+          label: 'Scope Group',
+          render: (row) => [
+            `<strong>${escapeHtml(row.title || row.key || '-')}</strong>`,
+            `<div class="muted code">${escapeHtml(row.key || '-')}</div>`,
+          ].join(''),
+        },
+        {
+          label: 'Scopes',
+          render: (row) => escapeHtml(Array.isArray(row.scopes) ? row.scopes.join(', ') : '-'),
+        },
+      ],
+      rows: permissionCatalog,
+    });
+
+    renderTable(document.getElementById('ownerMarketplaceTable'), {
+      emptyText: 'No marketplace offers found.',
+      columns: [
+        {
+          label: 'Offer',
+          render: (row) => [
+            `<strong>${escapeHtml(row.title || row.id || '-')}</strong>`,
+            `<div class="muted code">${escapeHtml(row.id || '-')}</div>`,
+          ].join(''),
+        },
+        {
+          label: 'Tenant',
+          render: (row) => escapeHtml(row.tenantName || row.tenantId || '-'),
+        },
+        {
+          label: 'Status',
+          render: (row) => makePill(row.status || 'unknown'),
+        },
+        {
+          label: 'Price',
+          render: (row) => escapeHtml(`${formatNumber(row.priceCents, '0')} ${row.currency || ''}`.trim()),
+        },
+      ],
+      rows: marketplace,
+    });
+
+    document.getElementById('ownerCommercialNotes').innerHTML = [
+      {
+        title: 'Commercial separation',
+        text: 'Billing lifecycle and plan allowances stay in the owner console so tenants can see their plan posture without editing global plan definitions.',
+      },
+      {
+        title: 'Extension readiness',
+        text: 'Marketplace offers act as a scalable extension surface without changing the tenant runtime contract or introducing a new plugin engine.',
+      },
+      {
+        title: 'Permission governance',
+        text: 'Scope-group visibility keeps API, webhook, and future extension access aligned with the existing role and tenant separation model.',
+      },
+    ].map((card) => [
+      '<article class="kv-card">',
+      `<h4>${escapeHtml(card.title)}</h4>`,
+      `<p>${escapeHtml(card.text)}</p>`,
+      '</article>',
+    ].join('')).join('');
+  }
+
   function renderNotifications() {
     renderList(
       document.getElementById('ownerNotificationFeed'),
@@ -805,6 +2039,22 @@
       ].join(''),
       'No recent request anomalies.'
     );
+  }
+
+  function rotationStatusTone(status) {
+    const normalized = String(status || '').trim().toLowerCase();
+    if (normalized === 'ready') return 'success';
+    if (normalized === 'unused') return 'neutral';
+    if (normalized === 'placeholder') return 'warning';
+    return 'danger';
+  }
+
+  function rotationStatusLabel(status) {
+    const normalized = String(status || '').trim().toLowerCase();
+    if (normalized === 'ready') return t('owner.rotation.ready', 'ready');
+    if (normalized === 'unused') return t('owner.rotation.unused', 'unused');
+    if (normalized === 'placeholder') return t('owner.rotation.placeholder', 'placeholder');
+    return t('owner.rotation.missing', 'missing');
   }
 
   function renderSecurity() {
@@ -845,8 +2095,87 @@
       '</article>',
     ].join('')).join('');
 
+    const rotationReport = state.rotationReport || { data: { secrets: [], reloadMatrix: [] }, warnings: [], errors: [] };
+    const rotationSecrets = Array.isArray(rotationReport?.data?.secrets) ? rotationReport.data.secrets : [];
+    const rotationReload = Array.isArray(rotationReport?.data?.reloadMatrix) ? rotationReport.data.reloadMatrix : [];
+    const rotationRequired = rotationSecrets.filter((row) => row.required).length;
+    const rotationReady = rotationSecrets.filter((row) => row.required && row.status === 'ready').length;
+    renderStats(document.getElementById('ownerRotationStats'), [
+      {
+        kicker: t('owner.rotation.summaryRequired', 'Required'),
+        title: formatNumber(rotationRequired, '0'),
+        detail: t('owner.rotation.summaryRequiredDetail', '{count} ready required secrets', { count: formatNumber(rotationReady, '0') }),
+      },
+      {
+        kicker: t('owner.rotation.summaryReloadTargets', 'Reload'),
+        title: formatNumber(rotationReload.length, '0'),
+        detail: t('owner.rotation.summaryReloadTargetsDetail', 'Runtime targets after rotation'),
+      },
+      {
+        kicker: t('owner.rotation.summaryWarnings', 'Warnings'),
+        title: formatNumber(rotationReport?.warnings?.length || 0, '0'),
+        detail: t('owner.rotation.summaryWarningsDetail', 'Validation drift that still needs review'),
+      },
+      {
+        kicker: t('owner.rotation.summaryErrors', 'Errors'),
+        title: formatNumber(rotationReport?.errors?.length || 0, '0'),
+        detail: t('owner.rotation.summaryErrorsDetail', 'Blocking issues before reopen'),
+      },
+    ]);
+
+    renderTable(document.getElementById('ownerRotationMatrix'), {
+      emptyText: t('owner.rotation.emptyMatrix', 'No secret rotation entries reported.'),
+      shellClass: 'compact-scroll',
+      columns: [
+        {
+          label: t('owner.rotation.secret', 'Secret'),
+          render: (row) => [
+            `<strong>${escapeHtml(row.id || '-')}</strong>`,
+            row.label ? `<div class="muted">${escapeHtml(row.label)}</div>` : '',
+          ].join(''),
+        },
+        {
+          label: t('owner.rotation.status', 'Status'),
+          render: (row) => [
+            makePill(rotationStatusLabel(row.status), rotationStatusTone(row.status)),
+            row.required ? makePill(t('owner.rotation.required', 'required'), 'info') : '',
+          ].filter(Boolean).join(' '),
+        },
+        {
+          label: t('owner.rotation.reload', 'Reload Targets'),
+          render: (row) => Array.isArray(row.reloadTargets) && row.reloadTargets.length > 0
+            ? row.reloadTargets.map((item) => makePill(item, 'neutral')).join(' ')
+            : '-',
+        },
+        {
+          label: t('owner.rotation.validation', 'Validation'),
+          render: (row) => Array.isArray(row.validation) && row.validation.length > 0
+            ? `<div class="muted">${escapeHtml(row.validation.join(' | '))}</div>`
+            : '-',
+        },
+      ],
+      rows: rotationSecrets,
+    });
+
+    renderList(
+      document.getElementById('ownerRotationIssues'),
+      [
+        ...(Array.isArray(rotationReport?.errors) ? rotationReport.errors.map((message) => ({ level: 'error', message })) : []),
+        ...(Array.isArray(rotationReport?.warnings) ? rotationReport.warnings.map((message) => ({ level: 'warning', message })) : []),
+      ],
+      (item) => [
+        '<article class="feed-item">',
+        `<div class="feed-meta">${makePill(item.level === 'error' ? t('owner.rotation.issueCritical', 'critical') : t('owner.rotation.issueWarning', 'warning'), item.level === 'error' ? 'danger' : 'warning')}</div>`,
+        `<strong>${escapeHtml(item.message || '-')}</strong>`,
+        '<div class="muted">secret-rotation-check</div>',
+        '</article>',
+      ].join(''),
+      t('owner.rotation.emptyIssues', 'No active rotation drift found.'),
+    );
+
     renderTable(document.getElementById('ownerDeviceTable'), {
       emptyText: 'No recent request footprints available.',
+      shellClass: 'compact-scroll',
       columns: [
         {
           label: 'Actor',
@@ -879,6 +2208,7 @@
 
     renderTable(document.getElementById('ownerPermissionTable'), {
       emptyText: 'No permission matrix entries found.',
+      shellClass: 'compact-scroll policy-table',
       columns: [
         {
           label: 'Path',
@@ -993,39 +2323,45 @@
 
   function renderRecovery() {
     const restore = state.restoreState || {};
+    const phase = getRestorePhasePresentation(restore, state.restorePreview);
     const warnings = Array.isArray(restore.warnings) ? restore.warnings.length : 0;
+    const verificationReady = restore.verification?.ready === true;
     renderStats(document.getElementById('ownerRestoreStateStats'), [
       {
-        kicker: 'Restore',
-        value: restore.status || 'idle',
-        title: 'Current restore state',
-        detail: restore.lastError || 'No active restore incident.',
+        kicker: t('owner.recovery.phaseKicker', 'Phase'),
+        value: phase.label,
+        title: t('owner.recovery.phaseTitle', 'Restore lifecycle'),
+        detail: restore.lastError || phase.detail,
         tags: [
-          `rollback ${restore.rollbackStatus || 'none'}`,
-          `warnings ${formatNumber(warnings, '0')}`,
+          t('owner.recovery.rollbackTag', 'rollback {value}', { value: restore.rollbackStatus || 'none' }),
+          t('owner.recovery.warningsTag', 'warnings {count}', { count: formatNumber(warnings, '0') }),
         ],
       },
       {
-        kicker: 'Backup',
+        kicker: t('owner.recovery.backupKicker', 'Backup'),
         value: restore.backup || 'none',
-        title: 'Target backup',
-        detail: restore.startedAt ? `Started ${formatDateTime(restore.startedAt)}` : 'No restore currently running.',
+        title: t('owner.recovery.backupTitle', 'Target backup'),
+        detail: restore.startedAt
+          ? t('owner.recovery.backupStarted', 'Started {time}', { time: formatDateTime(restore.startedAt) })
+          : t('owner.recovery.backupDetail', 'No restore currently running.'),
       },
       {
-        kicker: 'Preview',
+        kicker: t('owner.recovery.previewKicker', 'Preview'),
         value: restore.previewBackup || state.restorePreview?.backup || 'none',
-        title: 'Latest preview source',
+        title: t('owner.recovery.previewTitle', 'Latest preview source'),
         detail: restore.previewExpiresAt
-          ? `Preview expires ${formatDateTime(restore.previewExpiresAt)}`
-          : 'Run a dry-run preview before using the full recovery workbench.',
+          ? t('owner.recovery.previewExpires', 'Preview expires {time}', { time: formatDateTime(restore.previewExpiresAt) })
+          : t('owner.recovery.previewDetail', 'Run a dry-run preview before using the full recovery workbench.'),
       },
       {
-        kicker: 'Verification',
-        value: restore.verification?.ready === true ? 'ready' : 'pending',
-        title: 'Latest verification state',
+        kicker: t('owner.recovery.verificationKicker', 'Verification'),
+        value: verificationReady
+          ? t('owner.recovery.verificationReady', 'Ready')
+          : t('owner.recovery.verificationPending', 'Pending'),
+        title: t('owner.recovery.verificationTitle', 'Latest verification state'),
         detail: restore.verification?.checkedAt
-          ? `Checked ${formatDateTime(restore.verification.checkedAt)}`
-          : 'Verification has not run in this restore cycle yet.',
+          ? t('owner.recovery.verificationChecked', 'Checked {time}', { time: formatDateTime(restore.verification.checkedAt) })
+          : t('owner.recovery.verificationDetail', 'Verification has not run in this restore cycle yet.'),
       },
     ]);
 
@@ -1195,24 +2531,58 @@
         restarted = true;
       }
     }
+    state.controlApplyResult = {
+      contextLabel,
+      changedCount: Number(response?.applySummary?.totalChanged || 0),
+      restartRequired: response?.reloadRequired === true,
+      restarted,
+      rollback: false,
+      changedFiles: Array.isArray(response?.applySummary?.changedFiles) ? response.applySummary.changedFiles : [],
+      restartRequiredCount: Number(response?.applySummary?.restartRequiredCount || 0),
+      reloadSafeCount: Number(response?.applySummary?.reloadSafeCount || 0),
+      appliedAt: new Date().toISOString(),
+    };
+    renderControlCenter();
     showToast(
       reloadRequired
-        ? `${contextLabel} saved${restarted ? ' and restarted selected runtime' : ' (restart still required)'}.`
-        : `${contextLabel} saved.`,
+        ? (restarted
+          ? t('owner.toast.controlSavedRestarted', '{context} saved and restarted selected runtime.', { context: contextLabel })
+          : t('owner.toast.controlSavedRestartRequired', '{context} saved (restart still required).', { context: contextLabel }))
+        : t('owner.toast.controlSaved', '{context} saved.', { context: contextLabel }),
       'success'
     );
   }
 
   function renderControlCenter() {
     const settings = state.controlPanelSettings || {};
+    const applyPhase = getConfigApplyPhasePresentation(state.controlApplyResult);
     const rootCatalog = Array.isArray(settings.envCatalog?.root) ? settings.envCatalog.root : [];
     const portalCatalog = Array.isArray(settings.envCatalog?.portal) ? settings.envCatalog.portal : [];
     const managedServices = Array.isArray(settings.managedServices) ? settings.managedServices : [];
-    const commands = Array.isArray(settings.commands) ? settings.commands : [];
     const editableCount = [...rootCatalog, ...portalCatalog].filter((row) => row.editable !== false).length;
     const reloadSafeCount = [...rootCatalog, ...portalCatalog].filter((row) => row.applyMode === 'reload-safe').length;
 
     renderStats(document.getElementById('ownerControlSummaryStats'), [
+      {
+        kicker: t('owner.control.applyKicker', 'Config Apply'),
+        value: applyPhase.label,
+        title: t('owner.control.applyTitle', 'Latest guarded config apply'),
+        detail: state.controlApplyResult?.contextLabel
+          ? `${applyPhase.detail} (${state.controlApplyResult.contextLabel})`
+          : applyPhase.detail,
+        tags: [
+          t('owner.control.apply.changedTag', 'changed {count}', {
+            count: formatNumber(Number(state.controlApplyResult?.changedCount || 0), '0'),
+          }),
+          state.controlApplyResult?.restartRequired
+            ? t('owner.control.apply.restartTag', 'restart {count}', {
+                count: formatNumber(Number(state.controlApplyResult?.restartRequiredCount || 0), '0'),
+              })
+            : t('owner.control.apply.reloadSafeTag', 'reload-safe {count}', {
+                count: formatNumber(Number(state.controlApplyResult?.reloadSafeCount || 0), '0'),
+              }),
+        ],
+      },
       {
         kicker: 'Env Catalog',
         value: formatNumber(rootCatalog.length + portalCatalog.length, '0'),
@@ -1230,12 +2600,6 @@
         value: formatNumber(managedServices.length, '0'),
         title: 'Managed services',
         detail: 'Services available for guarded restart from this surface.',
-      },
-      {
-        kicker: 'Commands',
-        value: formatNumber(commands.length, '0'),
-        title: 'Registered slash commands',
-        detail: `${formatNumber(commands.filter((row) => row.disabled).length, '0')} disabled entries in current config.`,
       },
     ]);
 
@@ -1288,49 +2652,17 @@
       (item) => [
         `<article class="timeline-item ${escapeHtml(item.tone || 'info')}">`,
         `<div class="feed-meta">${makePill(item.type || 'event')} <span class="code">${escapeHtml(formatDateTime(item.at))}</span></div>`,
-        `<strong>${escapeHtml(item.title || 'Live event')}</strong>`,
+        `<strong>${escapeHtml(item.title || t('owner.feed.liveEvent', 'Live event'))}</strong>`,
         item.detail ? `<div class="muted">${escapeHtml(item.detail)}</div>` : '',
         '</article>',
       ].join(''),
-      'Waiting for live events.'
+      t('owner.feed.waiting', 'Waiting for live events.')
     );
   }
 
-  function renderGovernance() {
-    const settings = state.controlPanelSettings || {};
-    const envCatalogCount =
-      (Array.isArray(settings.envCatalog?.root) ? settings.envCatalog.root.length : 0)
-      + (Array.isArray(settings.envCatalog?.portal) ? settings.envCatalog.portal.length : 0);
-    document.getElementById('ownerGovernanceCards').innerHTML = [
-      {
-        title: 'Global Configuration',
-        text: `Environment editing, runtime flags, and policy changes remain owner-only. Current control catalog exposes ${formatNumber(envCatalogCount, '0')} env keys across root and portal scopes.`,
-        action: '<a class="ghost-link" href="/admin/legacy?tab=control">Open global config</a>',
-      },
-      {
-        title: 'Recovery and Rollback',
-        text: `Backup, restore preview, and rollback remain high-friction workflows with explicit confirmation. Known backups: ${formatNumber(state.backupFiles.length, '0')}.`,
-        action: '<a class="ghost-link" href="/admin/legacy?tab=danger">Open recovery area</a>',
-      },
-      {
-        title: 'Tenant Lifecycle',
-        text: `Provision tenants, subscriptions, API keys, webhooks, and licensing from the platform workbench. Current fleet footprint: ${formatNumber(state.tenants.length, '0')} tenants, ${formatNumber(state.subscriptions.length, '0')} subscriptions.`,
-        action: '<a class="ghost-link" href="/admin/legacy?tab=platform">Open platform center</a>',
-      },
-      {
-        title: 'Security Audit',
-        text: `Review role matrix, request anomalies, session posture, and security events from the security center. Active sessions visible here: ${formatNumber(state.sessions.length, '0')}.`,
-        action: '<a class="ghost-link" href="/admin/legacy?tab=auth">Open security center</a>',
-      },
-    ].map((card) => [
-      '<article class="panel-card">',
-      `<h3>${escapeHtml(card.title)}</h3>`,
-      `<p>${escapeHtml(card.text)}</p>`,
-      card.action,
-      '</article>',
-    ].join('')).join('');
-  }
-
+  // One owner render pass updates every visible page fragment, then runs the
+  // literal translator so text injected by JS still follows the selected
+  // language without touching backend payloads.
   function renderAll() {
     const runtimeRows = normalizeRuntimeRows(state.runtimeSupervisor);
     const degraded = runtimeRows.filter((row) => {
@@ -1338,21 +2670,45 @@
       return status && status !== 'ready';
     }).length;
     const unresolvedCount = state.notifications.length;
+    const automation = getAutomationState();
+    const automationConfig =
+      state.automationReport?.automationConfig
+      || state.opsState?.automationConfig
+      || state.overview?.automationConfig
+      || null;
     setBanner(
-      state.me?.user ? `Signed in as ${state.me.user}` : 'Owner console ready',
-      'Platform-wide operations are isolated from tenant-facing work. Use this surface for global health, security, and governance.',
+      state.me?.user ? t('owner.banner.signedIn', 'Signed in as {user}', { user: state.me.user }) : t('owner.banner.ready', 'Owner console ready'),
+      t('owner.banner.detail', 'Platform-wide operations are isolated from tenant-facing work. Use this surface for global health, security, and governance.'),
       [
-        `role ${state.me?.role || '-'}`,
-        `tenants ${formatNumber(state.tenants.length, '0')}`,
-        `alerts ${formatNumber(unresolvedCount, '0')}`,
-        `degraded ${formatNumber(degraded, '0')}`,
+        t('owner.banner.tag.role', 'role {value}', { value: state.me?.role || '-' }),
+        t('owner.banner.tag.tenants', 'tenants {count}', { count: formatNumber(state.tenants.length, '0') }),
+        t('owner.banner.tag.alerts', 'alerts {count}', { count: formatNumber(unresolvedCount, '0') }),
+        t('owner.banner.tag.degraded', 'degraded {count}', { count: formatNumber(degraded, '0') }),
+        automationConfig?.enabled === false
+          ? t('owner.banner.tag.automationDisabled', 'automation off')
+          : t('owner.banner.tag.automationEnabled', 'automation on'),
+        automation?.lastAutomationAt
+          ? t('owner.banner.tag.automationRecent', 'last auto {time}', {
+              time: formatDateTime(automation.lastAutomationAt),
+            })
+          : t('owner.banner.tag.automationIdle', 'automation idle'),
+        rotationErrors > 0
+          ? t('owner.banner.tag.rotationErrors', 'rotation errors {count}', { count: formatNumber(rotationErrors, '0') })
+          : '',
+        rotationWarnings > 0
+          ? t('owner.banner.tag.rotationWarnings', 'rotation warnings {count}', { count: formatNumber(rotationWarnings, '0') })
+          : '',
       ],
-      degraded > 0 || unresolvedCount > 0 ? 'warning' : 'success'
+      degraded > 0 || unresolvedCount > 0 || rotationErrors > 0 ? 'warning' : 'success'
     );
     renderOverview();
     renderTenantTable();
+    renderSupportCase();
+    renderOwnerSupportToolkit();
     renderFleetAssets();
     renderRuntimeTables();
+    renderIncidentCenter();
+    renderCommercial();
     renderObservability();
     renderNotifications();
     renderRequestFeed();
@@ -1362,7 +2718,7 @@
     renderLiveFeed();
     renderRecovery();
     renderControlCenter();
-    renderGovernance();
+    window.AdminUiI18n?.translateLiterals?.(document);
   }
 
   function scheduleRefresh(delayMs = 1200) {
@@ -1443,7 +2799,7 @@
   async function refreshSurface(options = {}) {
     const refreshButton = document.getElementById('ownerRefreshBtn');
     if (!options.silent) {
-      setBusy(refreshButton, true, 'Refreshing...');
+      setBusy(refreshButton, true, t('common.refreshing', 'Refreshing...'));
     }
     try {
       const me = await api('/admin/api/me');
@@ -1455,6 +2811,7 @@
       const [
         overview,
         observability,
+        deliveryLifecycle,
         reconcile,
         opsState,
         tenants,
@@ -1463,12 +2820,15 @@
         apiKeys,
         webhooks,
         agents,
+        marketplace,
         notifications,
+        incidentInbox,
         securityEvents,
         runtimeSupervisor,
         dashboardCards,
         requestLogs,
         roleMatrix,
+        rotationReport,
         controlPanelSettings,
         restoreState,
         backupFiles,
@@ -1478,6 +2838,7 @@
       ] = await Promise.all([
         safeApi('/admin/api/platform/overview', {}),
         safeApi('/admin/api/observability?windowMs=21600000', {}),
+        safeApi('/admin/api/delivery/lifecycle?limit=120&pendingOverdueMs=1200000', {}),
         safeApi('/admin/api/platform/reconcile?windowMs=3600000&pendingOverdueMs=1200000', {}),
         safeApi('/admin/api/platform/ops-state', {}),
         safeApi('/admin/api/platform/tenants?limit=20', []),
@@ -1486,12 +2847,20 @@
         safeApi('/admin/api/platform/apikeys?limit=12', []),
         safeApi('/admin/api/platform/webhooks?limit=12', []),
         safeApi('/admin/api/platform/agents?limit=20', []),
+        safeApi('/admin/api/platform/marketplace?limit=12', []),
         safeApi('/admin/api/notifications?acknowledged=false&limit=10', { items: [] }),
+        safeApi(`/admin/api/notifications?${buildIncidentQueryString({
+          limit: 20,
+          severity: state.incidentFilters.severity,
+          acknowledged: state.incidentFilters.acknowledged,
+          kind: state.incidentFilters.kind,
+        })}`, { items: [] }),
         safeApi('/admin/api/auth/security-events?limit=10', []),
         safeApi('/admin/api/runtime/supervisor', null),
         safeApi('/admin/api/dashboard/cards', null),
         safeApi('/admin/api/observability/requests?limit=8&onlyErrors=true', { metrics: {}, items: [] }),
         safeApi('/admin/api/auth/role-matrix', { summary: {}, permissions: [] }),
+        safeApi('/admin/api/security/rotation-check', { data: { secrets: [], reloadMatrix: [] }, warnings: [], errors: [] }),
         safeApi('/admin/api/control-panel/settings', {}),
         safeApi('/admin/api/backup/restore/status', {}),
         safeApi('/admin/api/backup/list', []),
@@ -1509,6 +2878,7 @@
       state.me = me;
       state.overview = overview || {};
       state.observability = observability || {};
+      state.deliveryLifecycle = deliveryLifecycle || {};
       state.reconcile = reconcile || {};
       state.opsState = opsState || {};
       state.tenants = Array.isArray(tenants) ? tenants : [];
@@ -1517,18 +2887,44 @@
       state.apiKeys = Array.isArray(apiKeys) ? apiKeys : [];
       state.webhooks = Array.isArray(webhooks) ? webhooks : [];
       state.agents = Array.isArray(agents) ? agents : [];
+      state.marketplaceOffers = Array.isArray(marketplace) ? marketplace : [];
       state.notifications = Array.isArray(notifications?.items) ? notifications.items : [];
+      state.incidentInbox = Array.isArray(incidentInbox?.items) ? incidentInbox.items : [];
       state.securityEvents = Array.isArray(securityEvents) ? securityEvents : [];
       state.runtimeSupervisor = runtimeSupervisor;
       state.dashboardCards = dashboardCards;
       state.requestLogs = requestLogs || { metrics: {}, items: [] };
       state.roleMatrix = roleMatrix || { summary: {}, permissions: [] };
+      state.rotationReport = rotationReport || { data: { secrets: [], reloadMatrix: [] }, warnings: [], errors: [] };
       state.controlPanelSettings = controlPanelSettings || {};
       state.restoreState = restoreState || {};
       state.backupFiles = Array.isArray(backupFiles) ? backupFiles : [];
       state.sessions = Array.isArray(sessions) ? sessions : [];
       state.users = Array.isArray(users) ? users : [];
       state.audit = audit || { cards: [], tableRows: [] };
+      state.tenantQuotaSnapshots = await Promise.all(
+        state.tenants.slice(0, 8).map((row) => safeApi(
+          `/admin/api/platform/quota?tenantId=${encodeURIComponent(String(row.id || '').trim())}`,
+          {
+            tenantId: row.id || '',
+            tenant: { id: row.id || '', name: row.name || row.slug || row.id || '' },
+            quotas: {},
+          },
+        )),
+      );
+      {
+        const selectedSupportTenantId = String(
+          state.supportCase?.tenantId
+          || document.getElementById('ownerSupportTenantSelect')?.value
+          || '',
+        ).trim();
+        if (selectedSupportTenantId) {
+          state.supportCase = await safeApi(
+            `/admin/api/platform/tenant-support-case?tenantId=${encodeURIComponent(selectedSupportTenantId)}`,
+            state.supportCase,
+          );
+        }
+      }
       renderAll();
       connectLive();
     } catch (error) {
@@ -1545,18 +2941,115 @@
     }
   }
 
+  async function loadTenantSupportCase(tenantId, options = {}) {
+    const scopedTenantId = String(tenantId || '').trim();
+    const select = document.getElementById('ownerSupportTenantSelect');
+    const button = options.button || document.getElementById('ownerSupportCaseLoadBtn');
+    if (!scopedTenantId) {
+      state.supportCase = null;
+      renderSupportCase();
+      return false;
+    }
+    try {
+      if (button) setBusy(button, true, t('owner.support.loading', 'Loading Case...'));
+      state.supportCase = await api(`/admin/api/platform/tenant-support-case?tenantId=${encodeURIComponent(scopedTenantId)}`);
+      if (select) select.value = scopedTenantId;
+      renderSupportCase();
+      if (options.focus !== false) {
+        openOwnerTarget('fleet', { targetId: 'ownerSupportCaseStats', block: 'center' });
+      }
+      if (options.toast !== false) {
+        showToast(t('owner.toast.tenantSupportCaseLoaded', 'Tenant support case loaded.'), 'success');
+      }
+      return true;
+    } catch (error) {
+      setBanner('Support case load failed', String(error.message || error), ['support'], 'danger');
+      return false;
+    } finally {
+      if (button) setBusy(button, false);
+    }
+  }
+
   async function runMonitoring() {
     const button = document.getElementById('ownerMonitoringBtn');
-    setBusy(button, true, 'Running...');
+    setBusy(button, true, t('common.running', 'Running...'));
     try {
       await api('/admin/api/platform/monitoring/run', {
         method: 'POST',
         body: {},
       });
-      showToast('Platform monitoring cycle completed.', 'success');
+      showToast(t('owner.toast.monitoringCompleted', 'Platform monitoring cycle completed.'), 'success');
       await refreshSurface();
     } catch (error) {
       setBanner('Monitoring run failed', String(error.message || error), ['monitoring'], 'danger');
+    } finally {
+      setBusy(button, false);
+    }
+  }
+
+  async function refreshRotationCheck() {
+    const button = document.getElementById('ownerRotationRefreshBtn');
+    setBusy(button, true, t('common.refreshing', 'Refreshing...'));
+    try {
+      state.rotationReport = await api('/admin/api/security/rotation-check');
+      renderSecurity();
+      showToast(
+        t('owner.toast.rotationCheckRefreshed', 'Secret rotation check refreshed.'),
+        'success',
+      );
+    } catch (error) {
+      setBanner('Rotation check refresh failed', String(error.message || error), ['security'], 'danger');
+    } finally {
+      setBusy(button, false);
+    }
+  }
+
+  // Automation stays owner-only and guarded: dry run first, then execute.
+  async function runAutomation(dryRun) {
+    const button = document.getElementById(dryRun ? 'ownerAutomationDryRunBtn' : 'ownerAutomationRunBtn');
+    setBusy(
+      button,
+      true,
+      dryRun
+        ? t('owner.observability.automationDryRunBusy', 'Running dry run...')
+        : t('owner.observability.automationRunBusy', 'Running automation...')
+    );
+    try {
+      const response = await api('/admin/api/platform/automation/run', {
+        method: 'POST',
+        body: {
+          force: true,
+          dryRun: dryRun === true,
+        },
+      });
+      state.automationReport = response || null;
+      if (response?.stateAfter) {
+        state.opsState = {
+          ...(state.opsState || {}),
+          automation: response.stateAfter,
+        };
+      }
+      renderObservability();
+      showToast(
+        dryRun
+          ? t('owner.toast.automationDryRunCompleted', 'Automation dry run completed ({count} actions reviewed).', {
+              count: formatNumber(Array.isArray(response?.actions) ? response.actions.length : 0, '0'),
+            })
+          : t('owner.toast.automationRunCompleted', 'Automation cycle completed ({count} actions executed).', {
+              count: formatNumber(Array.isArray(response?.actions) ? response.actions.length : 0, '0'),
+            }),
+        'success'
+      );
+      await refreshSurface({ silent: true });
+    } catch (error) {
+      setBanner(
+        dryRun
+          ? t('owner.observability.automationDryRunFailedTitle', 'Automation dry run failed')
+          : t('owner.observability.automationRunFailedTitle', 'Automation run failed'),
+        String(error.message || error),
+        [t('owner.observability.automation', 'Automation Control')],
+        'danger'
+      );
     } finally {
       setBusy(button, false);
     }
@@ -1567,16 +3060,76 @@
     if (!window.confirm('Clear current admin notifications?')) {
       return;
     }
-    setBusy(button, true, 'Clearing...');
+    setBusy(button, true, t('common.clearing', 'Clearing...'));
     try {
       await api('/admin/api/notifications/clear', {
         method: 'POST',
         body: {},
       });
-      showToast('Owner notifications cleared.', 'success');
+      showToast(t('owner.toast.notificationsCleared', 'Owner notifications cleared.'), 'success');
       await refreshSurface();
     } catch (error) {
       setBanner('Clear alerts failed', String(error.message || error), ['alerts'], 'danger');
+    } finally {
+      setBusy(button, false);
+    }
+  }
+
+  async function loadIncidentInbox(event) {
+    if (event) event.preventDefault();
+    const form = document.getElementById('ownerIncidentQueryForm');
+    const button = form?.querySelector('button[type="submit"]');
+    if (form) {
+      state.incidentFilters = {
+        severity: String(form.elements.severity.value || '').trim(),
+        acknowledged: String(form.elements.acknowledged.value || '').trim(),
+        kind: String(form.elements.kind.value || '').trim(),
+      };
+    }
+    try {
+      if (button) setBusy(button, true, t('common.loading', 'Loading...'));
+      const payload = await api(`/admin/api/notifications?${buildIncidentQueryString({
+        limit: 20,
+        severity: state.incidentFilters.severity,
+        acknowledged: state.incidentFilters.acknowledged,
+        kind: state.incidentFilters.kind,
+      })}`);
+      state.incidentInbox = Array.isArray(payload?.items) ? payload.items : [];
+      renderIncidentCenter();
+      showToast(t('owner.toast.incidentInboxUpdated', 'Incident inbox updated.'), 'success');
+    } catch (error) {
+      setBanner('Incident query failed', String(error.message || error), ['incidents'], 'danger');
+    } finally {
+      if (button) setBusy(button, false);
+    }
+  }
+
+  function exportIncidentInbox(format) {
+    const query = buildIncidentQueryString({
+      limit: 500,
+      severity: state.incidentFilters.severity,
+      acknowledged: state.incidentFilters.acknowledged,
+      kind: state.incidentFilters.kind,
+      format,
+    });
+    window.open(`/admin/api/notifications/export?${query}`, '_blank', 'noopener,noreferrer');
+  }
+
+  async function clearAcknowledgedAlerts() {
+    const button = document.getElementById('ownerClearAckedAlertsBtn');
+    if (!window.confirm('Clear acknowledged admin notifications only?')) {
+      return;
+    }
+    try {
+      setBusy(button, true, t('common.clearing', 'Clearing...'));
+      await api('/admin/api/notifications/clear', {
+        method: 'POST',
+        body: { acknowledgedOnly: true },
+      });
+      showToast(t('owner.toast.acknowledgedCleared', 'Acknowledged notifications cleared.'), 'success');
+      await refreshSurface();
+    } catch (error) {
+      setBanner('Clear acknowledged alerts failed', String(error.message || error), ['incidents'], 'danger');
     } finally {
       setBusy(button, false);
     }
@@ -1603,12 +3156,12 @@
     }
     if (!window.confirm(`Restart ${target === 'all' ? 'all managed services' : target}?`)) return;
     try {
-      setBusy(button, true, 'Restarting...');
+      setBusy(button, true, t('common.restarting', 'Restarting...'));
       await api('/admin/api/runtime/restart-service', {
         method: 'POST',
         body: services.length === 1 ? { service: services[0] } : { services },
       });
-      showToast('Runtime restart request completed.', 'success');
+      showToast(t('owner.toast.runtimeRestartCompleted', 'Runtime restart request completed.'), 'success');
       await refreshSurface();
     } catch (error) {
       setBanner('Runtime restart failed', String(error.message || error), ['runtime'], 'danger');
@@ -1625,7 +3178,7 @@
     const includeSnapshot = String(form.elements.includeSnapshot.value || 'true') !== 'false';
     if (!window.confirm('Create a new platform backup now?')) return;
     try {
-      setBusy(button, true, 'Creating...');
+      setBusy(button, true, t('common.creating', 'Creating...'));
       await api('/admin/api/backup/create', {
         method: 'POST',
         body: {
@@ -1634,7 +3187,7 @@
         },
       });
       form.reset();
-      showToast('Backup created successfully.', 'success');
+      showToast(t('owner.toast.backupCreated', 'Backup created successfully.'), 'success');
       await refreshSurface();
     } catch (error) {
       setBanner('Backup creation failed', String(error.message || error), ['backup'], 'danger');
@@ -1653,7 +3206,7 @@
       return;
     }
     try {
-      setBusy(button, true, 'Previewing...');
+      setBusy(button, true, t('common.previewing', 'Previewing...'));
       const preview = await api('/admin/api/backup/restore', {
         method: 'POST',
         body: {
@@ -1663,7 +3216,7 @@
       });
       state.restorePreview = preview || null;
       renderRecovery();
-      showToast('Dry-run restore preview completed.', 'success');
+      showToast(t('owner.toast.restorePreviewCompleted', 'Dry-run restore preview completed.'), 'success');
     } catch (error) {
       state.restorePreview = null;
       renderRecovery();
@@ -1696,13 +3249,13 @@
     try {
       payload.metadata = parseOptionalJson(form.elements.metadata.value, 'Metadata');
       if (!window.confirm(`Create tenant ${payload.slug}?`)) return;
-      setBusy(button, true, 'Creating...');
+      setBusy(button, true, t('common.creating', 'Creating...'));
       await api('/admin/api/platform/tenant', {
         method: 'POST',
         body: payload,
       });
       form.reset();
-      showToast('Tenant record created successfully.', 'success');
+      showToast(t('owner.toast.tenantCreated', 'Tenant record created successfully.'), 'success');
       await refreshSurface();
     } catch (error) {
       setBanner('Tenant creation failed', String(error.message || error), ['tenant'], 'danger');
@@ -1723,7 +3276,7 @@
     }
     try {
       if (!window.confirm(`Create subscription for ${tenantId}?`)) return;
-      setBusy(button, true, 'Creating...');
+      setBusy(button, true, t('common.creating', 'Creating...'));
       const result = await api('/admin/api/platform/subscription', {
         method: 'POST',
         body: {
@@ -1756,7 +3309,7 @@
       form.reset();
       form.elements.billingCycle.value = 'monthly';
       form.elements.status.value = 'active';
-      showToast('Subscription created.', 'success');
+      showToast(t('owner.toast.subscriptionCreated', 'Subscription created.'), 'success');
       await refreshSurface();
     } catch (error) {
       setBanner('Subscription create failed', String(error.message || error), ['subscription'], 'danger');
@@ -1776,7 +3329,7 @@
     }
     try {
       if (!window.confirm(`Issue license for ${tenantId}?`)) return;
-      setBusy(button, true, 'Issuing...');
+      setBusy(button, true, t('common.issuing', 'Issuing...'));
       const result = await api('/admin/api/platform/license', {
         method: 'POST',
         body: {
@@ -1806,7 +3359,7 @@
       form.reset();
       form.elements.status.value = 'active';
       form.elements.seats.value = '1';
-      showToast('License issued.', 'success');
+      showToast(t('owner.toast.licenseIssued', 'License issued.'), 'success');
       await refreshSurface();
     } catch (error) {
       setBanner('License issue failed', String(error.message || error), ['license'], 'danger');
@@ -1827,7 +3380,7 @@
     }
     try {
       if (!window.confirm(`Create API key for ${tenantId}?`)) return;
-      setBusy(button, true, 'Creating...');
+      setBusy(button, true, t('common.creating', 'Creating...'));
       const result = await api('/admin/api/platform/apikey', {
         method: 'POST',
         body: {
@@ -1852,7 +3405,7 @@
       };
       form.reset();
       form.elements.status.value = 'active';
-      showToast('API key created.', 'success');
+      showToast(t('owner.toast.apiKeyCreated', 'API key created.'), 'success');
       await refreshSurface();
     } catch (error) {
       setBanner('API key create failed', String(error.message || error), ['apikey'], 'danger');
@@ -1874,7 +3427,7 @@
     }
     try {
       if (!window.confirm(`Create webhook for ${tenantId}?`)) return;
-      setBusy(button, true, 'Creating...');
+      setBusy(button, true, t('common.creating', 'Creating...'));
       const result = await api('/admin/api/platform/webhook', {
         method: 'POST',
         body: {
@@ -1902,7 +3455,7 @@
       };
       form.reset();
       form.elements.enabled.value = 'true';
-      showToast('Webhook created.', 'success');
+      showToast(t('owner.toast.webhookCreated', 'Webhook created.'), 'success');
       await refreshSurface();
     } catch (error) {
       setBanner('Webhook create failed', String(error.message || error), ['webhook'], 'danger');
@@ -1922,7 +3475,7 @@
     }
     try {
       if (!window.confirm(`Dispatch webhook test for ${tenantId}?`)) return;
-      setBusy(button, true, 'Dispatching...');
+      setBusy(button, true, t('common.dispatching', 'Dispatching...'));
       const payloadText = String(form.elements.payload.value || '').trim();
       const result = await api('/admin/api/platform/webhook/test', {
         method: 'POST',
@@ -1944,10 +3497,62 @@
           { label: 'Dispatch Summary', value: Array.isArray(result.results) ? result.results.map((entry) => `${entry.name || entry.id || 'hook'}:${entry.ok === false ? 'fail' : 'ok'}`).join(', ') : '-', code: false },
         ],
       };
-      showToast('Webhook test dispatched.', 'success');
+      showToast(t('owner.toast.webhookTestDispatched', 'Webhook test dispatched.'), 'success');
       renderFleetAssets();
     } catch (error) {
       setBanner('Webhook test failed', String(error.message || error), ['webhook'], 'danger');
+    } finally {
+      setBusy(button, false);
+    }
+  }
+
+  async function handleMarketplaceSubmit(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const button = form.querySelector('button[type="submit"]');
+    const tenantId = String(form.elements.tenantId.value || '').trim();
+    const title = String(form.elements.title.value || '').trim();
+    if (!tenantId || !title) {
+      setBanner('Marketplace form is incomplete', 'Choose a tenant and provide an offer title before creating a marketplace offer.', ['marketplace'], 'danger');
+      return;
+    }
+    try {
+      const meta = parseOptionalJson(form.elements.meta.value, 'Marketplace meta');
+      if (!window.confirm(`Create marketplace offer for ${tenantId}?`)) return;
+      setBusy(button, true, t('common.creating', 'Creating...'));
+      const result = await api('/admin/api/platform/marketplace', {
+        method: 'POST',
+        body: {
+          id: makeClientId('offer'),
+          tenantId,
+          title,
+          kind: String(form.elements.kind.value || 'service').trim() || 'service',
+          priceCents: Number(form.elements.priceCents.value || 0),
+          currency: String(form.elements.currency.value || 'THB').trim() || 'THB',
+          status: String(form.elements.status.value || 'active').trim() || 'active',
+          locale: String(form.elements.locale.value || 'th-TH').trim() || 'th-TH',
+          meta,
+        },
+      });
+      state.assetResult = {
+        kind: 'marketplace-offer',
+        title: 'Marketplace offer created',
+        detail: 'The tenant offer is now available to the marketplace surface according to its status.',
+        tenantId,
+        createdAt: new Date().toISOString(),
+        rows: [
+          { label: 'Offer ID', value: result.id || '-', code: true },
+          { label: 'Offer Title', value: result.title || title, code: false },
+          { label: 'Status', value: result.status || '-', code: false },
+          { label: 'Price', value: `${formatNumber(result.priceCents, '0')} ${result.currency || 'THB'}`, code: false },
+        ],
+      };
+      form.reset();
+      form.elements.status.value = 'active';
+      showToast(t('owner.toast.marketplaceOfferCreated', 'Marketplace offer created.'), 'success');
+      await refreshSurface();
+    } catch (error) {
+      setBanner('Marketplace create failed', String(error.message || error), ['marketplace'], 'danger');
     } finally {
       setBusy(button, false);
     }
@@ -1959,7 +3564,7 @@
     const button = form.querySelector('button[type="submit"]');
     try {
       if (!window.confirm('Save runtime flag changes?')) return;
-      setBusy(button, true, 'Saving...');
+      setBusy(button, true, t('common.saving', 'Saving...'));
       await saveControlEnvPatch({
         root: {
           DISCORD_GUILD_ID: String(form.elements.DISCORD_GUILD_ID.value || '').trim(),
@@ -1985,7 +3590,7 @@
     const button = form.querySelector('button[type="submit"]');
     try {
       if (!window.confirm('Save portal and access policy changes?')) return;
-      setBusy(button, true, 'Saving...');
+      setBusy(button, true, t('common.saving', 'Saving...'));
       await saveControlEnvPatch({
         root: {
           ADMIN_WEB_2FA_ENABLED: String(form.elements.ADMIN_WEB_2FA_ENABLED.value || 'true') === 'true',
@@ -2013,7 +3618,7 @@
     const button = form.querySelector('button[type="submit"]');
     try {
       if (!window.confirm('Save RCON and console-agent changes?')) return;
-      setBusy(button, true, 'Saving...');
+      setBusy(button, true, t('common.saving', 'Saving...'));
       await saveControlEnvPatch({
         root: {
           RCON_HOST: String(form.elements.RCON_HOST.value || '').trim(),
@@ -2039,7 +3644,7 @@
     const button = form.querySelector('button[type="submit"]');
     try {
       if (!window.confirm('Save admin session and login policy changes?')) return;
-      setBusy(button, true, 'Saving...');
+      setBusy(button, true, t('common.saving', 'Saving...'));
       await saveControlEnvPatch({
         root: {
           ADMIN_WEB_SESSION_TTL_HOURS: String(form.elements.ADMIN_WEB_SESSION_TTL_HOURS.value || '').trim(),
@@ -2067,7 +3672,7 @@
     const button = form.querySelector('button[type="submit"]');
     try {
       if (!window.confirm('Save monitoring and alert threshold changes?')) return;
-      setBusy(button, true, 'Saving...');
+      setBusy(button, true, t('common.saving', 'Saving...'));
       await saveControlEnvPatch({
         root: {
           DELIVERY_QUEUE_ALERT_THRESHOLD: String(form.elements.DELIVERY_QUEUE_ALERT_THRESHOLD.value || '').trim(),
@@ -2101,14 +3706,14 @@
     }
     if (!window.confirm('Revoke the selected session scope?')) return;
     try {
-      setBusy(button, true, 'Revoking...');
+      setBusy(button, true, t('common.revoking', 'Revoking...'));
       await api('/admin/api/auth/session/revoke', {
         method: 'POST',
         body: { sessionId, targetUser, reason, current },
       });
       form.reset();
       form.elements.current.value = 'false';
-      showToast('Session revoke completed.', 'success');
+      showToast(t('owner.toast.sessionRevokeCompleted', 'Session revoke completed.'), 'success');
       await refreshSurface();
     } catch (error) {
       setBanner('Session revoke failed', String(error.message || error), ['security'], 'danger');
@@ -2132,7 +3737,7 @@
     }
     if (!window.confirm(`Save admin user ${username}?`)) return;
     try {
-      setBusy(button, true, 'Saving...');
+      setBusy(button, true, t('common.saving', 'Saving...'));
       await api('/admin/api/auth/user', {
         method: 'POST',
         body: {
@@ -2146,7 +3751,7 @@
       form.reset();
       form.elements.role.value = 'mod';
       form.elements.isActive.value = 'true';
-      showToast('Admin user saved.', 'success');
+      showToast(t('owner.toast.adminUserSaved', 'Admin user saved.'), 'success');
       await refreshSurface();
     } catch (error) {
       setBanner('Admin user save failed', String(error.message || error), ['rbac'], 'danger');
@@ -2175,11 +3780,11 @@
     });
     const button = options.button || null;
     try {
-      if (button) setBusy(button, true, 'Loading...');
+      if (button) setBusy(button, true, t('common.loading', 'Loading...'));
       state.audit = await api(`/admin/api/audit/query?${queryString}`);
       renderAudit();
       if (options.toast === true) {
-        showToast('Audit view loaded.', 'success');
+      showToast(t('owner.toast.auditLoaded', 'Audit view loaded.'), 'success');
       }
       return true;
     } catch (error) {
@@ -2215,6 +3820,67 @@
     window.open(`/admin/api/audit/export?${queryString}`, '_blank', 'noopener,noreferrer');
   }
 
+  window.AdminUiI18n?.init?.(['ownerLanguageSelect']);
+
+  workspaceController = wireWorkspaceSwitcher({
+    switchId: 'ownerWorkspaceSwitch',
+    summaryId: 'ownerWorkspaceSummary',
+    hintId: 'ownerWorkspaceHint',
+    navListId: 'ownerNavList',
+    defaultWorkspace: 'command',
+    workspaces: [
+      {
+        key: 'command',
+        label: t('owner.workspace.command.label', 'Command'),
+        short: 'fleet',
+        title: t('owner.workspace.command.title', 'Platform command workspace'),
+        description: t('owner.workspace.command.description', 'Snapshot, tenant roster, subscriptions, licenses, keys, and webhooks stay grouped here so the owner can orient quickly.'),
+        sidebarHint: t('owner.workspace.command.sidebar', 'Use this workspace for platform snapshot, tenant roster, subscriptions, licenses, keys, and webhook footprint.'),
+        tag: t('owner.workspace.command.tag', 'owner'),
+      },
+      {
+        key: 'runtime',
+        label: t('owner.workspace.runtime.label', 'Runtime'),
+        short: 'live',
+        title: t('owner.workspace.runtime.title', 'Runtime and incident workspace'),
+        description: t('owner.workspace.runtime.description', 'Incidents, runtime posture, and observability stay together for faster operational scanning without burying the page under low-value stream noise.'),
+        sidebarHint: t('owner.workspace.runtime.sidebar', 'Use this workspace for incidents, runtime readiness, and request pressure.'),
+        tag: t('owner.workspace.runtime.tag', 'ops'),
+      },
+      {
+        key: 'security',
+        label: t('owner.workspace.security.label', 'Security'),
+        short: 'audit',
+        title: t('owner.workspace.security.title', 'Security and audit workspace'),
+        description: t('owner.workspace.security.description', 'Security events, permission posture, admin sessions, and audit trails stay grouped without commercial or config noise.'),
+        sidebarHint: t('owner.workspace.security.sidebar', 'Use this workspace for access posture, permission review, admin sessions, and audit investigation.'),
+        tag: t('owner.workspace.security.tag', 'guarded'),
+      },
+      {
+        key: 'governance',
+        label: t('owner.workspace.change.label', 'Change'),
+        short: 'change',
+        title: t('owner.workspace.change.title', 'Recovery and guarded change workspace'),
+        description: t('owner.workspace.change.description', 'Commercial policy, recovery, and guarded control stay isolated so high-friction tasks are deliberate.'),
+        sidebarHint: t('owner.workspace.change.sidebar', 'Use this workspace for billing policy, recovery, service control, and tenant creation.'),
+        tag: t('owner.workspace.change.tag', 'high-friction'),
+      },
+    ],
+    sectionsByWorkspace: {
+      command: ['overview', 'fleet', 'fleet-assets'],
+      runtime: ['incidents', 'runtime', 'observability'],
+      security: ['security', 'access', 'audit'],
+      governance: ['commercial', 'recovery', 'control'],
+    },
+  });
+  sidebarController = wireSidebarShell({
+    sidebarId: 'ownerSidebar',
+    navListId: 'ownerNavList',
+    toggleButtonId: 'ownerSidebarToggleBtn',
+    backdropId: 'ownerSidebarBackdrop',
+  });
+  document.getElementById('ownerSidebarHint').textContent = t('owner.sidebarHint', 'Use the area tabs above to switch context. The menu on the left only shows the pages that belong to the active owner area.');
+
   const palette = wireCommandPalette({
     openButtonId: 'ownerPaletteBtn',
     closeButtonId: 'ownerPaletteCloseBtn',
@@ -2223,110 +3889,153 @@
     listId: 'ownerPaletteList',
     emptyId: 'ownerPaletteEmpty',
     getActions() {
+      const sectionMeta = t('owner.palette.meta.sections', 'Owner pages');
+      const actionMeta = t('owner.palette.meta.actions', 'Owner actions');
+      const legacyMeta = t('owner.palette.meta.legacy', 'Legacy workbench');
       return [
         {
-          label: 'Jump to Overview',
-          meta: 'Owner sections',
-          run: () => document.getElementById('overview')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+          label: t('owner.palette.openPage', 'Open {page}', { page: ownerNavLabel('overview') }),
+          meta: sectionMeta,
+          run: () => openOwnerTarget('overview'),
         },
         {
-          label: 'Jump to Tenant Fleet',
-          meta: 'Owner sections',
-          run: () => document.getElementById('fleet')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+          label: t('owner.palette.openPage', 'Open {page}', { page: ownerNavLabel('fleet') }),
+          meta: sectionMeta,
+          run: () => openOwnerTarget('fleet'),
         },
         {
-          label: 'Jump to Fleet Assets',
-          meta: 'Owner sections',
-          run: () => document.getElementById('fleet-assets')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+          label: t('owner.palette.focusSupportCase', 'Focus tenant support case'),
+          meta: actionMeta,
+          run: () => openOwnerTarget('fleet', { targetId: 'ownerSupportCaseStats', block: 'center' }),
         },
         {
-          label: 'Jump to Runtime Control',
-          meta: 'Owner sections',
-          run: () => document.getElementById('runtime')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+          label: t('owner.palette.openPage', 'Open {page}', { page: ownerNavLabel('fleet-assets') }),
+          meta: sectionMeta,
+          run: () => openOwnerTarget('fleet-assets'),
         },
         {
-          label: 'Jump to Observability',
-          meta: 'Owner sections',
-          run: () => document.getElementById('observability')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+          label: t('owner.palette.openPage', 'Open {page}', { page: ownerNavLabel('incidents') }),
+          meta: sectionMeta,
+          run: () => openOwnerTarget('incidents'),
         },
         {
-          label: 'Jump to Security + Audit',
-          meta: 'Owner sections',
-          run: () => document.getElementById('security')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+          label: t('owner.palette.openPage', 'Open {page}', { page: ownerNavLabel('runtime') }),
+          meta: sectionMeta,
+          run: () => openOwnerTarget('runtime'),
         },
         {
-          label: 'Jump to Access Center',
-          meta: 'Owner sections',
-          run: () => document.getElementById('access')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+          label: t('owner.palette.openPage', 'Open {page}', { page: ownerNavLabel('commercial') }),
+          meta: sectionMeta,
+          run: () => openOwnerTarget('commercial'),
         },
         {
-          label: 'Jump to Recovery',
-          meta: 'Owner sections',
-          run: () => document.getElementById('recovery')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+          label: t('owner.palette.openPage', 'Open {page}', { page: ownerNavLabel('observability') }),
+          meta: sectionMeta,
+          run: () => openOwnerTarget('observability'),
         },
         {
-          label: 'Jump to Audit Trail',
-          meta: 'Owner sections',
-          run: () => document.getElementById('audit')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+          label: t('owner.palette.openPage', 'Open {page}', { page: ownerNavLabel('security') }),
+          meta: sectionMeta,
+          run: () => openOwnerTarget('security'),
         },
         {
-          label: 'Jump to Control Center',
-          meta: 'Owner sections',
-          run: () => document.getElementById('control')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+          label: t('owner.palette.openPage', 'Open {page}', { page: ownerNavLabel('access') }),
+          meta: sectionMeta,
+          run: () => openOwnerTarget('access'),
         },
         {
-          label: 'Focus Runtime Flags',
-          meta: 'Owner action',
-          run: () => document.getElementById('ownerRuntimeFlagsForm')?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
+          label: t('owner.palette.openPage', 'Open {page}', { page: ownerNavLabel('recovery') }),
+          meta: sectionMeta,
+          run: () => openOwnerTarget('recovery'),
         },
         {
-          label: 'Focus Asset Provisioning',
-          meta: 'Owner action',
-          run: () => document.getElementById('ownerSubscriptionForm')?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
+          label: t('owner.palette.openPage', 'Open {page}', { page: ownerNavLabel('audit') }),
+          meta: sectionMeta,
+          run: () => openOwnerTarget('audit'),
         },
         {
-          label: 'Focus Backup Preview',
-          meta: 'Owner action',
-          run: () => document.getElementById('ownerBackupPreviewForm')?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
+          label: t('owner.palette.openPage', 'Open {page}', { page: ownerNavLabel('control') }),
+          meta: sectionMeta,
+          run: () => openOwnerTarget('control'),
         },
         {
-          label: 'Focus Session Control',
-          meta: 'Owner action',
-          run: () => document.getElementById('ownerSessionRevokeForm')?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
+          label: t('owner.palette.focusAssets', 'Focus asset provisioning'),
+          meta: actionMeta,
+          run: () => openOwnerTarget('fleet-assets', { targetId: 'ownerSubscriptionForm', block: 'center' }),
         },
         {
-          label: 'Focus Audit Query',
-          meta: 'Owner action',
-          run: () => document.getElementById('ownerAuditQueryForm')?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
+          label: t('owner.palette.focusMarketplace', 'Focus marketplace offer form'),
+          meta: actionMeta,
+          run: () => openOwnerTarget('commercial', { targetId: 'ownerMarketplaceForm', block: 'center' }),
         },
         {
-          label: 'Run Monitoring Cycle',
-          meta: 'Owner action',
+          label: t('owner.palette.focusBackup', 'Focus backup preview'),
+          meta: actionMeta,
+          run: () => openOwnerTarget('recovery', { targetId: 'ownerBackupPreviewForm', block: 'center' }),
+        },
+        {
+          label: t('owner.palette.focusSessions', 'Focus session control'),
+          meta: actionMeta,
+          run: () => openOwnerTarget('access', { targetId: 'ownerSessionRevokeForm', block: 'center' }),
+        },
+        {
+          label: t('owner.palette.focusRotation', 'Focus secret rotation readiness'),
+          meta: actionMeta,
+          run: () => openOwnerTarget('security', { targetId: 'ownerRotationStats', block: 'center' }),
+        },
+        {
+          label: t('owner.palette.focusIncidents', 'Focus incident query'),
+          meta: actionMeta,
+          run: () => openOwnerTarget('incidents', { targetId: 'ownerIncidentQueryForm', block: 'center' }),
+        },
+        {
+          label: t('owner.palette.focusAudit', 'Focus audit query'),
+          meta: actionMeta,
+          run: () => openOwnerTarget('audit', { targetId: 'ownerAuditQueryForm', block: 'center' }),
+        },
+        {
+          label: t('owner.palette.runMonitoring', 'Run monitoring cycle'),
+          meta: actionMeta,
           run: runMonitoring,
         },
         {
-          label: 'Clear Current Alerts',
-          meta: 'Owner action',
+          label: t('owner.palette.runRotationCheck', 'Refresh secret rotation check'),
+          meta: actionMeta,
+          run: refreshRotationCheck,
+        },
+        {
+          label: t('owner.palette.runAutomationDry', 'Run automation dry run'),
+          meta: actionMeta,
+          run: () => runAutomation(true),
+        },
+        {
+          label: t('owner.palette.runAutomationNow', 'Run automation now'),
+          meta: actionMeta,
+          run: () => runAutomation(false),
+        },
+        {
+          label: t('owner.palette.clearAlerts', 'Clear current alerts'),
+          meta: actionMeta,
           run: clearAlerts,
         },
         {
-          label: 'Open Global Config',
-          meta: 'Legacy workbench',
+          label: t('owner.palette.openLegacyConfig', 'Open global config'),
+          meta: legacyMeta,
           run: () => { window.location.href = '/admin/legacy?tab=control'; },
         },
         {
-          label: 'Open Recovery Area',
-          meta: 'Legacy workbench',
+          label: t('owner.palette.openLegacyRecovery', 'Open recovery area'),
+          meta: legacyMeta,
           run: () => { window.location.href = '/admin/legacy?tab=danger'; },
         },
         {
-          label: 'Open Platform Center',
-          meta: 'Legacy workbench',
+          label: t('owner.palette.openLegacyPlatform', 'Open platform center'),
+          meta: legacyMeta,
           run: () => { window.location.href = '/admin/legacy?tab=platform'; },
         },
         {
-          label: 'Refresh Owner Console',
-          meta: 'Owner action',
+          label: t('owner.palette.refresh', 'Refresh owner console'),
+          meta: actionMeta,
           run: () => refreshSurface(),
         },
       ];
@@ -2334,17 +4043,81 @@
   });
 
   document.getElementById('ownerRefreshBtn').addEventListener('click', () => refreshSurface());
+  document.getElementById('ownerSupportCaseForm')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const tenantId = String(form.elements.tenantId.value || '').trim();
+    await loadTenantSupportCase(tenantId, {
+      button: document.getElementById('ownerSupportCaseLoadBtn'),
+      focus: true,
+      toast: true,
+    });
+  });
+  document.getElementById('ownerTenantTable').addEventListener('click', (event) => {
+    const button = event.target.closest('[data-owner-support-case]');
+    if (!button) return;
+    loadTenantSupportCase(button.getAttribute('data-owner-support-case'), {
+      button,
+      focus: true,
+      toast: true,
+    });
+  });
+  document.getElementById('ownerSupportCaseExportJsonBtn')?.addEventListener('click', () => {
+    openTenantSupportCaseExport(state.supportCase?.tenantId || document.getElementById('ownerSupportTenantSelect')?.value, 'json');
+  });
+  document.getElementById('ownerSupportCaseExportCsvBtn')?.addEventListener('click', () => {
+    openTenantSupportCaseExport(state.supportCase?.tenantId || document.getElementById('ownerSupportTenantSelect')?.value, 'csv');
+  });
+  document.getElementById('ownerQuickActions')?.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-owner-quick-action]');
+    if (!button) return;
+    runOwnerQuickAction(button.getAttribute('data-owner-quick-action'));
+  });
+  document.getElementById('ownerSupportToolkit')?.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-owner-support-tool]');
+    if (!button) return;
+    runOwnerSupportToolkitAction(button.getAttribute('data-owner-support-tool'));
+  });
+  document.getElementById('ownerDeliveryLifecycleExportJsonBtn')?.addEventListener('click', () => openDeliveryLifecycleExport('json'));
+  document.getElementById('ownerDeliveryLifecycleExportCsvBtn')?.addEventListener('click', () => openDeliveryLifecycleExport('csv'));
+  document.getElementById('ownerDeliveryLifecycleActions')?.addEventListener('click', (event) => {
+    const navButton = event.target.closest('[data-owner-lifecycle-nav]');
+    if (navButton) {
+      openOwnerTarget(
+        navButton.getAttribute('data-owner-lifecycle-nav'),
+        {
+          targetId: navButton.getAttribute('data-owner-lifecycle-target') || undefined,
+          block: 'center',
+        },
+      );
+      return;
+    }
+    const exportButton = event.target.closest('[data-owner-lifecycle-export]');
+    if (exportButton) {
+      openDeliveryLifecycleExport(exportButton.getAttribute('data-owner-lifecycle-export'));
+    }
+  });
+  document.getElementById('ownerRotationRefreshBtn')?.addEventListener('click', refreshRotationCheck);
+  document.getElementById('ownerRotationExportJsonBtn')?.addEventListener('click', () => openRotationExport('json'));
+  document.getElementById('ownerRotationExportCsvBtn')?.addEventListener('click', () => openRotationExport('csv'));
   document.getElementById('ownerMonitoringBtn').addEventListener('click', runMonitoring);
+  document.getElementById('ownerAutomationDryRunBtn')?.addEventListener('click', () => runAutomation(true));
+  document.getElementById('ownerAutomationRunBtn')?.addEventListener('click', () => runAutomation(false));
   document.getElementById('ownerClearAlertsBtn').addEventListener('click', clearAlerts);
+  document.getElementById('ownerIncidentQueryForm').addEventListener('submit', loadIncidentInbox);
+  document.getElementById('ownerIncidentExportJsonBtn').addEventListener('click', () => exportIncidentInbox('json'));
+  document.getElementById('ownerIncidentExportCsvBtn').addEventListener('click', () => exportIncidentInbox('csv'));
+  document.getElementById('ownerClearAckedAlertsBtn').addEventListener('click', clearAcknowledgedAlerts);
   document.getElementById('ownerSubscriptionForm').addEventListener('submit', handleSubscriptionSubmit);
   document.getElementById('ownerLicenseForm').addEventListener('submit', handleLicenseSubmit);
   document.getElementById('ownerApiKeyForm').addEventListener('submit', handleApiKeySubmit);
   document.getElementById('ownerWebhookForm').addEventListener('submit', handleWebhookSubmit);
   document.getElementById('ownerWebhookTestForm').addEventListener('submit', handleWebhookTestSubmit);
+  document.getElementById('ownerMarketplaceForm').addEventListener('submit', handleMarketplaceSubmit);
   document.getElementById('ownerRestartForm').addEventListener('submit', handleRestartSubmit);
-  document.getElementById('ownerRuntimeFlagsForm').addEventListener('submit', handleRuntimeFlagsSubmit);
-  document.getElementById('ownerPortalAccessForm').addEventListener('submit', handlePortalAccessSubmit);
-  document.getElementById('ownerRconAgentForm').addEventListener('submit', handleRconAgentSubmit);
+  document.getElementById('ownerRuntimeFlagsForm')?.addEventListener('submit', handleRuntimeFlagsSubmit);
+  document.getElementById('ownerPortalAccessForm')?.addEventListener('submit', handlePortalAccessSubmit);
+  document.getElementById('ownerRconAgentForm')?.addEventListener('submit', handleRconAgentSubmit);
   document.getElementById('ownerSecurityPolicyForm').addEventListener('submit', handleSecurityPolicySubmit);
   document.getElementById('ownerMonitoringPolicyForm').addEventListener('submit', handleMonitoringPolicySubmit);
   document.getElementById('ownerSessionRevokeForm').addEventListener('submit', handleSessionRevokeSubmit);
@@ -2375,6 +4148,13 @@
     if (intervalHandle) {
       window.clearInterval(intervalHandle);
     }
+  });
+
+  window.addEventListener('ui-language-change', () => {
+    workspaceController?.refresh?.();
+    sidebarController?.refresh?.();
+    palette.refresh();
+    renderAll();
   });
 
   refreshSurface();

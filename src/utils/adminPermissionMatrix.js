@@ -239,6 +239,14 @@ const POST_PERMISSION_MATRIX = Object.freeze([
     stepUp: false,
     description: 'Run monitoring cycle manually',
   },
+  {
+    path: '/admin/api/platform/automation/run',
+    permission: 'platform:automation-run',
+    category: 'platform',
+    minRole: 'owner',
+    stepUp: true,
+    description: 'Run guarded platform automation manually',
+  },
 ]);
 
 const POST_PERMISSION_INDEX = new Map(

@@ -7,50 +7,54 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/player/assets/ui/portal-public.css">
+  <link rel="stylesheet" href="/player/assets/ui/portal-public.css?v=20260319-tactical-i18n">
 </head>
 <body>
   <div class="public-shell">
     <header class="public-header">
       <div class="public-brand">
-        <span class="public-badge">Trial + Go-live</span>
-        <h1>Operational readiness checklist</h1>
-        <p>Use this page as a productized trial/go-live summary for the multi-tenant control platform rather than a marketing splash page.</p>
+        <span class="public-badge" data-i18n="trial.badge">Trial + Go-live</span>
+        <h1 data-i18n="trial.title">Operational readiness checklist</h1>
+        <p data-i18n="trial.subtitle">Use this page as a productized trial/go-live summary for the multi-tenant control platform rather than a marketing splash page.</p>
       </div>
       <div class="public-actions">
-        <a class="button" href="/landing">Back to landing</a>
-        <a class="button button-primary" href="/admin">Open admin web</a>
+        <label class="language-picker">
+          <span data-i18n="common.language">Language</span>
+          <select id="trialLanguageSelect" class="language-select"></select>
+        </label>
+        <a class="button" href="/landing" data-i18n="trial.backLanding">Back to landing</a>
+        <a class="button button-primary" href="/admin" data-i18n="trial.openAdmin">Open admin web</a>
       </div>
     </header>
 
     <section class="public-panel section">
       <div class="section-head">
         <div>
-          <span class="eyebrow">Trial Flow</span>
-          <h2 class="section-title">What to verify before go-live</h2>
+      <span class="eyebrow" data-i18n="public.trial.flowEyebrow">Trial Flow</span>
+          <h2 class="section-title" data-i18n="trial.flowTitle">What to verify before go-live</h2>
           <p class="muted">This flow assumes the platform keeps owner, tenant, and player experiences separated while sharing the same operational runtime.</p>
         </div>
       </div>
       <div class="step-grid">
         <article class="step-card">
           <span class="eyebrow">1. Access</span>
-          <h3>Owner and tenant routing</h3>
-          <p class="muted">Confirm global users land in the owner console and tenant-scoped admins land in the tenant console without overlap.</p>
+        <h3 data-i18n="public.trial.routingTitle">Owner and tenant routing</h3>
+        <p class="muted" data-i18n="public.trial.routingDetail">Confirm global users land in the owner console and tenant-scoped admins land in the tenant console without overlap.</p>
         </article>
         <article class="step-card">
           <span class="eyebrow">2. Runtime</span>
-          <h3>Bot, worker, watcher, and optional agents</h3>
-          <p class="muted">Validate runtime health, service readiness, and alert visibility from the owner console before tenant onboarding.</p>
+        <h3 data-i18n="public.trial.runtimeTitle">Bot, worker, watcher, and optional agents</h3>
+        <p class="muted" data-i18n="public.trial.runtimeDetail">Validate runtime health, service readiness, and alert visibility from the owner console before tenant onboarding.</p>
         </article>
         <article class="step-card">
           <span class="eyebrow">3. Tenant ops</span>
-          <h3>Catalog, delivery, and wallet workflows</h3>
-          <p class="muted">Run tenant-scoped config, queue, wallet, and delivery recovery flows without touching owner-only controls.</p>
+        <h3 data-i18n="public.trial.catalogTitle">Catalog, delivery, and wallet workflows</h3>
+        <p class="muted" data-i18n="public.trial.catalogDetail">Run tenant-scoped config, queue, wallet, and delivery recovery flows without touching owner-only controls.</p>
         </article>
         <article class="step-card">
           <span class="eyebrow">4. Player trust</span>
-          <h3>Wallet, purchase, redeem, and Steam link</h3>
-          <p class="muted">Walk through the player portal on mobile and desktop to confirm a clean, understandable transaction experience.</p>
+        <h3 data-i18n="public.trial.playerTitle">Wallet, purchase, redeem, and Steam link</h3>
+        <p class="muted" data-i18n="public.trial.playerDetail">Walk through the player portal on mobile and desktop to confirm a clean, understandable transaction experience.</p>
         </article>
       </div>
     </section>
@@ -60,7 +64,7 @@
         <div class="section-head">
           <div>
             <span class="eyebrow">Owner Checklist</span>
-            <h2 class="section-title">Before opening tenants</h2>
+          <h2 class="section-title" data-i18n="trial.ownerTitle">Before opening tenants</h2>
           </div>
         </div>
         <div class="flow-list">
@@ -83,7 +87,7 @@
         <div class="section-head">
           <div>
             <span class="eyebrow">Tenant + Player Checklist</span>
-            <h2 class="section-title">Before opening the server community</h2>
+          <h2 class="section-title" data-i18n="trial.communityTitle">Before opening the server community</h2>
           </div>
         </div>
         <div class="flow-list">
@@ -103,5 +107,9 @@
       </section>
     </section>
   </div>
+  <script src="/player/assets/ui/portal-i18n.js?v=20260320-complete-pass"></script>
+  <script>
+    window.PortalUiI18n?.init(['trialLanguageSelect']);
+  </script>
 </body>
 </html>

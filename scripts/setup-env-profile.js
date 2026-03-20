@@ -5,6 +5,13 @@ const path = require('node:path');
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 const PORTAL_DIR = path.join(ROOT_DIR, 'apps', 'web-portal-standalone');
+const PROFILE_CONFIG = Object.freeze({
+  development: Object.freeze({ overlay: 'development' }),
+  test: Object.freeze({ overlay: 'test' }),
+  production: Object.freeze({ overlay: 'production' }),
+  'single-host-prod': Object.freeze({ overlay: 'single-host-prod' }),
+  'multi-tenant-prod': Object.freeze({ overlay: 'multi-tenant-prod' }),
+});
 
 function parseArgs(argv) {
   const out = {};
@@ -79,16 +86,31 @@ function writeFileAtomic(targetPath, content, { force = false } = {}) {
   fs.renameSync(tmpPath, targetPath);
 }
 
-function buildProfilePaths(baseDir, profile) {
+function getSupportedProfiles() {
+  return Object.keys(PROFILE_CONFIG);
+}
+
+function normalizeProfile(profileInput) {
+  const profile = String(profileInput || 'development').trim().toLowerCase();
+  if (!PROFILE_CONFIG[profile]) {
+    throw new Error(`Unsupported profile "${profile}". Use ${getSupportedProfiles().join(', ')}.`);
+  }
+  return profile;
+}
+
+function buildProfilePaths(baseDir, profileInput) {
+  const profile = normalizeProfile(profileInput);
+  const overlay = PROFILE_CONFIG[profile].overlay;
   return {
+    profile,
     base: path.join(baseDir, '.env.example'),
-    overlay: path.join(baseDir, `.env.${profile}.example`),
+    overlay: path.join(baseDir, `.env.${overlay}.example`),
     target: path.join(baseDir, '.env'),
   };
 }
 
-function buildMergedProfile(baseDir, profile) {
-  const paths = buildProfilePaths(baseDir, profile);
+function buildMergedProfile(baseDir, profileInput) {
+  const paths = buildProfilePaths(baseDir, profileInput);
   const baseLines = readLines(paths.base);
   if (baseLines.length === 0) {
     throw new Error(`Missing base example env: ${paths.base}`);
@@ -103,13 +125,9 @@ function buildMergedProfile(baseDir, profile) {
 
 function main() {
   const args = parseArgs(process.argv.slice(2));
-  const profile = String(args.profile || 'development').trim().toLowerCase();
+  const profile = normalizeProfile(args.profile || 'development');
   const write = args.write === 'true';
   const force = args.force === 'true';
-  const allowed = new Set(['development', 'test', 'production']);
-  if (!allowed.has(profile)) {
-    throw new Error(`Unsupported profile "${profile}". Use development, test, or production.`);
-  }
 
   const rootProfile = buildMergedProfile(ROOT_DIR, profile);
   const portalProfile = buildMergedProfile(PORTAL_DIR, profile);
@@ -128,4 +146,21 @@ function main() {
   console.log(`[env-profile] wrote ${portalProfile.target}`);
 }
 
-main();
+module.exports = {
+  ROOT_DIR,
+  PORTAL_DIR,
+  PROFILE_CONFIG,
+  parseArgs,
+  readLines,
+  mergeEnvLines,
+  writeFileAtomic,
+  getSupportedProfiles,
+  normalizeProfile,
+  buildProfilePaths,
+  buildMergedProfile,
+  main,
+};
+
+if (require.main === module) {
+  main();
+}
