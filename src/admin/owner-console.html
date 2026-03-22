@@ -7,85 +7,64 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/admin/assets/console-surfaces.css?v=20260320-total-redesign-pass">
+  <link rel="stylesheet" href="/admin/assets/console-surfaces.css?v=20260322-legacy-fallback-cutover">
 </head>
 <body class="surface-owner">
   <div class="surface-root console-app-shell">
-    <header class="surface-header">
-      <div class="surface-utility-bar">
-        <div class="utility-group">
-          <span class="utility-label" data-i18n="owner.surfaceId">Platform Owner Console</span>
-          <span class="utility-divider"></span>
-          <span class="utility-value" data-i18n="owner.metaSurfaceTitle">Platform-wide control</span>
-        </div>
-        <div class="utility-group">
-          <span class="utility-label" data-i18n="owner.metaRealtimeLabel">Realtime</span>
-          <span class="utility-value" data-i18n="owner.metaRealtimeTitle">Incident refresh enabled</span>
-        </div>
-      </div>
-      <div class="surface-topline">
-        <div class="surface-brand">
+    <section class="surface-masthead">
+      <div class="masthead-card owner-masthead">
+        <div class="masthead-copy">
           <span class="surface-id" data-i18n="owner.surfaceId">Platform Owner Console</span>
           <h1 data-i18n="owner.title">Global Operations</h1>
           <p data-i18n="owner.subtitle">Owner-only control surface for tenant fleet health, runtime posture, platform security, audit visibility, and guarded system changes. Daily tenant operations stay in the tenant console.</p>
+          <div class="masthead-tags">
+            <a class="surface-role-chip active" href="/owner">Owner</a>
+            <a class="surface-role-chip" href="/tenant">Tenant</a>
+            <a class="surface-role-chip" href="/player">Player</a>
+          </div>
         </div>
-        <div class="surface-actions">
-          <button id="ownerSidebarToggleBtn" class="button" type="button" aria-controls="ownerSidebar" aria-expanded="true" data-i18n="common.menu">Menu</button>
-          <label class="language-picker">
-            <span data-i18n="common.language">Language</span>
-            <select id="ownerLanguageSelect" class="language-select"></select>
-          </label>
-          <button id="ownerPaletteBtn" class="command-chip" type="button" data-i18n="common.commandPalette">Command Palette</button>
-          <button id="ownerRefreshBtn" class="button button-primary" type="button" data-i18n="common.refreshConsole">Refresh Console</button>
-          <details class="action-menu">
-            <summary class="action-menu-button" data-i18n="common.more">More</summary>
-            <div class="action-menu-panel">
-              <button id="ownerMonitoringBtn" class="button button-warning" type="button" data-i18n="common.runMonitoring">Run Monitoring</button>
-              <button id="ownerClearAlertsBtn" class="button" type="button" data-i18n="common.clearAlerts">Clear Alerts</button>
-              <a class="ghost-link" href="/admin/legacy" data-i18n="common.legacyWorkbench">Legacy Workbench</a>
-            </div>
-          </details>
+        <div class="masthead-aside">
+          <div class="surface-actions masthead-actions">
+            <button id="ownerSidebarToggleBtn" class="button" type="button" aria-controls="ownerSidebar" aria-expanded="true" data-i18n="common.menu">Menu</button>
+            <label class="language-picker">
+              <span data-i18n="common.language">Language</span>
+              <select id="ownerLanguageSelect" class="language-select"></select>
+            </label>
+            <button id="ownerPaletteBtn" class="command-chip" type="button" data-i18n="common.commandPalette">Command Palette</button>
+            <button id="ownerRefreshBtn" class="button button-primary" type="button" data-i18n="common.refreshConsole">Refresh Console</button>
+            <details class="action-menu">
+              <summary class="action-menu-button" data-i18n="common.more">More</summary>
+              <div class="action-menu-panel">
+                <button id="ownerMonitoringBtn" class="button button-warning" type="button" data-i18n="common.runMonitoring">Run Monitoring</button>
+                <button id="ownerClearAlertsBtn" class="button" type="button" data-i18n="common.clearAlerts">Clear Alerts</button>
+                <a class="ghost-link" href="/admin/legacy?fallback=1" data-i18n="common.legacyWorkbench">Legacy Workbench</a>
+              </div>
+            </details>
+          </div>
+          <div class="masthead-stat">
+            <span class="section-kicker">Owner Scope</span>
+            <strong>Global</strong>
+          </div>
+          <div class="masthead-stat">
+            <span class="section-kicker">Style</span>
+            <strong>SCUM Ops</strong>
+          </div>
         </div>
       </div>
+    </section>
 
-      <div id="ownerStatusBanner" class="status-banner banner-info">
-        <div>
-          <strong id="ownerStatusTitle" data-i18n="owner.statusLoadingTitle">Loading owner console...</strong>
-          <p id="ownerStatusDetail" data-i18n="owner.statusLoadingDetail">Preparing platform-wide runtime, tenant, security, and incident state.</p>
-        </div>
-        <div id="ownerStatusTags" class="tag-row"></div>
-      </div>
-
-      <div class="workspace-toolbar">
-        <div class="workspace-copy">
-          <span class="section-kicker" data-i18n="owner.consoleAreasKicker">Console Areas</span>
-          <strong data-i18n="owner.consoleAreasLead">Open one focused owner area at a time, then use the left menu for the pages inside that area.</strong>
-          <p id="ownerWorkspaceHint" class="muted" data-i18n="owner.workspaceHintLoading">Loading owner workspace layout...</p>
-        </div>
-        <div id="ownerWorkspaceSwitch" class="workspace-switch"></div>
-      </div>
-
-      <div id="ownerWorkspaceSummary" class="workspace-summary"></div>
-
-      <div class="surface-context-strip">
-        <article class="context-pill">
-          <strong data-i18n="owner.metaSurfaceLabel">Surface</strong>
-          <span data-i18n="owner.metaSurfaceTitle">Platform-wide control</span>
-        </article>
-        <article class="context-pill">
-          <strong data-i18n="owner.metaFastKeysLabel">Fast Keys</strong>
-          <span data-i18n="owner.metaFastKeysTitle">Ctrl/Cmd + K</span>
-        </article>
-        <article class="context-pill">
-          <strong data-i18n="owner.metaRealtimeLabel">Realtime</strong>
-          <span data-i18n="owner.metaRealtimeTitle">Incident refresh enabled</span>
-        </article>
-      </div>
-    </header>
-
-    <div class="surface-main">
-      <!-- Owner navigation only lists pages inside the active owner area. -->
+    <div class="console-stage">
       <aside id="ownerSidebar" class="surface-sidebar">
+        <section class="nav-card rail-card">
+          <div class="nav-head">
+            <span class="section-kicker" data-i18n="owner.consoleAreasKicker">Console Areas</span>
+            <strong data-i18n="owner.consoleAreasLead">Focused control lanes</strong>
+          </div>
+          <div id="ownerWorkspaceSwitch" class="workspace-switch"></div>
+          <p id="ownerWorkspaceHint" class="hint" data-i18n="owner.workspaceHintLoading">Loading owner workspace layout...</p>
+          <div id="ownerWorkspaceSummary" class="workspace-summary rail-summary"></div>
+        </section>
+
         <nav class="nav-card">
           <div class="nav-head">
             <span class="section-kicker" data-i18n="common.pages">Pages</span>
@@ -107,7 +86,7 @@
           </div>
         </nav>
 
-        <section class="nav-card nav-intel">
+        <section class="nav-card nav-intel compact-intel">
           <div class="nav-head">
             <span class="section-kicker" data-i18n="owner.ownerOnlyAreas">Owner-only Areas</span>
             <strong data-i18n="owner.metaFastKeysTitle">Ctrl/Cmd + K</strong>
@@ -116,8 +95,16 @@
         </section>
       </aside>
 
-      <!-- Each section below maps to one page-mode target opened by the sidebar/workspace controller. -->
-      <main class="surface-grid">
+      <section class="surface-stage-main">
+        <div id="ownerStatusBanner" class="status-banner banner-info">
+          <div>
+            <strong id="ownerStatusTitle" data-i18n="owner.statusLoadingTitle">Loading owner console...</strong>
+            <p id="ownerStatusDetail" data-i18n="owner.statusLoadingDetail">Preparing platform-wide runtime, tenant, security, and incident state.</p>
+          </div>
+          <div id="ownerStatusTags" class="tag-row"></div>
+        </div>
+
+        <main class="surface-grid">
         <section class="surface-section" id="overview">
           <div class="section-head">
             <div class="section-copy">
@@ -147,7 +134,7 @@
               <p data-i18n="owner.section.fleet.detail">Global view of tenant state, account ownership, recent changes, and routing into deeper platform workflows.</p>
             </div>
             <div class="section-tools">
-              <a class="action-link" href="/admin/legacy?tab=platform" data-i18n="owner.section.fleet.link">Provision or edit tenants</a>
+              <a class="action-link" href="/owner#control" data-i18n="owner.section.fleet.link">Provision or edit tenants</a>
             </div>
           </div>
           <div id="ownerTenantTable"></div>
@@ -211,36 +198,46 @@
           </div>
           <div class="focus-layout">
             <div class="primary-stack">
-              <section class="panel-card">
-                  <h3 data-i18n="owner.assets.inventory">Asset Inventory</h3>
-                <div class="panel-grid two-col">
+              <details class="task-cluster">
+                <summary data-i18n="owner.assets.inventory">Asset Inventory</summary>
+                <div class="task-body">
                   <section class="panel-card">
-                  <h3 data-i18n="owner.assets.subscriptions">Subscriptions</h3>
-                    <div id="ownerSubscriptionTable"></div>
-                  </section>
-                  <section class="panel-card">
-                  <h3 data-i18n="owner.assets.licenses">Licenses</h3>
-                    <div id="ownerLicenseTable"></div>
-                  </section>
-                  <section class="panel-card">
-                  <h3 data-i18n="owner.assets.apiKeys">API Keys</h3>
-                    <div id="ownerApiKeyTable"></div>
-                  </section>
-                  <section class="panel-card">
-                  <h3 data-i18n="owner.assets.webhooks">Webhooks</h3>
-                    <div id="ownerWebhookTable"></div>
+                    <h3 data-i18n="owner.assets.inventory">Asset Inventory</h3>
+                    <div class="panel-grid two-col">
+                      <section class="panel-card">
+                        <h3 data-i18n="owner.assets.subscriptions">Subscriptions</h3>
+                        <div id="ownerSubscriptionTable"></div>
+                      </section>
+                      <section class="panel-card">
+                        <h3 data-i18n="owner.assets.licenses">Licenses</h3>
+                        <div id="ownerLicenseTable"></div>
+                      </section>
+                      <section class="panel-card">
+                        <h3 data-i18n="owner.assets.apiKeys">API Keys</h3>
+                        <div id="ownerApiKeyTable"></div>
+                      </section>
+                      <section class="panel-card">
+                        <h3 data-i18n="owner.assets.webhooks">Webhooks</h3>
+                        <div id="ownerWebhookTable"></div>
+                      </section>
+                    </div>
                   </section>
                 </div>
-              </section>
-              <section class="panel-card">
-                  <h3 data-i18n="owner.assets.latestOutput">Latest Provisioning Output</h3>
-                <p class="hint">Newest secrets, webhook dispatch results, and asset creation summaries stay here so the main work area can stay quiet while you complete one task at a time.</p>
-                <div id="ownerAssetResult" class="panel-grid"></div>
-              </section>
+              </details>
+              <details class="task-cluster">
+                <summary data-i18n="owner.assets.latestOutput">Latest Provisioning Output</summary>
+                <div class="task-body">
+                  <section class="panel-card">
+                    <h3 data-i18n="owner.assets.latestOutput">Latest Provisioning Output</h3>
+                    <p class="hint">Newest secrets, webhook dispatch results, and asset creation summaries stay here so the main work area can stay quiet while you complete one task at a time.</p>
+                    <div id="ownerAssetResult" class="panel-grid"></div>
+                  </section>
+                </div>
+              </details>
             </div>
             <aside class="secondary-stack">
-              <details class="task-cluster" open>
-                  <summary data-i18n="owner.assets.subscriptionLicense">Subscription + License</summary>
+              <details class="task-cluster">
+                <summary data-i18n="owner.assets.subscriptionLicense">Subscription + License</summary>
                 <div class="task-body">
                     <p class="task-note" data-i18n="owner.assets.subscriptionLicense.note">Start with agreement lifecycle, then issue or refresh the tenant license only when the commercial state really changed.</p>
                   <div class="task-grid">
@@ -465,8 +462,8 @@
               <p data-i18n="owner.section.runtime.detail">Operational view for bot, worker, watcher, admin web, optional agents, and live issue aggregation.</p>
             </div>
             <div class="section-tools">
-              <a class="action-link" href="/admin/legacy?tab=control" data-i18n="owner.section.runtime.linkControl">Service control</a>
-              <a class="action-link" href="/admin/legacy?tab=metrics" data-i18n="owner.section.runtime.linkMetrics">Metrics timeline</a>
+              <a class="action-link" href="/owner#runtime" data-i18n="owner.section.runtime.linkControl">Service control</a>
+              <a class="action-link" href="/owner#observability" data-i18n="owner.section.runtime.linkMetrics">Metrics timeline</a>
             </div>
           </div>
           <div class="focus-layout">
@@ -581,32 +578,40 @@
               <p data-i18n="owner.section.commercial.detail">Keep subscription shape, quota pressure, and tenant-facing packages in one owner workspace without mixing them with runtime or support operations.</p>
             </div>
             <div class="section-tools">
-              <a class="action-link" href="/admin/legacy?tab=platform" data-i18n="owner.section.commercial.link">Open platform center</a>
+              <a class="action-link" href="/owner#commercial" data-i18n="owner.section.commercial.link">Open platform center</a>
             </div>
           </div>
           <div class="focus-layout">
             <div class="primary-stack">
               <div id="ownerCommercialStats" class="stats-grid"></div>
               <div class="surface-two-col">
-                <section class="panel-card">
-                  <h3 data-i18n="owner.commercial.planCatalog">Plan Catalog</h3>
-                  <div id="ownerPlanTable"></div>
-                </section>
                 <section class="panel-card is-warning">
                   <h3 data-i18n="owner.commercial.quotaPressure">Quota Pressure</h3>
                   <div id="ownerQuotaFeed" class="list-feed"></div>
-                </section>
-              </div>
-              <div class="surface-two-col">
-                <section class="panel-card">
-                  <h3 data-i18n="owner.commercial.marketplaceOffers">Marketplace Offers</h3>
-                  <div id="ownerMarketplaceTable"></div>
                 </section>
                 <section class="panel-card">
                   <h3 data-i18n="owner.commercial.guidance">Commercial Guidance</h3>
                   <div id="ownerCommercialNotes" class="panel-grid"></div>
                 </section>
               </div>
+              <details class="task-cluster">
+                <summary data-i18n="owner.commercial.planCatalog">Plan Catalog</summary>
+                <div class="task-body">
+                  <section class="panel-card">
+                    <h3 data-i18n="owner.commercial.planCatalog">Plan Catalog</h3>
+                    <div id="ownerPlanTable"></div>
+                  </section>
+                </div>
+              </details>
+              <details class="task-cluster">
+                <summary data-i18n="owner.commercial.marketplaceOffers">Marketplace Offers</summary>
+                <div class="task-body">
+                  <section class="panel-card">
+                    <h3 data-i18n="owner.commercial.marketplaceOffers">Marketplace Offers</h3>
+                    <div id="ownerMarketplaceTable"></div>
+                  </section>
+                </div>
+              </details>
             </div>
             <aside class="secondary-stack">
               <details class="task-cluster" open>
@@ -667,7 +672,7 @@
                 <p class="hint" data-i18n="owner.commercial.policyHint">Permission bundles and global access rules still live in the guarded security workbench so packaging stays separate from authentication policy.</p>
                 <div class="button-row">
                   <a class="ghost-link" href="#security" data-i18n="owner.commercial.reviewSecurity">Review security posture</a>
-                  <a class="ghost-link" href="/admin/legacy?tab=auth" data-i18n="owner.commercial.openSecurityWorkbench">Open full security workbench</a>
+                <a class="ghost-link" href="/owner#security" data-i18n="owner.commercial.openSecurityWorkbench">Open full security workbench</a>
                 </div>
               </section>
             </aside>
@@ -686,7 +691,7 @@
             </div>
             <div class="section-tools">
               <a class="action-link" href="/admin/api/observability/export?format=json" target="_blank" rel="noreferrer" data-i18n="owner.observability.exportJson">Export observability JSON</a>
-              <a class="action-link" href="/admin/legacy?tab=metrics" data-i18n="owner.observability.openWorkbench">Open full metrics workbench</a>
+              <a class="action-link" href="/owner#observability" data-i18n="owner.observability.openWorkbench">Open full metrics workbench</a>
             </div>
           </div>
           <div id="ownerObservabilityStats" class="stats-grid"></div>
@@ -724,10 +729,15 @@
                 <h3 data-i18n="owner.observability.series">Time-Series Watch</h3>
                 <div id="ownerSeriesCards" class="series-grid"></div>
               </section>
-              <section class="panel-card">
-                <h3 data-i18n="owner.observability.requestFlow">Recent Request Flow</h3>
-                <div id="ownerObservabilityRequestTable"></div>
-              </section>
+              <details class="task-cluster">
+                <summary data-i18n="owner.observability.requestFlow">Recent Request Flow</summary>
+                <div class="task-body">
+                  <section class="panel-card">
+                    <h3 data-i18n="owner.observability.requestFlow">Recent Request Flow</h3>
+                    <div id="ownerObservabilityRequestTable"></div>
+                  </section>
+                </div>
+              </details>
             </div>
             <aside class="secondary-stack">
               <details class="task-cluster" open>
@@ -769,7 +779,7 @@
               <p data-i18n="owner.section.security.detail">Review login posture, device footprints, policy summaries, and guarded investigation routes without mixing this page with commercial or tenant tools.</p>
             </div>
             <div class="section-tools">
-              <a class="action-link" href="/admin/legacy?tab=auth" data-i18n="owner.section.security.link">Full security workbench</a>
+              <a class="action-link" href="/owner#security" data-i18n="owner.section.security.link">Full security workbench</a>
             </div>
           </div>
           <div class="focus-layout">
@@ -786,39 +796,44 @@
               </div>
               <div class="surface-two-col">
                 <section class="panel-card">
-                  <h3 data-i18n="owner.security.deviceFootprints">Recent Device Footprints</h3>
-                  <p class="hint" data-i18n="owner.security.deviceFootprintsHint">Built from recent authenticated request metadata so the owner can see who is operating from where, even when sessions only store IP and user-agent binding.</p>
-                  <div id="ownerDeviceTable"></div>
-                </section>
-                <section class="panel-card">
                   <h3 data-i18n="owner.security.guardrails">Guardrails + Escalation</h3>
                   <p class="hint" data-i18n="owner.security.guardrailsHint">Deep permission-path review is still available, but it is intentionally moved out of the daily owner console so this page stays readable and action-oriented.</p>
                   <div class="button-row">
                     <a class="ghost-link" href="#access" data-i18n="owner.security.openAccess">Open access center</a>
                     <a class="ghost-link" href="#audit" data-i18n="owner.security.openAudit">Open audit trail</a>
-                    <a class="ghost-link" href="/admin/legacy?tab=auth" data-i18n="owner.security.openPermissionReview">Open path-level permission review</a>
+                <a class="ghost-link" href="/owner#audit" data-i18n="owner.security.openPermissionReview">Open path-level permission review</a>
                   </div>
                 </section>
               </div>
-              <!-- Rotation posture stays on the security page so owners can
-                   review secret drift, reload targets, and export evidence
-                   without leaving the main operational surface. -->
-              <div class="surface-two-col">
-                <section class="panel-card">
-                  <h3 data-i18n="owner.security.rotationReadiness">Secret Rotation Readiness</h3>
-                  <div id="ownerRotationStats" class="stats-grid"></div>
-                  <div id="ownerRotationMatrix"></div>
-                </section>
-                <section class="panel-card">
-                  <h3 data-i18n="owner.security.rotationDrift">Rotation Drift + Follow-up</h3>
-                  <div id="ownerRotationIssues" class="list-feed"></div>
-                  <div class="button-row">
-                    <button id="ownerRotationRefreshBtn" type="button" class="button" data-i18n="owner.security.refreshRotationCheck">Refresh Rotation Check</button>
-                    <button id="ownerRotationExportJsonBtn" type="button" class="button" data-i18n="owner.security.exportRotationJson">Export JSON</button>
-                    <button id="ownerRotationExportCsvBtn" type="button" class="button" data-i18n="owner.security.exportRotationCsv">Export CSV</button>
-                  </div>
-                </section>
-              </div>
+              <details class="task-cluster">
+                <summary data-i18n="owner.security.deviceFootprints">Recent Device Footprints</summary>
+                <div class="task-body">
+                  <section class="panel-card">
+                    <h3 data-i18n="owner.security.deviceFootprints">Recent Device Footprints</h3>
+                    <p class="hint" data-i18n="owner.security.deviceFootprintsHint">Built from recent authenticated request metadata so the owner can see who is operating from where, even when sessions only store IP and user-agent binding.</p>
+                    <div id="ownerDeviceTable"></div>
+                  </section>
+                </div>
+              </details>
+              <details class="task-cluster">
+                <summary data-i18n="owner.security.rotationReadiness">Secret Rotation Readiness</summary>
+                <div class="task-body">
+                  <section class="panel-card">
+                    <h3 data-i18n="owner.security.rotationReadiness">Secret Rotation Readiness</h3>
+                    <div id="ownerRotationStats" class="stats-grid"></div>
+                    <div id="ownerRotationMatrix"></div>
+                  </section>
+                  <section class="panel-card">
+                    <h3 data-i18n="owner.security.rotationDrift">Rotation Drift + Follow-up</h3>
+                    <div id="ownerRotationIssues" class="list-feed"></div>
+                    <div class="button-row">
+                      <button id="ownerRotationRefreshBtn" type="button" class="button" data-i18n="owner.security.refreshRotationCheck">Refresh Rotation Check</button>
+                      <button id="ownerRotationExportJsonBtn" type="button" class="button" data-i18n="owner.security.exportRotationJson">Export JSON</button>
+                      <button id="ownerRotationExportCsvBtn" type="button" class="button" data-i18n="owner.security.exportRotationCsv">Export CSV</button>
+                    </div>
+                  </section>
+                </div>
+              </details>
             </div>
             <aside class="secondary-stack">
               <details class="task-cluster" open>
@@ -925,16 +940,24 @@
           </div>
           <div class="focus-layout">
             <div class="primary-stack">
-              <div class="surface-two-col">
-                <section class="panel-card">
-                  <h3 data-i18n="owner.access.activeSessions">Active Sessions</h3>
-                  <div id="ownerSessionsTable"></div>
-                </section>
-                <section class="panel-card">
-                  <h3 data-i18n="owner.access.adminUsers">Admin Users</h3>
-                  <div id="ownerUsersTable"></div>
-                </section>
-              </div>
+              <details class="task-cluster">
+                <summary data-i18n="owner.access.activeSessions">Active Sessions</summary>
+                <div class="task-body">
+                  <section class="panel-card">
+                    <h3 data-i18n="owner.access.activeSessions">Active Sessions</h3>
+                    <div id="ownerSessionsTable"></div>
+                  </section>
+                </div>
+              </details>
+              <details class="task-cluster">
+                <summary data-i18n="owner.access.adminUsers">Admin Users</summary>
+                <div class="task-body">
+                  <section class="panel-card">
+                    <h3 data-i18n="owner.access.adminUsers">Admin Users</h3>
+                    <div id="ownerUsersTable"></div>
+                  </section>
+                </div>
+              </details>
             </div>
             <aside class="secondary-stack">
               <details class="task-cluster" open>
@@ -1094,19 +1117,24 @@
               <p>Owner-only recovery tools stay explicit. This surface supports backup creation and restore preview without collapsing into an unsafe one-click restore flow.</p>
             </div>
             <div class="section-tools">
-              <a class="action-link" href="/admin/legacy?tab=danger" data-i18n="owner.section.recovery.link">Open full recovery workbench</a>
+              <a class="action-link" href="/owner#recovery" data-i18n="owner.section.recovery.link">Open full recovery workbench</a>
             </div>
           </div>
           <div class="focus-layout">
             <div class="primary-stack">
               <section class="panel-card">
-                  <h3 data-i18n="owner.recovery.restoreStatus">Restore Status</h3>
+                <h3 data-i18n="owner.recovery.restoreStatus">Restore Status</h3>
                 <div id="ownerRestoreStateStats" class="stats-grid"></div>
               </section>
-              <section class="panel-card">
-                  <h3 data-i18n="owner.recovery.availableBackups">Available Backups</h3>
-                <div id="ownerBackupTable"></div>
-              </section>
+              <details class="task-cluster">
+                <summary data-i18n="owner.recovery.availableBackups">Available Backups</summary>
+                <div class="task-body">
+                  <section class="panel-card">
+                    <h3 data-i18n="owner.recovery.availableBackups">Available Backups</h3>
+                    <div id="ownerBackupTable"></div>
+                  </section>
+                </div>
+              </details>
             </div>
             <aside class="secondary-stack">
               <details class="task-cluster" open>
@@ -1167,17 +1195,25 @@
               <p>Keep the daily owner actions here: service restart, control summary, and new tenant creation. Deep environment editing stays in the guarded config workbench.</p>
             </div>
             <div class="section-tools">
-              <a class="action-link" href="/admin/legacy?tab=control" data-i18n="owner.section.control.linkConfig">Open full config editor</a>
-              <a class="action-link" href="/admin/legacy?tab=platform" data-i18n="owner.section.control.linkProvisioning">Open platform provisioning</a>
+              <a class="action-link" href="/owner#control" data-i18n="owner.section.control.linkConfig">Open full config editor</a>
+              <a class="action-link" href="/owner#fleet" data-i18n="owner.section.control.linkProvisioning">Open platform provisioning</a>
             </div>
           </div>
           <div class="focus-layout">
             <div class="primary-stack">
               <section class="panel-card">
-                  <h3 data-i18n="owner.control.summary">Control Summary</h3>
+                <h3 data-i18n="owner.control.summary">Control Summary</h3>
                 <div id="ownerControlSummaryStats" class="stats-grid"></div>
-                <div id="ownerManagedServiceTable"></div>
               </section>
+              <details class="task-cluster">
+                <summary data-i18n="owner.control.summary">Managed Services</summary>
+                <div class="task-body">
+                  <section class="panel-card">
+                    <h3 data-i18n="owner.control.summary">Managed Services</h3>
+                    <div id="ownerManagedServiceTable"></div>
+                  </section>
+                </div>
+              </details>
             </div>
             <aside class="secondary-stack">
               <details class="task-cluster" open>
@@ -1265,14 +1301,15 @@
                 <h3 data-i18n="owner.control.configHandoff">Global Config Handoff</h3>
                 <p class="hint">Environment flags, access policy, RCON routing, and portal wiring still belong in the guarded config workbench. This keeps the primary owner console focused on safe operational control instead of raw env editing.</p>
                 <div class="button-row">
-                  <a class="ghost-link" href="/admin/legacy?tab=control" data-i18n="owner.control.openConfigEditor">Open full config editor</a>
-                  <a class="ghost-link" href="/admin/legacy?tab=metrics" data-i18n="owner.control.openMetricsWorkbench">Open metrics workbench</a>
+                <a class="ghost-link" href="/owner#control" data-i18n="owner.control.openConfigEditor">Open full config editor</a>
+                <a class="ghost-link" href="/owner#observability" data-i18n="owner.control.openMetricsWorkbench">Open metrics workbench</a>
                 </div>
               </section>
             </aside>
           </div>
         </section>
-      </main>
+        </main>
+      </section>
     </div>
 
     <footer class="surface-footer">
@@ -1294,9 +1331,9 @@
     </div>
   </div>
 
-    <script src="/admin/assets/admin-i18n.js?v=20260320-total-redesign-pass"></script>
-    <script src="/admin/assets/console-shared.js?v=20260320-total-redesign-pass"></script>
-    <script src="/admin/assets/operational-state-model.js?v=20260320-total-redesign-pass"></script>
-    <script src="/admin/assets/owner-console.js?v=20260320-total-redesign-pass"></script>
+    <script src="/admin/assets/admin-i18n.js?v=20260321-scum-shell-rebuild"></script>
+    <script src="/admin/assets/console-shared.js?v=20260321-scum-shell-rebuild"></script>
+    <script src="/admin/assets/operational-state-model.js?v=20260321-scum-shell-rebuild"></script>
+    <script src="/admin/assets/owner-console.js?v=20260321-scum-shell-rebuild"></script>
 </body>
 </html>

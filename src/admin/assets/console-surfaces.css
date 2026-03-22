@@ -31,6 +31,7 @@ body {
   margin: 0;
   min-height: 100%;
   color: var(--text);
+  color-scheme: dark;
   background:
     radial-gradient(1200px 760px at 100% 0%, rgba(84, 181, 255, 0.11), transparent 56%),
     radial-gradient(980px 640px at 0% 100%, rgba(137, 221, 179, 0.07), transparent 58%),
@@ -40,6 +41,30 @@ body {
 
 body {
   min-height: 100vh;
+}
+
+select,
+select option,
+select optgroup {
+  color-scheme: dark;
+}
+
+select option,
+select optgroup {
+  background: #121212 !important;
+  color: #f4f1e8 !important;
+}
+
+select option:checked,
+select option:hover,
+select option:focus {
+  background: #2d61a8 !important;
+  color: #ffffff !important;
+}
+
+select option:disabled,
+select optgroup {
+  color: #b6b6b6 !important;
 }
 
 body.palette-open {
@@ -157,6 +182,8 @@ textarea {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .language-select {
@@ -2716,5 +2743,1228 @@ body.sidebar-collapsed .surface-sidebar .nav-intel {
   .command-chip,
   .action-menu > summary {
     width: 100%;
+  }
+}
+
+/* 2026-03-21 SCUM command shell pass
+   This layer intentionally strips visual noise, reduces stacked meta blocks,
+   and turns owner/tenant into a flatter command-surface with calmer spacing.
+   Keep logic hooks and section IDs unchanged; tune presentation here first. */
+
+:root {
+  --bg: #050709;
+  --bg-alt: #0a0d0f;
+  --bg-elevated: #111518;
+  --panel: rgba(11, 14, 16, 0.96);
+  --panel-soft: rgba(16, 20, 23, 0.92);
+  --panel-strong: rgba(6, 8, 10, 0.98);
+  --line: rgba(201, 214, 177, 0.12);
+  --line-strong: rgba(216, 228, 194, 0.24);
+  --text: #edf0e8;
+  --muted: #a7afa1;
+  --accent: #b6c36f;
+  --accent-strong: #d2df87;
+  --success: #88b48b;
+  --warning: #cb9954;
+  --danger: #cb776c;
+  --info: #8fa8ba;
+  --radius-lg: 18px;
+  --radius-md: 14px;
+  --radius-sm: 10px;
+  --shadow: 0 22px 48px rgba(0, 0, 0, 0.34);
+  --shadow-soft: 0 12px 28px rgba(0, 0, 0, 0.24);
+}
+
+body.surface-owner {
+  --accent: #bccb74;
+  --accent-strong: #d5e18d;
+  --line: rgba(213, 224, 170, 0.13);
+  --line-strong: rgba(220, 232, 182, 0.24);
+}
+
+body.surface-tenant {
+  --accent: #8ea8b3;
+  --accent-strong: #b7c9d1;
+  --line: rgba(170, 191, 205, 0.12);
+  --line-strong: rgba(194, 211, 224, 0.22);
+}
+
+html,
+body {
+  background:
+    linear-gradient(180deg, rgba(182, 195, 111, 0.04), transparent 160px),
+    radial-gradient(1200px 620px at 100% -10%, rgba(163, 177, 98, 0.07), transparent 55%),
+    radial-gradient(960px 620px at -10% 100%, rgba(118, 128, 102, 0.05), transparent 58%),
+    linear-gradient(180deg, #030405, #060809 42%, #090d10 100%);
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, transparent 0, transparent calc(100% - 1px), rgba(255, 255, 255, 0.015) calc(100% - 1px)),
+    linear-gradient(180deg, transparent 0, transparent calc(100% - 1px), rgba(255, 255, 255, 0.012) calc(100% - 1px));
+  background-size: 112px 112px;
+  opacity: 0.18;
+  mix-blend-mode: screen;
+}
+
+.surface-root {
+  width: min(1380px, calc(100% - 36px));
+  padding: 18px 0 28px;
+  gap: 14px;
+}
+
+.surface-header,
+.surface-section,
+.nav-card,
+.panel-card,
+.status-banner,
+.utility-banner {
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.01), rgba(255, 255, 255, 0)),
+    var(--panel);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(8px);
+}
+
+.surface-header {
+  position: relative;
+  overflow: hidden;
+  padding: 16px 18px 18px;
+  gap: 12px;
+}
+
+.surface-header::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0.62;
+}
+
+.surface-utility-bar {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.utility-group {
+  gap: 8px;
+}
+
+.utility-label,
+.utility-value {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.utility-label {
+  color: var(--muted);
+}
+
+.utility-value {
+  color: var(--text);
+}
+
+.surface-topline {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: end;
+}
+
+.surface-command-deck {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: end;
+  padding-top: 2px;
+}
+
+.surface-command-copy {
+  display: grid;
+  gap: 4px;
+  max-width: 58ch;
+}
+
+.surface-command-copy strong {
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.surface-brand {
+  gap: 6px;
+}
+
+.surface-brand h1 {
+  font-size: clamp(30px, 3vw, 42px);
+  line-height: 0.92;
+  letter-spacing: 0.045em;
+}
+
+.surface-brand p {
+  max-width: 60ch;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.surface-id {
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(182, 195, 111, 0.08);
+  border-color: rgba(182, 195, 111, 0.18);
+  color: var(--accent-strong);
+}
+
+.surface-actions {
+  justify-content: flex-end;
+  align-items: end;
+  gap: 8px;
+}
+
+.surface-actions > .button,
+.surface-actions > .command-chip,
+.surface-actions > .action-menu,
+.surface-actions > .language-picker {
+  flex: 0 0 auto;
+}
+
+.button,
+button,
+.nav-link,
+.ghost-link,
+.action-link,
+.command-chip,
+.action-menu > summary,
+.action-menu-button {
+  min-height: 40px;
+  padding: 0 13px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: none;
+}
+
+.button:hover,
+button:hover,
+.nav-link:hover,
+.ghost-link:hover,
+.action-link:hover,
+.command-chip:hover,
+.action-menu > summary:hover {
+  transform: none;
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--line-strong);
+}
+
+.button-primary {
+  background: linear-gradient(180deg, rgba(188, 203, 116, 0.98), rgba(147, 160, 80, 0.96));
+  color: #0a0d08;
+}
+
+body.surface-tenant .button-primary {
+  background: linear-gradient(180deg, rgba(183, 201, 209, 0.96), rgba(124, 145, 155, 0.94));
+  color: #070c10;
+}
+
+.button-warning {
+  background: linear-gradient(180deg, rgba(203, 153, 84, 0.98), rgba(160, 110, 46, 0.96));
+}
+
+.button-danger {
+  background: linear-gradient(180deg, rgba(203, 119, 108, 0.98), rgba(156, 82, 72, 0.96));
+}
+
+.status-banner {
+  padding: 12px 14px;
+  border-radius: 12px;
+  border-left: 3px solid var(--accent);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+}
+
+.status-banner strong {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 15px;
+  letter-spacing: 0.02em;
+}
+
+.status-banner p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.workspace-toolbar {
+  padding: 10px 12px;
+  display: block;
+}
+
+.workspace-copy,
+.workspace-summary,
+.surface-context-strip,
+.nav-intel {
+  display: none;
+}
+
+.workspace-switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.workspace-tab {
+  min-width: 118px;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.015);
+  color: var(--muted);
+}
+
+.workspace-tab.active {
+  border-color: rgba(188, 203, 116, 0.26);
+  background: rgba(188, 203, 116, 0.09);
+  color: var(--text);
+}
+
+body.surface-tenant .workspace-tab.active {
+  border-color: rgba(183, 201, 209, 0.24);
+  background: rgba(183, 201, 209, 0.08);
+}
+
+.workspace-tab-label {
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.workspace-tab-meta {
+  display: none;
+}
+
+.surface-main {
+  grid-template-columns: 224px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.console-stage {
+  display: grid;
+  grid-template-columns: 248px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.surface-stage-main {
+  min-width: 0;
+  display: grid;
+  gap: 14px;
+}
+
+.surface-sidebar {
+  top: 14px;
+  gap: 10px;
+}
+
+.nav-card {
+  padding: 10px;
+  border-radius: 14px;
+  background: rgba(7, 10, 12, 0.96);
+}
+
+.rail-card {
+  gap: 10px;
+}
+
+.rail-summary {
+  padding: 10px 0 0;
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 0;
+  background: transparent;
+}
+
+.rail-summary .workspace-summary-copy strong {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.rail-summary .tag-row {
+  margin-top: 4px;
+}
+
+.nav-head {
+  display: grid;
+  gap: 2px;
+  padding: 2px 4px 8px;
+}
+
+.nav-head strong {
+  font-size: 13px;
+  letter-spacing: 0.05em;
+}
+
+.nav-list {
+  gap: 4px;
+}
+
+.nav-link {
+  position: relative;
+  justify-content: flex-start;
+  min-height: 38px;
+  padding: 0 12px 0 16px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.nav-link::before {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.nav-link-active {
+  border-color: rgba(188, 203, 116, 0.18);
+  background: rgba(188, 203, 116, 0.08);
+  color: var(--text);
+}
+
+.nav-link-active::before {
+  background: var(--accent);
+}
+
+body.surface-tenant .nav-link-active {
+  border-color: rgba(183, 201, 209, 0.18);
+  background: rgba(183, 201, 209, 0.08);
+}
+
+.surface-grid {
+  gap: 14px;
+}
+
+.surface-section {
+  max-width: 1120px;
+  padding: 18px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.008), rgba(255, 255, 255, 0)),
+    rgba(8, 11, 13, 0.98);
+}
+
+.surface-section-active {
+  border-color: rgba(188, 203, 116, 0.12);
+}
+
+body.surface-tenant .surface-section-active {
+  border-color: rgba(183, 201, 209, 0.12);
+}
+
+.section-head {
+  gap: 10px;
+  padding-bottom: 2px;
+}
+
+.section-copy {
+  max-width: 68ch;
+  gap: 5px;
+}
+
+.section-kicker,
+.field > span,
+.language-picker span {
+  color: var(--accent-strong);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+body.surface-tenant .section-kicker,
+body.surface-tenant .field > span,
+body.surface-tenant .language-picker span {
+  color: var(--accent-strong);
+}
+
+.section-title {
+  font-size: clamp(22px, 2vw, 30px);
+  line-height: 0.96;
+}
+
+.section-copy p,
+.hint,
+.muted,
+.task-note {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.52;
+}
+
+.stats-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.stat-card {
+  min-height: 132px;
+  padding: 13px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.014);
+}
+
+.stat-kicker {
+  font-size: 10px;
+  color: var(--accent-strong);
+  letter-spacing: 0.11em;
+}
+
+.stat-value {
+  font-size: clamp(24px, 2.2vw, 34px);
+  line-height: 0.92;
+}
+
+.stat-title {
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--text);
+}
+
+.stat-detail {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.panel-card,
+.task-cluster,
+.table-shell,
+.feed-item,
+.empty-state {
+  border-radius: 14px;
+  border-color: rgba(255, 255, 255, 0.06);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.008), rgba(255, 255, 255, 0)),
+    rgba(15, 19, 22, 0.88);
+  box-shadow: none;
+}
+
+.panel-card {
+  padding: 14px;
+  gap: 10px;
+}
+
+.task-cluster > summary {
+  padding: 11px 13px;
+  font-size: 15px;
+  letter-spacing: 0.06em;
+}
+
+.task-cluster > summary::after {
+  color: var(--accent-strong);
+}
+
+.task-body {
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.01);
+}
+
+.focus-layout,
+.panel-grid.two-col,
+.surface-two-col {
+  gap: 12px;
+}
+
+.focus-layout,
+.panel-grid.two-col {
+  grid-template-columns: minmax(0, 1.08fr) minmax(320px, 0.92fr);
+}
+
+.surface-two-col {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+input,
+select,
+textarea,
+.language-select,
+.palette-search {
+  min-height: 40px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--text);
+  padding: 0 12px;
+}
+
+textarea {
+  min-height: 110px;
+  padding: 10px 12px;
+}
+
+select option,
+optgroup {
+  background: #0c0f11;
+  color: var(--text);
+}
+
+.table-shell table {
+  font-size: 13px;
+}
+
+.table-shell th {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.table-shell td {
+  padding-block: 11px;
+  vertical-align: top;
+}
+
+.tag-row {
+  gap: 6px;
+}
+
+.pill {
+  min-height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.surface-footer {
+  padding: 0 4px;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+body.sidebar-collapsed .surface-main {
+  grid-template-columns: 76px minmax(0, 1fr);
+}
+
+body.sidebar-collapsed .console-stage {
+  grid-template-columns: 76px minmax(0, 1fr);
+}
+
+body.sidebar-collapsed .surface-sidebar .nav-link {
+  min-height: 36px;
+}
+
+@media (max-width: 1260px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .focus-layout,
+  .panel-grid.two-col,
+  .surface-two-col {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1180px) {
+  .surface-root {
+    width: min(100%, calc(100% - 18px));
+  }
+
+  .surface-topline {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .surface-command-deck {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .surface-main,
+  .console-stage {
+    grid-template-columns: 1fr;
+  }
+
+  .surface-sidebar {
+    position: fixed;
+    left: 12px;
+    top: 12px;
+    bottom: 12px;
+    width: min(300px, calc(100vw - 24px));
+    padding: 0;
+    transform: translateX(-112%);
+    transition: transform 180ms ease, opacity 180ms ease;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 40;
+  }
+
+  body.sidebar-open .surface-sidebar {
+    transform: translateX(0);
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+@media (max-width: 780px) {
+  .surface-root {
+    width: min(100%, calc(100% - 14px));
+    padding-top: 10px;
+  }
+
+  .surface-header,
+  .surface-section,
+  .nav-card,
+  .panel-card {
+    border-radius: 14px;
+  }
+
+  .surface-header,
+  .surface-section {
+    padding: 14px;
+  }
+
+  .surface-brand h1 {
+    font-size: 28px;
+  }
+
+  .surface-utility-bar {
+    display: none;
+  }
+
+  .surface-actions,
+  .workspace-switch {
+    width: 100%;
+  }
+
+  .surface-actions > *,
+  .workspace-switch > * {
+    flex: 1 1 calc(50% - 6px);
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .surface-footer {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+/* WarZ/SCUM-inspired command shell pass:
+   reshape owner/tenant into a top command bar + hero banner + calmer ops stage,
+   while preserving existing ids and runtime hooks underneath. */
+body.surface-owner,
+body.surface-tenant {
+  background:
+    radial-gradient(circle at top, rgba(171, 178, 92, 0.12), transparent 26%),
+    radial-gradient(circle at 20% 18%, rgba(120, 48, 30, 0.14), transparent 18%),
+    linear-gradient(180deg, #10140f 0%, #090b08 100%);
+}
+
+body.surface-owner::before,
+body.surface-tenant::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 120px 120px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.75), transparent 92%);
+  opacity: 0.24;
+}
+
+.surface-commandbar {
+  position: sticky;
+  top: 12px;
+  z-index: 15;
+  margin-bottom: 18px;
+}
+
+.surface-commandbar-inner {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  padding: 14px 18px;
+  border: 1px solid rgba(211, 220, 149, 0.14);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(17, 24, 17, 0.96), rgba(8, 12, 9, 0.94));
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.36);
+  backdrop-filter: blur(10px);
+}
+
+.surface-brand-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  text-decoration: none;
+}
+
+.brand-emblem {
+  min-width: 54px;
+  min-height: 54px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  border: 1px solid rgba(217, 226, 150, 0.22);
+  background:
+    linear-gradient(180deg, rgba(99, 116, 54, 0.48), rgba(27, 34, 20, 0.9));
+  color: #f2f3e5;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 23px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.brand-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.brand-copy strong {
+  color: #f5f6ea;
+  font-size: 18px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.brand-copy span {
+  color: rgba(233, 238, 208, 0.66);
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.surface-role-nav {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.surface-role-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(240, 243, 222, 0.76);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.surface-role-chip.active {
+  border-color: rgba(216, 226, 136, 0.32);
+  background: linear-gradient(180deg, rgba(114, 126, 67, 0.45), rgba(29, 36, 23, 0.92));
+  color: #fbfcf0;
+}
+
+.surface-masthead {
+  margin-bottom: 18px;
+}
+
+.masthead-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(250px, 0.55fr);
+  gap: 18px;
+  padding: 24px 26px;
+  border: 1px solid rgba(211, 220, 149, 0.16);
+  border-radius: 22px;
+  background:
+    linear-gradient(135deg, rgba(28, 35, 24, 0.96), rgba(12, 16, 12, 0.92));
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.36);
+  overflow: hidden;
+}
+
+.masthead-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+
+.masthead-copy,
+.masthead-aside {
+  position: relative;
+  z-index: 1;
+}
+
+.masthead-copy h1 {
+  margin: 8px 0 10px;
+  font-size: clamp(42px, 5vw, 64px);
+  line-height: 0.92;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.masthead-copy p {
+  max-width: 72ch;
+  color: rgba(233, 238, 208, 0.76);
+  font-size: 15px;
+  line-height: 1.72;
+}
+
+.masthead-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.masthead-aside {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.masthead-actions {
+  justify-content: flex-start;
+  align-items: flex-end;
+}
+
+.masthead-stat {
+  padding: 16px;
+  border: 1px solid rgba(211, 220, 149, 0.12);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.masthead-stat strong {
+  display: block;
+  margin-top: 8px;
+  color: #f5f6ea;
+  font-size: 28px;
+  font-family: 'Barlow Condensed', sans-serif;
+  line-height: 0.96;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.owner-masthead {
+  background:
+    linear-gradient(90deg, rgba(8, 10, 8, 0.54), rgba(8, 10, 8, 0.84)),
+    url("/admin/assets/visuals/scum/scum_512.jpg") center/cover;
+}
+
+.tenant-masthead {
+  background:
+    linear-gradient(90deg, rgba(8, 10, 8, 0.56), rgba(8, 10, 8, 0.86)),
+    url("/admin/assets/visuals/survivors_talking/survivors_talking_512.jpg") center/cover;
+}
+
+.console-stage {
+  gap: 20px;
+  align-items: start;
+}
+
+.surface-sidebar {
+  top: 112px;
+}
+
+.surface-stage-main {
+  gap: 16px;
+}
+
+@media (max-width: 1180px) {
+  .surface-commandbar {
+    position: static;
+  }
+
+  .surface-commandbar-inner {
+    grid-template-columns: 1fr;
+  }
+
+  .surface-role-nav {
+    justify-content: flex-start;
+  }
+
+  .masthead-card {
+    grid-template-columns: 1fr;
+    padding: 20px;
+  }
+
+  .surface-sidebar {
+    top: 12px;
+  }
+}
+
+@media (max-width: 780px) {
+  .surface-commandbar-inner {
+    padding: 14px;
+  }
+
+  .brand-emblem {
+    min-width: 46px;
+    min-height: 46px;
+    font-size: 20px;
+  }
+
+  .masthead-copy h1 {
+    font-size: 36px;
+  }
+}
+
+/* Cinematic admin shell pass:
+   flatten the top navigation, widen the hero stage, and make owner/tenant
+   read like official game operations pages instead of rounded SaaS cards. */
+body.surface-owner,
+body.surface-tenant {
+  background:
+    linear-gradient(180deg, rgba(4, 4, 4, 0.68), rgba(4, 4, 4, 0.96)),
+    url("/admin/assets/visuals/tunnel/tunnel_512.jpg") center top / cover fixed;
+}
+
+body.surface-owner::after,
+body.surface-tenant::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(238, 186, 94, 0.14), transparent 22%),
+    radial-gradient(circle at 0% 100%, rgba(118, 128, 70, 0.12), transparent 24%);
+}
+
+.surface-root.console-app-shell {
+  width: 100%;
+  padding: 0 0 48px;
+  gap: 0;
+}
+
+.surface-commandbar {
+  position: sticky;
+  top: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.surface-commandbar-inner {
+  width: min(1600px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 14px 24px;
+  border-radius: 0 0 20px 20px;
+  border-top: 0;
+  border-color: rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(6, 6, 6, 0.96), rgba(10, 10, 10, 0.94));
+  box-shadow: 0 22px 52px rgba(0, 0, 0, 0.44);
+}
+
+.brand-emblem {
+  min-width: 46px;
+  min-height: 46px;
+  border-radius: 999px;
+  border-color: rgba(255, 255, 255, 0.14);
+  background: radial-gradient(circle at 30% 30%, rgba(219, 63, 35, 0.96), rgba(89, 12, 11, 0.98));
+  font-size: 17px;
+}
+
+.surface-role-chip {
+  min-height: 40px;
+  padding: 0 18px;
+  border-radius: 10px;
+  border-color: transparent;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.86);
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 16px;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.surface-role-chip.active,
+.surface-role-chip:hover {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fffdf4;
+}
+
+.surface-masthead,
+.console-stage {
+  width: min(1440px, calc(100% - 24px));
+  margin: 0 auto;
+}
+
+.surface-masthead {
+  padding-top: 18px;
+  margin-bottom: 18px;
+}
+
+.masthead-card {
+  min-height: 238px;
+  align-items: start;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 20px 22px;
+  border-radius: 22px;
+  border-color: rgba(255, 255, 255, 0.08);
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.8)),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.66), rgba(0, 0, 0, 0.24));
+}
+
+.owner-masthead {
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.82)),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.68), rgba(0, 0, 0, 0.24)),
+    url("/admin/assets/visuals/scum/scum_512.jpg") center / cover;
+}
+
+.tenant-masthead {
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.82)),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.68), rgba(0, 0, 0, 0.24)),
+    url("/admin/assets/visuals/survivors_talking/survivors_talking_512.jpg") center / cover;
+}
+
+.masthead-copy {
+  max-width: 640px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: rgba(8, 8, 8, 0.62);
+}
+
+.masthead-copy h1 {
+  font-size: clamp(34px, 4.4vw, 58px);
+}
+
+.masthead-copy p {
+  max-width: 52ch;
+  color: rgba(245, 246, 232, 0.82);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.masthead-aside {
+  width: auto;
+  justify-self: end;
+  gap: 8px;
+  align-self: start;
+}
+
+.masthead-actions {
+  justify-content: flex-end;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.masthead-actions .language-picker {
+  min-width: 112px;
+  gap: 0;
+}
+
+.masthead-actions .language-picker span {
+  display: none;
+}
+
+.masthead-actions .language-select,
+.masthead-actions .button,
+.masthead-actions .command-chip,
+.masthead-actions .action-menu > summary,
+.masthead-actions .action-menu-button {
+  min-height: 38px;
+}
+
+.masthead-stat {
+  display: none;
+}
+
+.console-stage {
+  grid-template-columns: 228px minmax(0, 1fr);
+  gap: 16px;
+}
+
+.surface-sidebar {
+  top: 16px;
+}
+
+.nav-card,
+.surface-section,
+.panel-card,
+.status-banner,
+.utility-banner {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(12, 12, 12, 0.8), rgba(10, 10, 10, 0.94));
+}
+
+.button-primary {
+  background: linear-gradient(135deg, #d1b06a, #efe0a7);
+  color: #111;
+}
+
+.surface-grid {
+  width: 100%;
+}
+
+.surface-section {
+  max-width: none;
+}
+
+@media (max-width: 1180px) {
+  .surface-commandbar-inner,
+  .masthead-card,
+  .console-stage {
+    grid-template-columns: 1fr;
+  }
+
+  .surface-masthead,
+  .console-stage {
+    width: min(100%, calc(100% - 20px));
+  }
+}
+
+@media (max-width: 780px) {
+  .surface-commandbar-inner,
+  .masthead-card {
+    padding: 16px;
+  }
+
+  .masthead-copy {
+    padding: 18px;
+  }
+
+  .masthead-copy h1 {
+    font-size: 38px;
   }
 }

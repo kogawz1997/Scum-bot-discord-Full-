@@ -9,18 +9,18 @@
   <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #091118;
-      --bg-alt: #0f1822;
-      --panel: rgba(16, 25, 35, 0.92);
-      --panel-soft: rgba(20, 31, 46, 0.82);
-      --line: rgba(171, 194, 219, 0.16);
-      --line-strong: rgba(212, 227, 242, 0.28);
-      --text: #edf3fb;
-      --muted: #9fb3c8;
-      --accent: #94d0ff;
-      --success: #88ddb2;
-      --warning: #efc26d;
-      --danger: #ef8c7d;
+      --bg: #0a0d09;
+      --bg-alt: #11150f;
+      --panel: rgba(16, 20, 15, 0.94);
+      --panel-soft: rgba(20, 26, 19, 0.88);
+      --line: rgba(214, 221, 154, 0.14);
+      --line-strong: rgba(229, 235, 183, 0.26);
+      --text: #f1f2e7;
+      --muted: #b8be9a;
+      --accent: #d5dc93;
+      --success: #90c27b;
+      --warning: #d2a463;
+      --danger: #cc7760;
       --radius-lg: 22px;
       --radius-md: 16px;
       --shadow: 0 30px 80px rgba(0, 0, 0, 0.42);
@@ -28,26 +28,167 @@
 
     * { box-sizing: border-box; }
 
-    body {
-      margin: 0;
-      min-height: 100vh;
-      display: grid;
-      place-items: center;
-      padding: 18px;
-      color: var(--text);
-      background:
-        radial-gradient(1000px 640px at 100% 0%, rgba(84, 181, 255, 0.12), transparent 56%),
-        radial-gradient(860px 560px at 0% 100%, rgba(136, 221, 178, 0.08), transparent 58%),
-        linear-gradient(155deg, #071018, var(--bg) 48%, #12202d);
+    html {
+      color-scheme: dark;
+    }
+
+    select,
+    select option,
+    select optgroup {
+      color-scheme: dark;
+    }
+
+    select option,
+    select optgroup {
+      background: #121212 !important;
+      color: #f4f1e8 !important;
+    }
+
+    select option:checked,
+    select option:hover,
+    select option:focus {
+      background: #2d61a8 !important;
+      color: #ffffff !important;
+    }
+
+    select option:disabled,
+    select optgroup {
+      color: #b6b6b6 !important;
+    }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        padding: 18px;
+        color: var(--text);
+        background:
+          radial-gradient(980px 640px at 100% 0%, rgba(173, 84, 48, 0.16), transparent 52%),
+          radial-gradient(900px 620px at 0% 100%, rgba(169, 180, 87, 0.09), transparent 58%),
+          linear-gradient(165deg, #060806, var(--bg) 48%, #111510);
       font-family: "IBM Plex Sans Thai", "Segoe UI", sans-serif;
     }
 
-    .screen {
-      width: min(1120px, 100%);
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+      background-size: 52px 52px;
+      opacity: 0.12;
+    }
+
+    .page {
+      width: min(1440px, calc(100% - 8px));
+      margin: 0 auto;
+      display: grid;
+      gap: 16px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .commandbar {
+      position: sticky;
+      top: 12px;
+      z-index: 20;
+    }
+
+    .commandbar-inner {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 18px;
+      padding: 14px 18px;
       border: 1px solid var(--line);
       border-radius: var(--radius-lg);
       background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.02)),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01)),
+        linear-gradient(180deg, rgba(18, 24, 18, 0.96), rgba(9, 12, 9, 0.95));
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+    }
+
+    .brand-mark {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: inherit;
+    }
+
+    .emblem {
+      min-width: 54px;
+      min-height: 54px;
+      display: grid;
+      place-items: center;
+      border-radius: 14px;
+      border: 1px solid rgba(214, 221, 154, 0.18);
+      background: linear-gradient(180deg, rgba(98, 107, 55, 0.42), rgba(27, 33, 22, 0.92));
+      color: var(--text);
+      font-family: "Barlow Condensed", sans-serif;
+      font-size: 23px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .brand-copy {
+      display: grid;
+      gap: 2px;
+    }
+
+    .brand-copy strong {
+      font-size: 18px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .brand-copy span {
+      color: rgba(233, 238, 208, 0.62);
+      font-size: 12px;
+      letter-spacing: 0.13em;
+      text-transform: uppercase;
+    }
+
+    .role-nav {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    .role-chip {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 38px;
+      padding: 0 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.03);
+      color: rgba(240, 243, 222, 0.76);
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-decoration: none;
+      text-transform: uppercase;
+    }
+
+    .role-chip.active {
+      border-color: rgba(216, 226, 136, 0.28);
+      background: linear-gradient(180deg, rgba(110, 124, 62, 0.44), rgba(29, 34, 24, 0.92));
+      color: #fbfcf0;
+    }
+
+    .screen {
+      width: min(1180px, 100%);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      background:
+        radial-gradient(circle at right top, rgba(166, 77, 49, 0.15), transparent 28%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.012)),
         var(--panel);
       box-shadow: var(--shadow);
       backdrop-filter: blur(12px);
@@ -67,8 +208,8 @@
       border-right: 1px solid var(--line);
       align-content: start;
       background:
-        radial-gradient(860px 420px at 0% 0%, rgba(84, 181, 255, 0.1), transparent 62%),
-        var(--panel-soft);
+        linear-gradient(180deg, rgba(9, 11, 9, 0.58), rgba(9, 11, 9, 0.86)),
+        url("/admin/assets/visuals/tunnel/tunnel_512.jpg") center/cover;
     }
 
     .tag {
@@ -134,17 +275,6 @@
       font-weight: 700;
     }
 
-    .theme-switch {
-      display: inline-grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 6px;
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      padding: 6px;
-      background: rgba(255, 255, 255, 0.04);
-      width: fit-content;
-    }
-
     .auth-topbar {
       display: flex;
       align-items: flex-start;
@@ -164,6 +294,8 @@
       letter-spacing: 0.08em;
       text-transform: uppercase;
       color: var(--muted);
+      user-select: none;
+      -webkit-user-select: none;
     }
 
     .language-select {
@@ -175,23 +307,6 @@
       padding: 0 12px;
       color-scheme: dark;
       appearance: none;
-    }
-
-    .theme-switch button {
-      border: 1px solid var(--line);
-      background: rgba(255, 255, 255, 0.03);
-      color: var(--text);
-      border-radius: 10px;
-      min-height: 38px;
-      padding: 0 12px;
-      cursor: pointer;
-    }
-
-    .theme-switch button.active {
-      border-color: transparent;
-      background: linear-gradient(135deg, rgba(94, 182, 255, 0.96), rgba(189, 231, 255, 0.9));
-      color: #07131d;
-      font-weight: 700;
     }
 
     form {
@@ -234,8 +349,8 @@
     }
 
     #loginBtn {
-      background: linear-gradient(135deg, rgba(148, 208, 255, 0.96), rgba(187, 231, 255, 0.92));
-      color: #08131a;
+      background: linear-gradient(135deg, rgba(190, 198, 111, 0.96), rgba(229, 234, 176, 0.88));
+      color: #10150d;
       border-color: transparent;
       font-weight: 700;
     }
@@ -251,6 +366,18 @@
     }
 
     @media (max-width: 920px) {
+      .commandbar {
+        position: static;
+      }
+
+      .commandbar-inner {
+        grid-template-columns: 1fr;
+      }
+
+      .role-nav {
+        justify-content: flex-start;
+      }
+
       .screen {
         grid-template-columns: 1fr;
       }
@@ -271,45 +398,181 @@
         font-size: 34px;
       }
     }
+
+    /* Cinematic admin login pass:
+       keep auth and routes intact, but push the page toward a flatter
+       black navigation and game-style split login/promo layout. */
+    body.admin-login-screen {
+      padding: 0;
+      background:
+        linear-gradient(180deg, rgba(4, 4, 4, 0.68), rgba(4, 4, 4, 0.94)),
+        url("/admin/assets/visuals/tunnel/tunnel_512.jpg") center top / cover fixed;
+    }
+
+    body.admin-login-screen::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(circle at 50% 0%, rgba(238, 186, 94, 0.14), transparent 22%),
+        radial-gradient(circle at 0% 100%, rgba(118, 128, 70, 0.12), transparent 24%);
+    }
+
+    .page {
+      width: 100%;
+      min-height: 100vh;
+      gap: 0;
+    }
+
+    .commandbar {
+      top: 0;
+      margin: 0;
+      padding: 0;
+    }
+
+    .commandbar-inner {
+      width: min(1600px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 14px 24px;
+      border-radius: 0 0 20px 20px;
+      border-top: 0;
+      border-color: rgba(255, 255, 255, 0.08);
+      background: linear-gradient(180deg, rgba(6, 6, 6, 0.96), rgba(10, 10, 10, 0.94));
+      box-shadow: 0 20px 52px rgba(0, 0, 0, 0.44);
+    }
+
+    .emblem {
+      min-width: 46px;
+      min-height: 46px;
+      border-radius: 999px;
+      border-color: rgba(255, 255, 255, 0.14);
+      background: radial-gradient(circle at 30% 30%, rgba(219, 63, 35, 0.96), rgba(89, 12, 11, 0.98));
+      font-size: 17px;
+    }
+
+    .role-chip {
+      min-height: 40px;
+      padding: 0 18px;
+      border-radius: 10px;
+      border-color: transparent;
+      background: transparent;
+      color: rgba(255, 255, 255, 0.86);
+      font-family: "Barlow Condensed", sans-serif;
+      font-size: 16px;
+      letter-spacing: 0.02em;
+      text-transform: none;
+    }
+
+    .role-chip.active,
+    .role-chip:hover {
+      border-color: rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.08);
+      color: #fffdf4;
+    }
+
+    .screen {
+      width: min(1120px, calc(100% - 40px));
+      margin: 76px auto 0;
+      grid-template-columns: minmax(0, 0.96fr) minmax(0, 0.84fr);
+      border-radius: 28px;
+      border-color: rgba(255, 255, 255, 0.08);
+      background: linear-gradient(180deg, rgba(10, 10, 10, 0.82), rgba(12, 12, 12, 0.9));
+      box-shadow: 0 32px 72px rgba(0, 0, 0, 0.48);
+    }
+
+    .hero,
+    .auth {
+      padding: 34px;
+    }
+
+    .hero {
+      order: 2;
+      min-height: 620px;
+      align-content: end;
+      border-right: 0;
+      border-left: 1px solid rgba(255, 255, 255, 0.08);
+      background:
+        linear-gradient(180deg, rgba(42, 32, 12, 0.28), rgba(10, 10, 10, 0.56)),
+        linear-gradient(90deg, rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.48)),
+        url("/admin/assets/visuals/scum/scum_512.jpg") center / cover;
+    }
+
+    .auth {
+      order: 1;
+      align-content: center;
+      background: linear-gradient(180deg, rgba(14, 14, 14, 0.88), rgba(20, 20, 20, 0.82));
+    }
+
+    .auth-footer {
+      display: flex;
+      justify-content: flex-start;
+      margin-top: 4px;
+    }
+
+    .auth-footer .login-language-picker {
+      min-width: 148px;
+    }
+
+    .auth-footer .login-language-picker span {
+      display: none;
+    }
+
+    .auth-footer .language-select {
+      min-height: 40px;
+    }
+
+    .hero h1 {
+      font-size: clamp(46px, 6vw, 72px);
+    }
+
+    .auth h2 {
+      font-size: 54px;
+    }
+
+    .spec {
+      background: rgba(8, 8, 8, 0.48);
+      border-color: rgba(255, 255, 255, 0.08);
+    }
+
+    input,
+    .language-select {
+      border-color: rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    #loginBtn {
+      background: linear-gradient(135deg, #d1b06a, #efe0a7);
+      color: #111;
+    }
+
+    @media (max-width: 980px) {
+      .commandbar-inner,
+      .screen {
+        width: min(100%, calc(100% - 20px));
+      }
+
+      .screen {
+        grid-template-columns: 1fr;
+      }
+
+      .hero {
+        min-height: 360px;
+        border-left: 0;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+      }
+    }
   </style>
 </head>
-<body>
-  <section class="screen">
-    <aside class="hero">
-      <div class="tag" data-i18n="login.adminAccess">Admin Access</div>
-      <h1 data-i18n="login.heroTitle">Owner and tenant consoles</h1>
-      <p data-i18n="login.heroSubtitle">Sign in to reach the role-appropriate admin surface. Platform owners land in the owner console. Tenant-scoped operators land in the tenant console.</p>
-      <div class="specs">
-        <div class="spec">
-          <span class="k" data-i18n="login.authStackKicker">Auth stack</span>
-          <span class="v" data-i18n="login.authStackValue">Database login, Session, 2FA, Rate Limit</span>
-        </div>
-        <div class="spec">
-          <span class="k" data-i18n="login.ownerKicker">Owner console</span>
-          <span class="v" data-i18n="login.ownerValue">Global health, tenant fleet, security, runtime, recovery</span>
-        </div>
-        <div class="spec">
-          <span class="k" data-i18n="login.tenantKicker">Tenant console</span>
-          <span class="v" data-i18n="login.tenantValue">Scoped config, delivery, wallet, player operations</span>
-        </div>
-      </div>
-    </aside>
+<body class="admin-login-screen">
+  <div class="page">
+    <section class="screen">
+    <!-- Keep the left rail as a pure visual panel so the login form stays focused. -->
+    <aside class="hero" aria-hidden="true"></aside>
 
     <div class="auth">
-      <div class="auth-topbar">
-        <span class="tag" data-i18n="login.enterTag">Sign In</span>
-        <label class="language-picker login-language-picker">
-          <span data-i18n="common.language">Language</span>
-          <select id="adminLanguageSelect" class="language-select"></select>
-        </label>
-      </div>
-      <h2 data-i18n="login.enterTitle">Enter admin web</h2>
+      <h2 data-i18n="login.enterTitle">ADMIN WEB</h2>
       <p data-i18n="login.enterSubtitle">Use your admin account to open the correct console automatically after authentication.</p>
-
-      <div class="theme-switch" role="group" aria-label="Choose theme">
-        <button id="themeBtnMilitary" type="button" data-i18n="common.tactical">Tactical</button>
-        <button id="themeBtnNeon" type="button" data-i18n="common.highContrast">High Contrast</button>
-      </div>
 
       <form id="loginForm" autocomplete="on">
         <label>
@@ -330,10 +593,17 @@
       <button id="discordSsoBtn" type="button">Continue with Discord SSO</button>
       <div id="errorText" class="error"></div>
       <p id="sourceHint" class="hint" data-i18n="login.sourceHint">Admin users are read from the database first. Session policy, 2FA, and rate limiting remain enforced after the redesign.</p>
+      <div class="auth-footer">
+        <label class="language-picker login-language-picker">
+          <span data-i18n="common.language">Language</span>
+          <select id="adminLanguageSelect" class="language-select"></select>
+        </label>
+      </div>
     </div>
-  </section>
+    </section>
+  </div>
 
-    <script src="/admin/assets/admin-i18n.js?v=20260320-support-toolkit-pass"></script>
+    <script src="/admin/assets/admin-i18n.js?v=20260321-select-fix"></script>
   <script>
     const form = document.getElementById('loginForm');
     const usernameInput = document.getElementById('usernameInput');
@@ -343,49 +613,6 @@
     const discordSsoBtn = document.getElementById('discordSsoBtn');
     const errorText = document.getElementById('errorText');
     const sourceHint = document.getElementById('sourceHint');
-    const themeBtnMilitary = document.getElementById('themeBtnMilitary');
-    const themeBtnNeon = document.getElementById('themeBtnNeon');
-
-    const THEME_STORAGE_KEY = 'scum_admin_theme';
-    const SUPPORTED_THEMES = new Set(['military', 'neon']);
-
-    function normalizeThemeName(value) {
-      const raw = String(value || '').trim().toLowerCase();
-      if (SUPPORTED_THEMES.has(raw)) return raw;
-      return 'military';
-    }
-
-    function applyTheme(themeName, persist = true) {
-      const resolved = normalizeThemeName(themeName);
-      document.documentElement.setAttribute('data-theme', resolved);
-      if (resolved === 'neon') {
-        document.documentElement.style.setProperty('--accent', '#53e3ba');
-      } else {
-        document.documentElement.style.removeProperty('--accent');
-      }
-      themeBtnMilitary?.classList.toggle('active', resolved === 'military');
-      themeBtnNeon?.classList.toggle('active', resolved === 'neon');
-      if (persist) {
-        try {
-          window.localStorage.setItem(THEME_STORAGE_KEY, resolved);
-        } catch {}
-      }
-      return resolved;
-    }
-
-    function loadPreferredTheme() {
-      let fromStorage = '';
-      try {
-        fromStorage = String(window.localStorage.getItem(THEME_STORAGE_KEY) || '');
-      } catch {
-        fromStorage = '';
-      }
-      const params = new URLSearchParams(window.location.search);
-      if (params.has('theme')) {
-        return normalizeThemeName(params.get('theme'));
-      }
-      return normalizeThemeName(fromStorage);
-    }
 
     async function api(path, method = 'GET', body = null) {
       const headers = {};
@@ -410,10 +637,21 @@
     async function ensureNotLoggedIn() {
       try {
         await api('/admin/api/me');
-        window.location.replace('/admin');
+        window.location.replace(getPostLoginTarget());
       } catch {
         // not logged in
       }
+    }
+
+    function getPostLoginTarget() {
+      const params = new URLSearchParams(window.location.search);
+      const next = String(params.get('next') || '').trim();
+      if (next.startsWith('/owner')) return '/owner';
+      if (next.startsWith('/tenant')) return '/tenant';
+      const path = String(window.location.pathname || '').trim().toLowerCase();
+      if (path === '/owner/login' || path === '/owner/login/') return '/owner';
+      if (path === '/tenant/login' || path === '/tenant/login/') return '/tenant';
+      return '/admin';
     }
 
     async function loadAuthProviders() {
@@ -450,7 +688,7 @@
           password: passwordInput.value,
           otp: otpInput.value.trim() || undefined,
         });
-        window.location.replace('/admin');
+        window.location.replace(getPostLoginTarget());
       } catch (error) {
         errorText.textContent = error.message || (window.AdminUiI18n?.t('login.signInFailed', 'Sign in failed') || 'Sign in failed');
         if (/2FA|OTP/i.test(errorText.textContent)) {
@@ -468,16 +706,7 @@
       window.location.href = '/admin/auth/discord/start';
     });
 
-    themeBtnMilitary?.addEventListener('click', () => {
-      applyTheme('military', true);
-    });
-
-    themeBtnNeon?.addEventListener('click', () => {
-      applyTheme('neon', true);
-    });
-
     window.AdminUiI18n?.init(['adminLanguageSelect']);
-    applyTheme(loadPreferredTheme(), false);
     showErrorFromQuery();
     loadAuthProviders();
     ensureNotLoggedIn();

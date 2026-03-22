@@ -18,6 +18,15 @@ function getPortalAssetContentType(ext) {
   return 'application/octet-stream';
 }
 
+function getVisualAssetContentType(ext) {
+  const normalized = String(ext || '').toLowerCase();
+  if (normalized === '.png') return 'image/png';
+  if (normalized === '.jpg' || normalized === '.jpeg') return 'image/jpeg';
+  if (normalized === '.webp') return 'image/webp';
+  if (normalized === '.svg') return 'image/svg+xml; charset=utf-8';
+  return 'application/octet-stream';
+}
+
 function createPortalPageAssetRuntime(options = {}) {
   const {
     isProduction,
@@ -30,6 +39,7 @@ function createPortalPageAssetRuntime(options = {}) {
     publicAssetsDirPath,
     docsDirPath,
     scumItemsDirPath,
+    visualAssetsDirPath,
     faviconSvg,
     sendJson,
     sendHtml,
@@ -38,6 +48,16 @@ function createPortalPageAssetRuntime(options = {}) {
   } = options;
   const resolvedLegacyPlayerHtmlPath = legacyPlayerHtmlPath || playerHtmlPath;
   const resolvedPublicAssetsDirPath = publicAssetsDirPath || path.join(path.dirname(playerHtmlPath), 'assets');
+  const resolvedVisualAssetsDirPath = visualAssetsDirPath
+    || path.resolve(
+      process.cwd(),
+      '_compare',
+      'WirecutterClientAPP_20260306_181425',
+      'data',
+      'flutter_assets',
+      'assets',
+      'images',
+    );
 
   let cachedLoginHtml = null;
   let cachedPlayerHtml = null;
@@ -130,6 +150,48 @@ function createPortalPageAssetRuntime(options = {}) {
     if (String(req.method || '').toUpperCase() !== 'GET') return false;
     const prefix = '/player/assets/ui/';
     if (!String(pathname || '').startsWith(prefix)) return false;
+
+    if (String(pathname || '').startsWith('/player/assets/ui/visuals/')) {
+      let relativeName = '';
+      try {
+        relativeName = decodeURIComponent(String(pathname || '').slice('/player/assets/ui/visuals/'.length));
+      } catch {
+        return false;
+      }
+      if (!relativeName || relativeName.includes('..')) {
+        sendJson(res, 404, { ok: false, error: 'Not found' });
+        return true;
+      }
+      const ext = path.extname(relativeName).toLowerCase();
+      if (!new Set(['.png', '.jpg', '.jpeg', '.webp', '.svg']).has(ext)) {
+        sendJson(res, 404, { ok: false, error: 'Not found' });
+        return true;
+      }
+      const absPath = path.resolve(resolvedVisualAssetsDirPath, relativeName);
+      if (!absPath.startsWith(resolvedVisualAssetsDirPath)) {
+        sendJson(res, 404, { ok: false, error: 'Not found' });
+        return true;
+      }
+      try {
+        const stat = await fs.promises.stat(absPath);
+        if (!stat.isFile()) {
+          sendJson(res, 404, { ok: false, error: 'Not found' });
+          return true;
+        }
+        res.writeHead(
+          200,
+          buildSecurityHeaders({
+            'Content-Type': getVisualAssetContentType(ext),
+            'Cache-Control': 'public, max-age=86400',
+          }),
+        );
+        await pipeline(fs.createReadStream(absPath), res);
+        return true;
+      } catch {
+        sendJson(res, 404, { ok: false, error: 'Not found' });
+        return true;
+      }
+    }
 
     let relativeName = '';
     try {

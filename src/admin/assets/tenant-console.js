@@ -706,10 +706,10 @@
       {
         key: 'restart-announcement',
         tone: 'info',
-        tag: t('tenant.quickAction.tag.legacy', 'legacy'),
+        tag: t('tenant.quickAction.tag.actions', 'actions'),
         title: t('tenant.quickAction.restartAnnouncement.title', 'Restart announcement'),
-        detail: t('tenant.quickAction.restartAnnouncement.detail', 'Use the deeper delivery workbench when you need the existing restart or maintenance communication path.'),
-        button: t('tenant.quickAction.restartAnnouncement.button', 'Open restart flow'),
+        detail: t('tenant.quickAction.restartAnnouncement.detail', 'Use the guided restart preset in this console before you announce downtime or run maintenance checks.'),
+        button: t('tenant.quickAction.restartAnnouncement.button', 'Open restart preset'),
       },
     ];
     container.innerHTML = items.map((item) => [
@@ -739,7 +739,7 @@
       return;
     }
     if (key === 'restart-announcement') {
-      window.location.href = '/admin/legacy?tab=delivery';
+      openTenantTarget('support-tools', { targetId: 'tenantRestartPresetBtn', block: 'center' });
     }
   }
 
@@ -1179,8 +1179,8 @@
         tone: 'info',
         tag: t('tenant.preset.tag.advanced', 'advanced'),
         title: t('tenant.preset.community.title', 'Community-heavy setup'),
-        detail: t('tenant.preset.community.detail', 'Use the main tenant surface for core operations first, then step into the legacy workbench only when you truly need the deeper community feature set.'),
-        button: t('tenant.preset.community.button', 'Open legacy workbench'),
+        detail: t('tenant.preset.community.detail', 'Use the main tenant surface for core operations first, then expand into players, support, and optional modules only when the tenant needs them.'),
+        button: t('tenant.preset.community.button', 'Open support tools'),
       },
     ];
     const moduleItems = [
@@ -1265,7 +1265,7 @@
       return;
     }
     if (key === 'community-advanced') {
-      window.location.href = '/admin/legacy';
+      openTenantTarget('support-tools');
     }
   }
 
@@ -1288,7 +1288,7 @@
       return;
     }
     if (key === 'community-pack') {
-      window.location.href = '/admin/legacy';
+      openTenantTarget('players');
     }
   }
 
@@ -1887,7 +1887,7 @@
     document.getElementById('tenantPresetCards').innerHTML = [
       {
         title: t('tenant.presetCard.config.title', 'Guided config first'),
-        text: t('tenant.presetCard.config.detail', 'Preview config diffs here before saving. Use the legacy workspace only when you need deeper hand-tuned JSON or older operator paths.'),
+        text: t('tenant.presetCard.config.detail', 'Preview config diffs here before saving. Stay in the scoped config pages unless a maintainer explicitly asks for fallback tooling.'),
         action: '<a class="ghost-link" href="#config">Stay in scoped config</a>',
       },
       {
@@ -1897,13 +1897,13 @@
       },
       {
         title: t('tenant.presetCard.restart.title', 'Restart + maintenance preset'),
-        text: t('tenant.presetCard.restart.detail', 'Use the guided restart preset before you announce downtime, then fall back to the deeper delivery workbench only when you need the older maintenance path.'),
+        text: t('tenant.presetCard.restart.detail', 'Use the guided restart preset before you announce downtime so maintenance communication and delivery checks stay in one scoped flow.'),
         action: '<a class="ghost-link" href="#support-tools">Open restart preset</a>',
       },
       {
-        title: t('tenant.presetCard.legacy.title', 'Deep workbench fallback'),
-        text: t('tenant.presetCard.legacy.detail', 'Delivery capability presets, complex economy overrides, and older community workflows still remain available in the legacy workbench when needed.'),
-        action: '<a class="ghost-link" href="/admin/legacy?tab=delivery">Open delivery tools</a>',
+        title: t('tenant.presetCard.legacy.title', 'Advanced delivery review'),
+        text: t('tenant.presetCard.legacy.detail', 'Delivery capability presets, complex overrides, and recovery checks now stay grouped in the scoped delivery pages.'),
+        action: '<a class="ghost-link" href="#sandbox">Open delivery lab</a>',
       },
     ].map((card) => [
       '<article class="panel-card">',
@@ -3163,7 +3163,6 @@
     getActions() {
       const sectionMeta = t('tenant.palette.meta.sections', 'Tenant pages');
       const actionMeta = t('tenant.palette.meta.actions', 'Tenant actions');
-      const legacyMeta = t('tenant.palette.meta.legacy', 'Legacy workbench');
       return [
         {
           label: t('tenant.palette.openPage', 'Open {page}', { page: tenantNavLabel('overview') }),
@@ -3236,11 +3235,6 @@
           run: acknowledgeAlerts,
         },
         {
-          label: t('tenant.palette.openLegacyDelivery', 'Open delivery workbench'),
-          meta: legacyMeta,
-          run: () => { window.location.href = '/admin/legacy?tab=delivery'; },
-        },
-        {
           label: t('tenant.palette.focusLab', 'Focus delivery lab'),
           meta: actionMeta,
           run: () => openTenantTarget('sandbox', { targetId: 'tenantDeliveryLabForm', block: 'center' }),
@@ -3259,16 +3253,6 @@
           label: t('tenant.palette.focusIncidents', 'Focus incident query'),
           meta: actionMeta,
           run: () => openTenantTarget('incidents', { targetId: 'tenantIncidentQueryForm', block: 'center' }),
-        },
-        {
-          label: t('tenant.palette.openLegacyEconomy', 'Open economy tools'),
-          meta: legacyMeta,
-          run: () => { window.location.href = '/admin/legacy?tab=economy'; },
-        },
-        {
-          label: t('tenant.palette.openLegacyPlayers', 'Open player tools'),
-          meta: legacyMeta,
-          run: () => { window.location.href = '/admin/legacy?tab=players'; },
         },
       ];
     },
@@ -3339,7 +3323,7 @@
   });
   document.getElementById('tenantRestartPresetBtn')?.addEventListener('click', () => {
     showToast(t('tenant.toast.restartPresetOpened', 'Restart flow opened.'), 'info');
-    window.location.href = '/admin/legacy?tab=delivery';
+    openTenantTarget('support-tools', { targetId: 'tenantRestartPresetChecklist', block: 'center' });
   });
   document.getElementById('tenantDeliveryLifecycleExportJsonBtn')?.addEventListener('click', () => {
     openDeliveryLifecycleExport('json');

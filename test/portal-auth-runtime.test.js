@@ -85,7 +85,7 @@ test('portal auth runtime builds canonical redirect for mismatched host/proto', 
   const url = runtime.getCanonicalRedirectUrl({
     url: '/player',
     headers: {
-      host: '127.0.0.1:3300',
+      host: 'admin.example.com',
       'x-forwarded-proto': 'http',
     },
     socket: {
@@ -94,4 +94,19 @@ test('portal auth runtime builds canonical redirect for mismatched host/proto', 
   });
 
   assert.equal(url, 'https://player.example.com/player');
+});
+
+test('portal auth runtime allows local loopback access without canonical redirect', () => {
+  const runtime = createRuntime();
+  const url = runtime.getCanonicalRedirectUrl({
+    url: '/player',
+    headers: {
+      host: '127.0.0.1:3300',
+    },
+    socket: {
+      encrypted: false,
+    },
+  });
+
+  assert.equal(url, null);
 });

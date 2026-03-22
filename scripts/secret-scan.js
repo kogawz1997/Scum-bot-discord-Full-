@@ -10,10 +10,18 @@ const SAFE_ENV_EXAMPLES = new Set([
   '.env.development.example',
   '.env.production.example',
   '.env.test.example',
+  '.env.machine-a-control-plane.example',
+  '.env.machine-b-game-bot.example',
+  '.env.multi-tenant-prod.example',
+  '.env.single-host-prod.example',
   'apps/web-portal-standalone/.env.example',
   'apps/web-portal-standalone/.env.development.example',
   'apps/web-portal-standalone/.env.production.example',
   'apps/web-portal-standalone/.env.test.example',
+  'apps/web-portal-standalone/.env.machine-a-control-plane.example',
+  'apps/web-portal-standalone/.env.machine-b-game-bot.example',
+  'apps/web-portal-standalone/.env.multi-tenant-prod.example',
+  'apps/web-portal-standalone/.env.single-host-prod.example',
 ]);
 const IGNORED_DIRS = new Set([
   '.git',

@@ -326,6 +326,13 @@
     return [];
   }
 
+  function getRotationSignalCounts() {
+    return {
+      warnings: Array.isArray(state.rotationReport?.warnings) ? state.rotationReport.warnings.length : 0,
+      errors: Array.isArray(state.rotationReport?.errors) ? state.rotationReport.errors.length : 0,
+    };
+  }
+
   function openOwnerTarget(sectionId, options = {}) {
     if (workspaceController) {
       workspaceController.openSection(sectionId, options);
@@ -696,16 +703,6 @@
     const delivery = analytics.delivery || {};
     const subscriptions = analytics.subscriptions || {};
     const runtimeRows = normalizeRuntimeRows(state.runtimeSupervisor);
-    const automation = getAutomationState();
-    const automationConfig =
-      state.automationReport?.automationConfig
-      || state.opsState?.automationConfig
-      || state.overview?.automationConfig
-      || null;
-    const rotationWarnings = Array.isArray(state.rotationReport?.warnings) ? state.rotationReport.warnings.length : 0;
-    const rotationErrors = Array.isArray(state.rotationReport?.errors) ? state.rotationReport.errors.length : 0;
-    const recoveryResults = Object.values(automation?.lastRecoveryResultByKey || {});
-    const failedRecoveries = recoveryResults.filter((row) => row?.ok === false).length;
     const readyServices = runtimeRows.filter((row) => String(row.status || '').toLowerCase() === 'ready').length;
     const degradedServices = runtimeRows.filter((row) => {
       const status = String(row.status || '').toLowerCase();
@@ -757,37 +754,6 @@
           t('owner.overview.incidents.subsTag', 'subs {count}', { count: formatNumber(subscriptions.active, '0') }),
         ],
       },
-      {
-        kicker: t('owner.overview.automation.kicker', 'Automation'),
-        value: automationConfig?.enabled === false
-          ? t('owner.overview.automation.off', 'off')
-          : automation?.lastAutomationAt
-            ? t('owner.overview.automation.active', 'active')
-            : t('owner.overview.automation.idle', 'idle'),
-        title: t('owner.overview.automation.title', 'Guarded recovery posture'),
-        detail: automation?.lastAutomationAt
-          ? t('owner.overview.automation.detailRecent', 'Last automation cycle: {time}', {
-              time: formatDateTime(automation.lastAutomationAt),
-            })
-          : t('owner.overview.automation.detailIdle', 'No automation cycle has been recorded yet.'),
-        tags: [
-          t(
-            'owner.overview.automation.servicesTag',
-            'services {count}',
-            { count: formatNumber(automationConfig?.restartServices?.length || 0, '0') },
-          ),
-          t(
-            'owner.overview.automation.windowTag',
-            'windows {count}',
-            { count: formatNumber(Object.keys(automation?.recoveryAttemptsByKey || {}).length, '0') },
-          ),
-          t(
-            'owner.overview.automation.failedTag',
-            'failed {count}',
-            { count: formatNumber(failedRecoveries, '0') },
-          ),
-        ],
-      },
     ]);
     renderQuickActions();
   }
@@ -823,10 +789,10 @@
       {
         key: 'restart-announcement',
         tone: 'info',
-        tag: t('owner.quickAction.tag.legacy', 'legacy'),
+        tag: t('owner.quickAction.tag.control', 'control'),
         title: t('owner.quickAction.restartAnnouncement.title', 'Restart announcement'),
-        detail: t('owner.quickAction.restartAnnouncement.detail', 'Use the existing delivery workbench when you need the deeper restart or maintenance communication workflow.'),
-        button: t('owner.quickAction.restartAnnouncement.button', 'Open restart flow'),
+        detail: t('owner.quickAction.restartAnnouncement.detail', 'Open the control center restart flow when you need a guided maintenance and service restart handoff.'),
+        button: t('owner.quickAction.restartAnnouncement.button', 'Open restart preset'),
       },
     ];
     container.innerHTML = items.map((item) => [
@@ -865,7 +831,7 @@
       return;
     }
     if (key === 'restart-announcement') {
-      window.location.href = '/admin/legacy?tab=delivery';
+      openOwnerTarget('control', { targetId: 'ownerRestartForm', block: 'center' });
     }
   }
 
@@ -1139,7 +1105,7 @@
     }
     if (key === 'restart') {
       showToast(t('owner.toast.restartFlowOpened', 'Restart flow opened.'), 'info');
-      window.location.href = '/admin/legacy?tab=delivery';
+      openOwnerTarget('control', { targetId: 'ownerRestartForm', block: 'center' });
     }
   }
 
@@ -2085,7 +2051,7 @@
       },
       {
         title: 'Session + Step-up',
-        text: `Role matrix summary loaded. Step-up and session policy stay behind guarded security routes in the legacy workbench.`,
+        text: 'Role matrix summary loaded. Step-up and session policy stay inside the owner security and access pages.',
       },
     ].map((card) => [
       '<article class="panel-card">',
@@ -2445,7 +2411,6 @@
             '</article>',
           ].join('')).join('')}</div>`
         : '<div class="empty-state">No verification plan entries were returned.</div>',
-      '<div class="button-row"><a class="ghost-link" href="/admin/legacy?tab=danger">Use legacy recovery workbench for actual restore</a></div>',
       '</article>',
     ].join('');
   }
@@ -2671,6 +2636,7 @@
     }).length;
     const unresolvedCount = state.notifications.length;
     const automation = getAutomationState();
+    const { warnings: rotationWarnings, errors: rotationErrors } = getRotationSignalCounts();
     const automationConfig =
       state.automationReport?.automationConfig
       || state.opsState?.automationConfig
@@ -3891,7 +3857,6 @@
     getActions() {
       const sectionMeta = t('owner.palette.meta.sections', 'Owner pages');
       const actionMeta = t('owner.palette.meta.actions', 'Owner actions');
-      const legacyMeta = t('owner.palette.meta.legacy', 'Legacy workbench');
       return [
         {
           label: t('owner.palette.openPage', 'Open {page}', { page: ownerNavLabel('overview') }),
@@ -4017,21 +3982,6 @@
           label: t('owner.palette.clearAlerts', 'Clear current alerts'),
           meta: actionMeta,
           run: clearAlerts,
-        },
-        {
-          label: t('owner.palette.openLegacyConfig', 'Open global config'),
-          meta: legacyMeta,
-          run: () => { window.location.href = '/admin/legacy?tab=control'; },
-        },
-        {
-          label: t('owner.palette.openLegacyRecovery', 'Open recovery area'),
-          meta: legacyMeta,
-          run: () => { window.location.href = '/admin/legacy?tab=danger'; },
-        },
-        {
-          label: t('owner.palette.openLegacyPlatform', 'Open platform center'),
-          meta: legacyMeta,
-          run: () => { window.location.href = '/admin/legacy?tab=platform'; },
         },
         {
           label: t('owner.palette.refresh', 'Refresh owner console'),

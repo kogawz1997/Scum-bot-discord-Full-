@@ -18,6 +18,15 @@ function getAssetContentType(ext) {
   return 'application/octet-stream';
 }
 
+function getVisualAssetContentType(ext) {
+  const normalized = String(ext || '').toLowerCase();
+  if (normalized === '.png') return 'image/png';
+  if (normalized === '.jpg' || normalized === '.jpeg') return 'image/jpeg';
+  if (normalized === '.webp') return 'image/webp';
+  if (normalized === '.svg') return 'image/svg+xml; charset=utf-8';
+  return 'application/octet-stream';
+}
+
 function createAdminPageRuntime(options = {}) {
   const {
     dashboardHtmlPath,
@@ -26,9 +35,20 @@ function createAdminPageRuntime(options = {}) {
     loginHtmlPath,
     assetsDirPath,
     scumItemsDirPath,
+    visualAssetsDirPath,
     buildSecurityHeaders,
     sendText,
   } = options;
+  const resolvedVisualAssetsDirPath = visualAssetsDirPath
+    || path.resolve(
+      process.cwd(),
+      '_compare',
+      'WirecutterClientAPP_20260306_181425',
+      'data',
+      'flutter_assets',
+      'assets',
+      'images',
+    );
 
   let cachedDashboardHtml = null;
   let cachedOwnerConsoleHtml = null;
@@ -62,6 +82,47 @@ function createAdminPageRuntime(options = {}) {
   async function tryServeAdminStaticAsset(req, res, pathname) {
     if (String(req.method || '').toUpperCase() !== 'GET') return false;
     if (!String(pathname || '').startsWith('/admin/assets/')) return false;
+
+    if (String(pathname || '').startsWith('/admin/assets/visuals/')) {
+      let relativeName = '';
+      try {
+        relativeName = decodeURIComponent(String(pathname || '').slice('/admin/assets/visuals/'.length));
+      } catch {
+        return false;
+      }
+      if (!relativeName || relativeName.includes('..')) {
+        sendText(res, 404, 'Not found');
+        return true;
+      }
+      const ext = path.extname(relativeName).toLowerCase();
+      if (!new Set(['.png', '.jpg', '.jpeg', '.webp', '.svg']).has(ext)) {
+        sendText(res, 404, 'Not found');
+        return true;
+      }
+      const absPath = path.resolve(resolvedVisualAssetsDirPath, relativeName);
+      if (!absPath.startsWith(resolvedVisualAssetsDirPath)) {
+        sendText(res, 404, 'Not found');
+        return true;
+      }
+      try {
+        const stat = await fs.promises.stat(absPath);
+        if (!stat.isFile()) {
+          sendText(res, 404, 'Not found');
+          return true;
+        }
+        res.writeHead(200, {
+          ...buildSecurityHeaders({
+            'Content-Type': getVisualAssetContentType(ext),
+            'Cache-Control': 'public, max-age=86400',
+          }),
+        });
+        await pipeline(fs.createReadStream(absPath), res);
+        return true;
+      } catch {
+        sendText(res, 404, 'Not found');
+        return true;
+      }
+    }
 
     let relativeName = '';
     try {

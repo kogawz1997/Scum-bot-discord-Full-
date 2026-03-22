@@ -32,8 +32,10 @@ tmp-*.txt
 !.env.development.example
 !.env.production.example
 !.env.test.example
+!.env.*.example
 !apps/**/.env.example
 !apps/**/.env.production.example
+!apps/**/.env.*.example
 
 # Secrets and key material
 secrets/

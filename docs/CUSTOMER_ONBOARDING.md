@@ -19,6 +19,11 @@ Runtime roles:
 - `web`: standalone player portal
 - `console-agent`: bridge between API calls and SCUM admin client
 
+Recommended split for `agent` execution:
+
+- `Machine A`: bot, admin web, worker, player portal, PostgreSQL
+- `Machine B`: SCUM client, console-agent, watcher (when `SCUM.log` is local there)
+
 For the short operator-friendly explanation of these boundaries, see [RUNTIME_BOUNDARY_EXPLAINER.md](./RUNTIME_BOUNDARY_EXPLAINER.md).
 
 ## Customer Deliverables
@@ -71,7 +76,15 @@ or:
 npm run env:prepare:multi-tenant-prod
 ```
 
+If you want the control plane and the SCUM execution workstation split across two hosts, use:
+
+```bat
+npm run env:prepare:machine-a-control-plane
+npm run env:prepare:machine-b-game-bot
+```
+
 See [SINGLE_HOST_PRODUCTION_PROFILE.md](./SINGLE_HOST_PRODUCTION_PROFILE.md) for the profile-specific assumptions and bootstrap flow.
+See [TWO_MACHINE_AGENT_TOPOLOGY.md](./TWO_MACHINE_AGENT_TOPOLOGY.md) for the split-host control-plane + game-bot topology.
 
 ## Required Root Env Values
 
@@ -161,6 +174,16 @@ npm run pm2:start:prod
 pm2 status
 ```
 
+For the split Machine A / Machine B layout:
+
+```bat
+:: Machine A
+npm run pm2:start:machine-a-control-plane
+
+:: Machine B
+npm run pm2:start:machine-b-game-bot
+```
+
 Reload after env changes:
 
 ```bat
@@ -200,6 +223,7 @@ npm run readiness:prod
 ## What Must Be Stated Clearly
 
 - `agent` execution depends on Windows session state and a live SCUM client
+- the recommended way to contain that dependency is the Machine A / Machine B split, not an all-in-one host
 - Admin web does not yet cover every env/config setting
 - Tenant isolation has a PostgreSQL RLS foundation for selected tenant-scoped tables, but it is not database-per-tenant
 - Watcher readiness depends on a real `SCUM.log` path
@@ -214,3 +238,4 @@ npm run readiness:prod
 - [GO_LIVE_CHECKLIST_TH.md](./GO_LIVE_CHECKLIST_TH.md)
 - [LIMITATIONS_AND_SLA_TH.md](./LIMITATIONS_AND_SLA_TH.md)
 - [SINGLE_HOST_PRODUCTION_PROFILE.md](./SINGLE_HOST_PRODUCTION_PROFILE.md)
+- [TWO_MACHINE_AGENT_TOPOLOGY.md](./TWO_MACHINE_AGENT_TOPOLOGY.md)

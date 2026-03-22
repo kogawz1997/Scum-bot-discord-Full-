@@ -266,16 +266,38 @@
       }
     }
 
-    function activateTab(tabKey) {
+    function activateTab(tabKey, options = {}) {
+      const resolvedKey = String(tabKey || '').trim();
+      let activeButton = null;
+      let activePanel = null;
       for (const btn of tabButtons) {
-        btn.classList.toggle('active', btn.dataset.tab === tabKey);
+        const isActive = btn.dataset.tab === resolvedKey;
+        btn.classList.toggle('active', isActive);
+        if (isActive) {
+          activeButton = btn;
+        }
       }
       for (const panel of tabPanels) {
-        panel.classList.toggle('active', panel.dataset.tabPanel === tabKey);
+        const isActive = panel.dataset.tabPanel === resolvedKey;
+        panel.classList.toggle('active', isActive);
+        if (isActive) {
+          activePanel = panel;
+        }
       }
       updateDashboardQueryParams({
-        tab: String(tabKey || '').trim() === 'economy' ? '' : tabKey,
+        tab: resolvedKey === 'economy' ? '' : resolvedKey,
       });
+      if (options.focus) {
+        window.requestAnimationFrame(() => {
+          const scrollTarget = activePanel || activeButton;
+          if (!scrollTarget || typeof scrollTarget.scrollIntoView !== 'function') return;
+          scrollTarget.scrollIntoView({
+            behavior: options.instant ? 'auto' : 'smooth',
+            block: 'start',
+            inline: 'nearest',
+          });
+        });
+      }
     }
 
     function applyTabFilter(queryText) {

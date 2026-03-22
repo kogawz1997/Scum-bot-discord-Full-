@@ -51,6 +51,25 @@ function pushPort(portMap, errors, port, label) {
   errors.push(`Port conflict on ${port}: ${portMap.get(port).join(', ')}`);
 }
 
+function detectProductionTopologyShape({
+  botAdmin,
+  botServiceEnabled,
+  workerEnabled,
+  watcherRuntimeEnabled,
+  agentRuntimeEnabled,
+}) {
+  if (botAdmin && botServiceEnabled && !workerEnabled) {
+    return 'single-host-prod';
+  }
+  if (botAdmin && !botServiceEnabled && workerEnabled) {
+    return 'split-runtime';
+  }
+  if (!botAdmin && !botServiceEnabled && !workerEnabled && (watcherRuntimeEnabled || agentRuntimeEnabled)) {
+    return 'execution-node';
+  }
+  return 'unsupported-production-shape';
+}
+
 function evaluateTopology() {
   const env = process.env;
   const errors = [];
@@ -66,6 +85,10 @@ function evaluateTopology() {
 
   const workerEnabled = workerRent || workerDelivery;
   const botServiceEnabled = botRent || botDelivery;
+  const watcherRuntimeEnabled =
+    isTruthy(env.SCUM_WATCHER_ENABLED, false)
+    || readPort(env.SCUM_WATCHER_HEALTH_PORT, 0) > 0;
+  const agentRuntimeEnabled = readPort(env.SCUM_CONSOLE_AGENT_PORT, 0) > 0;
 
   let topology = 'unknown';
   if (botServiceEnabled && !workerEnabled) {
@@ -99,24 +122,22 @@ function evaluateTopology() {
   }
 
   if (isProduction) {
-    if (botRent) {
+    const productionShape = detectProductionTopologyShape({
+      botAdmin,
+      botServiceEnabled,
+      workerEnabled,
+      watcherRuntimeEnabled,
+      agentRuntimeEnabled,
+    });
+    topology = productionShape;
+    if (productionShape === 'unsupported-production-shape') {
       errors.push(
-        'Production split topology requires BOT_ENABLE_RENTBIKE_SERVICE=false',
+        'Production topology must be one of: single-host-prod, split-runtime control plane, or execution-node',
       );
     }
-    if (botDelivery) {
+    if (productionShape === 'execution-node' && !agentRuntimeEnabled && !watcherRuntimeEnabled) {
       errors.push(
-        'Production split topology requires BOT_ENABLE_DELIVERY_WORKER=false',
-      );
-    }
-    if (!workerEnabled) {
-      errors.push(
-        'Production split topology requires worker to enable at least one service',
-      );
-    }
-    if (!botAdmin) {
-      errors.push(
-        'Production split topology requires BOT_ENABLE_ADMIN_WEB=true',
+        'Execution-node topology requires watcher or console-agent runtime to be enabled',
       );
     }
   }
@@ -231,7 +252,7 @@ function evaluateTopology() {
       }),
       createValidationCheck('production split topology constraints', {
         status:
-          isProduction && errors.some((entry) => entry.includes('Production split topology'))
+          isProduction && errors.some((entry) => entry.includes('Production topology'))
             ? 'failed'
             : 'pass',
       }),
@@ -302,4 +323,5 @@ main();
 
 module.exports = {
   evaluateTopology,
+  detectProductionTopologyShape,
 };

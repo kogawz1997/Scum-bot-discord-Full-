@@ -46,6 +46,9 @@ test('admin page runtime loads templates and serves dashboard assets', async () 
   fs.writeFileSync(path.join(root, 'tenant-console.html'), '<h1>tenant</h1>');
   fs.writeFileSync(path.join(root, 'login.html'), '<h1>login</h1>');
   fs.writeFileSync(path.join(assetsDir, 'dashboard.css'), 'body{color:red}');
+  const visualDir = path.join(root, 'visuals');
+  fs.mkdirSync(path.join(visualDir, 'theme'), { recursive: true });
+  fs.writeFileSync(path.join(visualDir, 'theme', 'hero.jpg'), 'fakejpg');
 
   const runtime = createAdminPageRuntime({
     dashboardHtmlPath: path.join(root, 'dashboard.html'),
@@ -54,6 +57,7 @@ test('admin page runtime loads templates and serves dashboard assets', async () 
     loginHtmlPath: path.join(root, 'login.html'),
     assetsDirPath: assetsDir,
     scumItemsDirPath: scumItemsDir,
+    visualAssetsDirPath: visualDir,
     buildSecurityHeaders: (headers) => headers,
     sendText(res, statusCode, text) {
       res.writeHead(statusCode, { 'Content-Type': 'text/plain; charset=utf-8' });
@@ -77,4 +81,15 @@ test('admin page runtime loads templates and serves dashboard assets', async () 
   assert.equal(res.statusCode, 200);
   assert.match(String(res.headers['Content-Type'] || ''), /text\/css/i);
   assert.equal(res.body, 'body{color:red}');
+
+  const visualRes = createResponse();
+  const visualServed = await runtime.tryServeAdminStaticAsset(
+    { method: 'GET' },
+    visualRes,
+    '/admin/assets/visuals/theme/hero.jpg',
+  );
+
+  assert.equal(visualServed, true);
+  assert.equal(visualRes.statusCode, 200);
+  assert.match(String(visualRes.headers['Content-Type'] || ''), /image\/jpeg/i);
 });

@@ -7,84 +7,63 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/admin/assets/console-surfaces.css?v=20260320-total-redesign-pass">
+  <link rel="stylesheet" href="/admin/assets/console-surfaces.css?v=20260322-legacy-fallback-cutover">
 </head>
 <body class="surface-tenant">
   <div class="surface-root console-app-shell">
-    <header class="surface-header">
-      <div class="surface-utility-bar">
-        <div class="utility-group">
-          <span class="utility-label" data-i18n="tenant.surfaceId">Tenant Admin Console</span>
-          <span class="utility-divider"></span>
-          <span class="utility-value" data-i18n="tenant.metaSurfaceTitle">Tenant-only operations</span>
-        </div>
-        <div class="utility-group">
-          <span class="utility-label" data-i18n="tenant.metaGuardrailsLabel">Guardrails</span>
-          <span class="utility-value" data-i18n="tenant.metaGuardrailsTitle">Confirm, validate, then apply</span>
-        </div>
-      </div>
-      <div class="surface-topline">
-        <div class="surface-brand">
+    <section class="surface-masthead">
+      <div class="masthead-card tenant-masthead">
+        <div class="masthead-copy">
           <span class="surface-id" data-i18n="tenant.surfaceId">Tenant Admin Console</span>
           <h1 data-i18n="tenant.title">Scoped Server Operations</h1>
           <p data-i18n="tenant.subtitle">Tenant-facing console for server operations, delivery flow, shop and wallet control, scoped config edits, and support activity. Global owner controls are intentionally excluded.</p>
+          <div class="masthead-tags">
+            <a class="surface-role-chip" href="/owner">Owner</a>
+            <a class="surface-role-chip active" href="/tenant">Tenant</a>
+            <a class="surface-role-chip" href="/player">Player</a>
+          </div>
         </div>
-        <div class="surface-actions">
-          <button id="tenantSidebarToggleBtn" class="button" type="button" aria-controls="tenantSidebar" aria-expanded="true" data-i18n="common.menu">Menu</button>
-          <label class="language-picker">
-            <span data-i18n="common.language">Language</span>
-            <select id="tenantLanguageSelect" class="language-select"></select>
-          </label>
-          <button id="tenantRefreshBtn" class="button button-primary" type="button" data-i18n="common.refreshConsole">Refresh Console</button>
-          <details class="action-menu">
-            <summary class="action-menu-button" data-i18n="common.more">More</summary>
-            <div class="action-menu-panel">
-              <button id="tenantPaletteBtn" class="button" type="button" data-i18n="common.commandPalette">Command Palette</button>
-              <button id="tenantAckAlertsBtn" class="button" type="button" data-i18n="common.acknowledgeAlerts">Acknowledge Alerts</button>
-              <a class="ghost-link" href="/admin/legacy" data-i18n="common.legacyWorkbench">Legacy Workbench</a>
-            </div>
-          </details>
+        <div class="masthead-aside">
+          <div class="surface-actions masthead-actions">
+            <button id="tenantSidebarToggleBtn" class="button" type="button" aria-controls="tenantSidebar" aria-expanded="true" data-i18n="common.menu">Menu</button>
+            <label class="language-picker">
+              <span data-i18n="common.language">Language</span>
+              <select id="tenantLanguageSelect" class="language-select"></select>
+            </label>
+            <button id="tenantRefreshBtn" class="button button-primary" type="button" data-i18n="common.refreshConsole">Refresh Console</button>
+            <details class="action-menu">
+              <summary class="action-menu-button" data-i18n="common.more">More</summary>
+              <div class="action-menu-panel">
+                <button id="tenantPaletteBtn" class="button" type="button" data-i18n="common.commandPalette">Command Palette</button>
+                <button id="tenantAckAlertsBtn" class="button" type="button" data-i18n="common.acknowledgeAlerts">Acknowledge Alerts</button>
+                <a class="ghost-link" href="/admin/legacy?fallback=1&tab=delivery" data-i18n="common.legacyWorkbench">Legacy Workbench</a>
+              </div>
+            </details>
+          </div>
+          <div class="masthead-stat">
+            <span class="section-kicker">Tenant Scope</span>
+            <strong>Scoped</strong>
+          </div>
+          <div class="masthead-stat">
+            <span class="section-kicker">Mode</span>
+            <strong>Live Ops</strong>
+          </div>
         </div>
       </div>
+    </section>
 
-      <div id="tenantStatusBanner" class="status-banner banner-info">
-        <div>
-          <strong id="tenantStatusTitle" data-i18n="tenant.statusLoadingTitle">Loading tenant console...</strong>
-          <p id="tenantStatusDetail" data-i18n="tenant.statusLoadingDetail">Preparing scoped runtime, commerce, and support state.</p>
-        </div>
-        <div id="tenantStatusTags" class="tag-row"></div>
-      </div>
-
-      <div class="workspace-toolbar">
-        <div class="workspace-copy">
-          <span class="section-kicker" data-i18n="tenant.consoleAreasKicker">Console Areas</span>
-          <strong data-i18n="tenant.consoleAreasLead">Open one tenant area at a time, then use the left menu for the pages inside that area.</strong>
-          <p id="tenantWorkspaceHint" class="muted" data-i18n="tenant.workspaceHintLoading">Loading tenant workspace layout...</p>
-        </div>
-        <div id="tenantWorkspaceSwitch" class="workspace-switch"></div>
-      </div>
-
-      <div id="tenantWorkspaceSummary" class="workspace-summary"></div>
-
-      <div class="surface-context-strip">
-        <article class="context-pill">
-          <strong data-i18n="tenant.metaSurfaceLabel">Surface</strong>
-          <span data-i18n="tenant.metaSurfaceTitle">Tenant-only operations</span>
-        </article>
-        <article class="context-pill">
-          <strong data-i18n="tenant.metaGuardrailsLabel">Guardrails</strong>
-          <span data-i18n="tenant.metaGuardrailsTitle">Confirm, validate, then apply</span>
-        </article>
-        <article class="context-pill">
-          <strong data-i18n="tenant.metaRealtimeLabel">Realtime</strong>
-          <span data-i18n="tenant.metaRealtimeTitle">Alerts and delivery stream</span>
-        </article>
-      </div>
-    </header>
-
-    <div class="surface-main">
-      <!-- Tenant navigation is intentionally scoped: only tenant-safe pages belong here. -->
+    <div class="console-stage">
       <aside id="tenantSidebar" class="surface-sidebar">
+        <section class="nav-card rail-card">
+          <div class="nav-head">
+            <span class="section-kicker" data-i18n="tenant.consoleAreasKicker">Console Areas</span>
+            <strong data-i18n="tenant.consoleAreasLead">Focused tenant lanes</strong>
+          </div>
+          <div id="tenantWorkspaceSwitch" class="workspace-switch"></div>
+          <p id="tenantWorkspaceHint" class="hint" data-i18n="tenant.workspaceHintLoading">Loading tenant workspace layout...</p>
+          <div id="tenantWorkspaceSummary" class="workspace-summary rail-summary"></div>
+        </section>
+
         <nav class="nav-card">
           <div class="nav-head">
             <span class="section-kicker" data-i18n="common.pages">Pages</span>
@@ -108,7 +87,7 @@
           </div>
         </nav>
 
-        <section class="nav-card nav-intel">
+        <section class="nav-card nav-intel compact-intel">
           <div class="nav-head">
             <span class="section-kicker" data-i18n="tenant.scopedContext">Scoped Context</span>
             <strong data-i18n="tenant.metaRealtimeTitle">Alerts and delivery stream</strong>
@@ -118,8 +97,16 @@
         </section>
       </aside>
 
-      <!-- Each section below is treated like a page by the shared workspace controller. -->
-      <main class="surface-grid">
+      <section class="surface-stage-main">
+        <div id="tenantStatusBanner" class="status-banner banner-info">
+          <div>
+            <strong id="tenantStatusTitle" data-i18n="tenant.statusLoadingTitle">Loading tenant console...</strong>
+            <p id="tenantStatusDetail" data-i18n="tenant.statusLoadingDetail">Preparing scoped runtime, commerce, and support state.</p>
+          </div>
+          <div id="tenantStatusTags" class="tag-row"></div>
+        </div>
+
+        <main class="surface-grid">
         <section class="surface-section" id="overview">
           <div class="section-head">
             <div class="section-copy">
@@ -149,7 +136,7 @@
               <p>Monitor delivery runtime, tenant alerts, request pressure, and live event flow without exposing platform-wide owner controls.</p>
             </div>
             <div class="section-tools">
-              <a class="action-link" href="/admin/legacy?tab=delivery" data-i18n="tenant.section.runtime.link">Open delivery workbench</a>
+              <a class="action-link" href="/tenant#commerce" data-i18n="tenant.section.runtime.link">Open delivery workbench</a>
             </div>
           </div>
           <div class="surface-two-col">
@@ -404,7 +391,7 @@
               <p class="hint" data-i18n="tenant.plan.integrationHint">If you need deeper packaging, billing changes, or owner-managed marketplace work, hand it off to the platform owner. The tenant console stays focused on runtime integrations you can operate safely yourself.</p>
               <div class="button-row">
                 <a class="ghost-link" href="#config" data-i18n="tenant.plan.reviewConfig">Review scoped config</a>
-                <a class="ghost-link" href="/admin/legacy?tab=delivery" data-i18n="tenant.plan.openDeliveryWorkbench">Open deep delivery workbench</a>
+                <a class="ghost-link" href="/tenant#sandbox" data-i18n="tenant.plan.openDeliveryWorkbench">Open deep delivery workbench</a>
               </div>
             </section>
             </aside>
@@ -484,7 +471,7 @@
               <p data-i18n="tenant.section.lab.detail">Use preview, preflight, and simulate when validating delivery behavior safely. Test-send remains available but is explicitly marked as live runtime execution.</p>
             </div>
             <div class="section-tools">
-              <a class="action-link" href="/admin/legacy?tab=delivery" data-i18n="tenant.section.lab.link">Open deep delivery workbench</a>
+              <a class="action-link" href="/tenant#sandbox" data-i18n="tenant.section.lab.link">Open deep delivery workbench</a>
             </div>
           </div>
           <div class="surface-two-col">
@@ -565,7 +552,7 @@
             <div class="section-copy">
               <span class="section-kicker">Catalog Tools</span>
               <h2 class="section-title">Quick add, reprice, and retire tenant catalog entries</h2>
-              <p>Common catalog maintenance now lives in the tenant console. Advanced bundle composition, capability presets, and complex delivery overrides still remain in the legacy workbench.</p>
+              <p>Common catalog maintenance now lives in the tenant console. Advanced bundle composition, capability presets, and complex delivery overrides now stay inside the scoped delivery pages.</p>
             </div>
           </div>
           <div class="focus-layout">
@@ -619,7 +606,7 @@
                   <textarea name="description" placeholder="Visible description for the player portal"></textarea>
                 </label>
               </div>
-              <p class="hint">For simple item entries, Game Item ID plus quantity is enough. Use the legacy economy workbench when you need delivery bundles, teleport overrides, or pre/post commands.</p>
+              <p class="hint">For simple item entries, Game Item ID plus quantity is enough. Use Delivery Lab when you need delivery bundles, teleport overrides, or pre/post commands.</p>
               <div class="button-row">
                 <button type="submit" class="button button-primary">Add Catalog Entry</button>
               </div>
@@ -673,7 +660,7 @@
               <p>See the tenant player roster, Steam binding context, and latest activity needed for support and commerce follow-up.</p>
             </div>
             <div class="section-tools">
-              <a class="action-link" href="/admin/legacy?tab=players">Open player tools</a>
+              <a class="action-link" href="/tenant#players">Open player tools</a>
             </div>
           </div>
           <div id="tenantPlayersTable"></div>
@@ -796,17 +783,17 @@
             <div class="section-copy">
               <span class="section-kicker">Support Tools</span>
               <h2 class="section-title">Steam link, VIP, and redeem-code operations</h2>
-              <p>Scoped support actions stay inside the tenant boundary. These forms are for frequent support work; deeper community workflows can still fall back to the legacy workbench.</p>
+              <p>Scoped support actions stay inside the tenant boundary. These forms cover the frequent support work so operators can stay in the tenant console.</p>
             </div>
           </div>
           <div class="focus-layout">
             <div class="primary-stack">
               <section class="panel-card">
                 <h3 data-i18n="tenant.support.scopeTitle">Support Scope</h3>
-                <p class="hint" data-i18n="tenant.support.scopeDetail">These tools are intentionally narrow: Steam linkage, VIP entitlement, and redeem-code maintenance. Deeper community workflows still belong in the legacy workbench.</p>
+                <p class="hint" data-i18n="tenant.support.scopeDetail">These tools are intentionally narrow: Steam linkage, VIP entitlement, and redeem-code maintenance. Advanced community flows should stay in the scoped support and player pages.</p>
                 <div class="button-row">
                   <a class="ghost-link" href="#players" data-i18n="tenant.support.scopePlayers">Open player roster</a>
-                  <a class="ghost-link" href="/admin/legacy?tab=players" data-i18n="tenant.support.scopeLegacy">Open legacy player tools</a>
+                  <a class="ghost-link" href="/tenant#players">Open player tools</a>
                 </div>
               </section>
               <section class="panel-card">
@@ -828,7 +815,7 @@
                 <div id="tenantRestartPresetChecklist" class="list-feed"></div>
                 <div class="button-row">
                   <button id="tenantRestartPresetBtn" type="button" class="button button-warning" data-i18n="tenant.support.restartPresetButton">Open restart flow</button>
-                  <a class="ghost-link" href="/admin/legacy?tab=delivery" data-i18n="tenant.support.restartPresetFallback">Open legacy delivery workbench</a>
+                  <a class="ghost-link" href="/tenant#actions">Open safe actions</a>
                 </div>
               </section>
             </div>
@@ -1177,7 +1164,8 @@
             </aside>
           </div>
         </section>
-      </main>
+        </main>
+      </section>
     </div>
 
     <footer class="surface-footer">
@@ -1199,9 +1187,9 @@
     </div>
   </div>
 
-    <script src="/admin/assets/admin-i18n.js?v=20260320-total-redesign-pass"></script>
-    <script src="/admin/assets/console-shared.js?v=20260320-total-redesign-pass"></script>
-    <script src="/admin/assets/operational-state-model.js?v=20260320-total-redesign-pass"></script>
-  <script src="/admin/assets/tenant-console.js?v=20260320-total-redesign-pass"></script>
+    <script src="/admin/assets/admin-i18n.js?v=20260321-scum-shell-rebuild"></script>
+    <script src="/admin/assets/console-shared.js?v=20260321-scum-shell-rebuild"></script>
+    <script src="/admin/assets/operational-state-model.js?v=20260321-scum-shell-rebuild"></script>
+  <script src="/admin/assets/tenant-console.js?v=20260321-scum-shell-rebuild"></script>
 </body>
 </html>

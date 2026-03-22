@@ -8,58 +8,75 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/player/assets/ui/player-core.css?v=20260320-total-redesign-pass">
+  <link rel="stylesheet" href="/player/assets/ui/player-core.css?v=20260321-select-fix">
 </head>
-<body>
+<body class="player-surface">
   <div class="portal-shell portal-shell-redesign">
-    <header class="portal-header">
-      <div class="portal-utility-bar">
-        <div class="utility-group">
-          <span class="utility-label" data-i18n="player.badge">Player Portal</span>
-          <span class="utility-divider"></span>
-          <span class="utility-value" data-i18n="player.home.accountOverview">Account Overview</span>
+    <section class="portal-hero-banner">
+      <div class="portal-hero-card">
+        <div class="portal-hero-toolbar">
+          <a class="portal-brand-mark" href="/player">
+            <span class="brand-emblem">SCUM</span>
+            <span class="brand-copy">
+              <strong data-i18n="player.badge">Player Portal</strong>
+              <span>Official Service Access</span>
+            </span>
+          </a>
+          <div class="portal-command-actions">
+            <label class="language-picker">
+              <span data-i18n="common.language">Language</span>
+              <select id="playerLanguageSelect" class="language-select"></select>
+            </label>
+            <button id="refreshBtn" class="button button-primary" type="button" data-i18n="common.refresh">Refresh</button>
+            <button id="logoutBtn" class="button" type="button" data-i18n="common.logout">Logout</button>
+          </div>
         </div>
-        <div class="utility-group">
-          <span class="utility-label" data-i18n="common.refresh">Refresh</span>
-          <span class="utility-value" data-i18n="player.home.notificationCenter">Wallet, orders, trust</span>
+        <nav class="portal-nav portal-nav-top portal-hero-nav" id="portalNav">
+          <button class="nav-btn active" data-tab="home" type="button" data-i18n="player.nav.home">Home</button>
+          <button class="nav-btn" data-tab="wallet" type="button" data-i18n="player.nav.wallet">Wallet</button>
+          <button class="nav-btn" data-tab="shop" type="button" data-i18n="player.nav.shop">Shop</button>
+          <button class="nav-btn" data-tab="orders" type="button" data-i18n="player.nav.orders">Orders</button>
+          <button class="nav-btn" data-tab="redeem" type="button" data-i18n="player.nav.redeem">Redeem</button>
+          <button class="nav-btn" data-tab="profile" type="button" data-i18n="player.nav.profile">Profile</button>
+        </nav>
+        <div class="portal-hero-copy">
+          <span class="portal-badge" data-i18n="player.badge">Player Portal</span>
+          <h1 data-i18n="player.title">Wallet, purchases, redeem, and account trust</h1>
+          <p data-i18n="player.subtitle">Player-facing portal for wallet visibility, purchase flow, redeem flow, profile review, and Steam linking. Admin operations live in separate consoles.</p>
+          <div id="portalMetaTags" class="tag-row"></div>
+        </div>
+        <div class="portal-hero-side">
+          <div class="hero-side-card">
+            <span class="kicker">Channel</span>
+            <strong>Player Service</strong>
+          </div>
+          <div class="hero-side-card">
+            <span class="kicker">Theme</span>
+            <strong>SCUM Field UI</strong>
+          </div>
         </div>
       </div>
-      <div class="portal-identity">
-        <span class="portal-badge" data-i18n="player.badge">Player Portal</span>
-        <h1 data-i18n="player.title">Wallet, purchases, redeem, and account trust</h1>
-        <p data-i18n="player.subtitle">Player-facing portal for wallet visibility, purchase flow, redeem flow, profile review, and Steam linking. Admin operations live in separate consoles.</p>
-        <div id="portalMetaTags" class="tag-row"></div>
-      </div>
-      <div class="portal-actions">
-        <label class="language-picker">
-          <span data-i18n="common.language">Language</span>
-          <select id="playerLanguageSelect" class="language-select"></select>
-        </label>
-        <button id="refreshBtn" class="button button-primary" type="button" data-i18n="common.refresh">Refresh</button>
-        <button id="logoutBtn" class="button" type="button" data-i18n="common.logout">Logout</button>
-      </div>
-    </header>
-
-    <section id="statusBanner" class="status-banner status-info">
-      <div>
-        <strong id="statusTitle" data-i18n="player.statusLoadingTitle">Preparing player portal...</strong>
-        <p id="statusDetail" data-i18n="player.statusLoadingDetail">Loading wallet, orders, and account state.</p>
-      </div>
-      <div class="tag-row" id="statusTags"></div>
     </section>
 
-    <!-- Player tabs stay task-focused: wallet, shop, orders, redeem, and profile. -->
-    <nav class="portal-nav" id="portalNav">
-      <button class="nav-btn active" data-tab="home" type="button" data-i18n="player.nav.home">Home</button>
-      <button class="nav-btn" data-tab="wallet" type="button" data-i18n="player.nav.wallet">Wallet</button>
-      <button class="nav-btn" data-tab="shop" type="button" data-i18n="player.nav.shop">Shop</button>
-      <button class="nav-btn" data-tab="orders" type="button" data-i18n="player.nav.orders">Orders</button>
-      <button class="nav-btn" data-tab="redeem" type="button" data-i18n="player.nav.redeem">Redeem</button>
-      <button class="nav-btn" data-tab="profile" type="button" data-i18n="player.nav.profile">Profile</button>
-    </nav>
+    <div class="portal-layout">
+      <aside class="portal-dock">
+        <section class="dock-card">
+          <span class="portal-badge" data-i18n="player.badge">Player Portal</span>
+          <p class="muted" data-i18n="player.home.firstRunDetail">If you are new to this portal, follow these four steps first so wallet, delivery, and account trust stay predictable.</p>
+        </section>
+      </aside>
 
-    <!-- Each panel below is one player task surface rather than one long mixed dashboard. -->
-    <main class="portal-main">
+      <section class="portal-stage">
+
+      <section id="statusBanner" class="status-banner status-info">
+        <div>
+          <strong id="statusTitle" data-i18n="player.statusLoadingTitle">Preparing player portal...</strong>
+          <p id="statusDetail" data-i18n="player.statusLoadingDetail">Loading wallet, orders, and account state.</p>
+        </div>
+        <div class="tag-row" id="statusTags"></div>
+      </section>
+
+      <main class="portal-main">
       <!-- Home tab:
            keep the player snapshot and current trust state visible first.
            Secondary server context is available, but no longer competes with
@@ -392,7 +409,8 @@
           </aside>
         </div>
       </section>
-    </main>
+      </main>
+    </section>
   </div>
 
   <div id="orderDetailBackdrop" class="drawer-backdrop" hidden>
@@ -437,7 +455,7 @@
     </aside>
   </div>
 
-  <script src="/player/assets/ui/portal-i18n.js?v=20260320-total-redesign-pass"></script>
-  <script src="/player/assets/ui/player-core.js?v=20260320-total-redesign-pass"></script>
+  <script src="/player/assets/ui/portal-i18n.js?v=20260321-warz-full"></script>
+  <script src="/player/assets/ui/player-core.js?v=20260321-warz-full"></script>
 </body>
 </html>

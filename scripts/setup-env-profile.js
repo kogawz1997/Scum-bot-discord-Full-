@@ -11,6 +11,13 @@ const PROFILE_CONFIG = Object.freeze({
   production: Object.freeze({ overlay: 'production' }),
   'single-host-prod': Object.freeze({ overlay: 'single-host-prod' }),
   'multi-tenant-prod': Object.freeze({ overlay: 'multi-tenant-prod' }),
+  'machine-a-control-plane': Object.freeze({
+    overlay: 'machine-a-control-plane',
+  }),
+  'machine-b-game-bot': Object.freeze({
+    overlay: 'machine-b-game-bot',
+    writesPortalEnv: false,
+  }),
 });
 
 function parseArgs(argv) {
@@ -123,27 +130,51 @@ function buildMergedProfile(baseDir, profileInput) {
   };
 }
 
+function shouldWritePortalEnv(profileInput) {
+  const profile = normalizeProfile(profileInput);
+  return PROFILE_CONFIG[profile].writesPortalEnv !== false;
+}
+
+function buildProfilePlan(profileInput) {
+  const profile = normalizeProfile(profileInput);
+  return {
+    profile,
+    rootProfile: buildMergedProfile(ROOT_DIR, profile),
+    writesPortalEnv: shouldWritePortalEnv(profile),
+    portalProfile: shouldWritePortalEnv(profile)
+      ? buildMergedProfile(PORTAL_DIR, profile)
+      : null,
+  };
+}
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
   const profile = normalizeProfile(args.profile || 'development');
   const write = args.write === 'true';
   const force = args.force === 'true';
-
-  const rootProfile = buildMergedProfile(ROOT_DIR, profile);
-  const portalProfile = buildMergedProfile(PORTAL_DIR, profile);
+  const plan = buildProfilePlan(profile);
+  const { rootProfile, portalProfile, writesPortalEnv } = plan;
 
   if (!write) {
     console.log(`[env-profile] profile=${profile}`);
     console.log(`[env-profile] root  : ${rootProfile.base}${rootProfile.hasOverlay ? ` + ${rootProfile.overlay}` : ''}`);
-    console.log(`[env-profile] portal: ${portalProfile.base}${portalProfile.hasOverlay ? ` + ${portalProfile.overlay}` : ''}`);
+    if (writesPortalEnv) {
+      console.log(`[env-profile] portal: ${portalProfile.base}${portalProfile.hasOverlay ? ` + ${portalProfile.overlay}` : ''}`);
+    } else {
+      console.log('[env-profile] portal: skipped for this profile (execution node does not own player portal config)');
+    }
     console.log('[env-profile] preview only (use --write to materialize .env files)');
     return;
   }
 
   writeFileAtomic(rootProfile.target, rootProfile.content, { force });
-  writeFileAtomic(portalProfile.target, portalProfile.content, { force });
   console.log(`[env-profile] wrote ${rootProfile.target}`);
-  console.log(`[env-profile] wrote ${portalProfile.target}`);
+  if (writesPortalEnv) {
+    writeFileAtomic(portalProfile.target, portalProfile.content, { force });
+    console.log(`[env-profile] wrote ${portalProfile.target}`);
+  } else {
+    console.log('[env-profile] skipped portal .env write for this profile');
+  }
 }
 
 module.exports = {
@@ -158,6 +189,8 @@ module.exports = {
   normalizeProfile,
   buildProfilePaths,
   buildMergedProfile,
+  shouldWritePortalEnv,
+  buildProfilePlan,
   main,
 };
 

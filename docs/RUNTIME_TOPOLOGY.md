@@ -32,6 +32,20 @@ This document describes the runtime split that the repository currently supports
 
 This is the target production topology.
 
+### Two-machine agent split
+
+- `Machine A`
+  - `bot`
+  - `worker`
+  - `player portal`
+  - PostgreSQL
+- `Machine B`
+  - `watcher`
+  - `console-agent`
+  - SCUM client
+
+Use this when the control plane should stay separate from the Windows / SCUM execution node.
+
 ### Reduced local topology
 
 - `bot` only, with selected background services enabled

@@ -29,6 +29,7 @@ body {
   min-height: 100%;
   font-family: "IBM Plex Sans Thai", "Segoe UI", sans-serif;
   color: var(--text);
+  color-scheme: dark;
   background:
     radial-gradient(1040px 660px at 100% 0%, rgba(148, 208, 255, 0.12), transparent 54%),
     radial-gradient(820px 560px at 0% 100%, rgba(136, 221, 178, 0.08), transparent 58%),
@@ -37,6 +38,30 @@ body {
 
 body {
   min-height: 100vh;
+}
+
+select,
+select option,
+select optgroup {
+  color-scheme: dark;
+}
+
+select option,
+select optgroup {
+  background: #121212 !important;
+  color: #f4f1e8 !important;
+}
+
+select option:checked,
+select option:hover,
+select option:focus {
+  background: #2d61a8 !important;
+  color: #ffffff !important;
+}
+
+select option:disabled,
+select optgroup {
+  color: #b6b6b6 !important;
 }
 
 .portal-shell {
@@ -146,6 +171,8 @@ body {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .language-select {
@@ -1162,5 +1189,850 @@ a.button:hover {
   button,
   a.button {
     width: 100%;
+  }
+}
+
+/* 2026-03-21 SCUM player shell pass
+   This layer keeps the same tabs and runtime hooks, but shifts the player
+   portal away from a generic dashboard toward a cleaner in-universe service UI. */
+
+:root {
+  --bg: #050709;
+  --bg-alt: #0a0d0f;
+  --bg-elevated: #121618;
+  --panel: rgba(12, 15, 17, 0.96);
+  --panel-soft: rgba(16, 20, 23, 0.92);
+  --line: rgba(200, 214, 175, 0.12);
+  --line-strong: rgba(219, 230, 190, 0.24);
+  --text: #edf0e8;
+  --muted: #a7afa1;
+  --accent: #bccb74;
+  --success: #88b48b;
+  --warning: #cb9954;
+  --danger: #cb776c;
+  --info: #8da8b8;
+  --radius-lg: 18px;
+  --radius-md: 14px;
+  --radius-sm: 10px;
+  --shadow: 0 18px 36px rgba(0, 0, 0, 0.24);
+}
+
+html,
+body {
+  background:
+    linear-gradient(180deg, rgba(188, 203, 116, 0.04), transparent 180px),
+    radial-gradient(1120px 620px at 100% -10%, rgba(188, 203, 116, 0.06), transparent 54%),
+    radial-gradient(900px 600px at -10% 100%, rgba(126, 137, 105, 0.05), transparent 56%),
+    linear-gradient(180deg, #030405, #07090a 38%, #0b0f11 100%);
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, transparent 0, transparent calc(100% - 1px), rgba(255, 255, 255, 0.012) calc(100% - 1px)),
+    linear-gradient(180deg, transparent 0, transparent calc(100% - 1px), rgba(255, 255, 255, 0.01) calc(100% - 1px));
+  background-size: 120px 120px;
+  opacity: 0.16;
+}
+
+.portal-shell-redesign {
+  width: min(1320px, calc(100% - 34px));
+  padding: 16px 0 28px;
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.portal-dock {
+  position: sticky;
+  top: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.dock-card {
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.01), rgba(255, 255, 255, 0)),
+    var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.portal-stage {
+  min-width: 0;
+  display: grid;
+  gap: 14px;
+}
+
+.portal-header,
+#statusBanner,
+.portal-nav,
+.panel-card,
+.hero-card,
+.stat-card,
+.shop-card,
+.feed-item,
+.tip-card,
+.order-card,
+.toast,
+.task-cluster {
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.01), rgba(255, 255, 255, 0)),
+    var(--panel);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(8px);
+}
+
+.portal-header {
+  padding: 16px 18px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  align-items: start;
+  overflow: hidden;
+  position: relative;
+}
+
+.portal-header::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0.6;
+}
+
+.portal-utility-bar {
+  display: none;
+}
+
+.portal-identity {
+  gap: 6px;
+  max-width: 60ch;
+}
+
+.portal-header h1 {
+  font-size: clamp(30px, 3vw, 40px);
+  line-height: 0.94;
+  letter-spacing: 0.05em;
+}
+
+.portal-header p,
+.muted {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.portal-badge,
+.pill {
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+}
+
+.portal-badge {
+  border-color: rgba(188, 203, 116, 0.22);
+  background: rgba(188, 203, 116, 0.08);
+  color: #d8e294;
+}
+
+.portal-actions {
+  justify-content: flex-end;
+  align-items: end;
+  gap: 8px;
+}
+
+.button,
+button,
+a.button,
+.nav-btn {
+  min-height: 40px;
+  padding: 0 13px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: none;
+}
+
+.button:hover,
+button:hover,
+a.button:hover,
+.nav-btn:hover {
+  transform: none;
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--line-strong);
+}
+
+.button-primary {
+  background: linear-gradient(180deg, rgba(188, 203, 116, 0.98), rgba(147, 160, 80, 0.96));
+  color: #0a0d08;
+}
+
+#statusBanner {
+  padding: 12px 14px;
+  border-left: 3px solid var(--accent);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+}
+
+#statusBanner strong {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 15px;
+}
+
+#statusBanner p {
+  margin: 0;
+}
+
+.portal-nav {
+  position: static;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px;
+  padding: 10px;
+  align-self: start;
+  background: rgba(8, 10, 11, 0.96);
+}
+
+.nav-btn {
+  justify-content: flex-start;
+  text-align: left;
+  color: var(--muted);
+}
+
+.nav-btn.active {
+  background: rgba(188, 203, 116, 0.1);
+  border-color: rgba(188, 203, 116, 0.22);
+  color: var(--text);
+}
+
+.portal-main {
+  min-width: 0;
+  display: grid;
+  gap: 14px;
+}
+
+.tab-panel.active {
+  gap: 14px;
+}
+
+.hero-grid {
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.95fr);
+  gap: 12px;
+}
+
+.hero-grid > :first-child {
+  grid-row: span 2;
+}
+
+.panel-grid.two-col,
+.shop-layout,
+.focus-layout {
+  grid-template-columns: minmax(0, 1.08fr) minmax(320px, 0.92fr);
+  gap: 12px;
+}
+
+.hero-card,
+.panel-card,
+.stat-card,
+.shop-card,
+.tip-card,
+.order-card {
+  padding: 14px;
+  border-radius: 14px;
+}
+
+.profile-head {
+  grid-template-columns: 58px 1fr;
+  gap: 10px;
+}
+
+.avatar {
+  width: 58px;
+  height: 58px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.section-head {
+  gap: 10px;
+}
+
+.section-head h2 {
+  font-size: clamp(22px, 2vw, 28px);
+  line-height: 0.96;
+}
+
+.kicker,
+.language-picker span {
+  color: #d8e294;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.metric-value {
+  font-size: clamp(24px, 2.4vw, 34px);
+  line-height: 0.92;
+}
+
+.stats-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.stats-grid.compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.stat-card {
+  background: rgba(255, 255, 255, 0.014);
+}
+
+.stat-card strong {
+  font-size: clamp(24px, 2.2vw, 32px);
+  line-height: 0.92;
+}
+
+.task-cluster {
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.012);
+  box-shadow: none;
+}
+
+.task-cluster > summary {
+  padding: 11px 13px;
+  font-size: 15px;
+  letter-spacing: 0.06em;
+}
+
+.task-body {
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.01);
+}
+
+.shop-grid {
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+}
+
+input,
+select,
+textarea,
+.language-select {
+  min-height: 40px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--text);
+  padding: 0 12px;
+}
+
+textarea {
+  min-height: 110px;
+  padding: 10px 12px;
+}
+
+select option,
+optgroup {
+  background: #0c0f11;
+  color: var(--text);
+}
+
+@media (max-width: 1180px) {
+  .portal-shell-redesign {
+    width: min(100%, calc(100% - 18px));
+    grid-template-columns: 1fr;
+  }
+
+  .portal-dock {
+    position: static;
+  }
+
+  .portal-nav,
+  .hero-grid,
+  .focus-layout,
+  .panel-grid.two-col,
+  .shop-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .portal-shell-redesign {
+    width: min(100%, calc(100% - 14px));
+    padding-top: 10px;
+  }
+
+  .portal-header,
+  #statusBanner,
+  .dock-card,
+  .portal-nav,
+  .panel-card,
+  .hero-card,
+  .stat-card {
+    border-radius: 14px;
+  }
+
+  .portal-header,
+  #statusBanner,
+  .portal-nav,
+  .panel-card,
+  .hero-card {
+    padding-inline: 14px;
+  }
+
+  .portal-header h1 {
+    font-size: 28px;
+  }
+
+  .portal-actions,
+  .button-row {
+    width: 100%;
+  }
+
+  .portal-actions > *,
+  .button-row > * {
+    flex: 1 1 calc(50% - 6px);
+  }
+
+  .stats-grid,
+  .stats-grid.compact,
+  .shop-grid,
+  .order-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Official-game shell pass:
+   reshape the player portal into a top command bar + hero banner + quieter
+   service layout without touching existing runtime hooks. */
+body {
+  background:
+    radial-gradient(circle at top, rgba(159, 70, 44, 0.18), transparent 22%),
+    radial-gradient(circle at 78% 12%, rgba(183, 194, 96, 0.12), transparent 18%),
+    linear-gradient(180deg, #0c100c 0%, #080909 100%);
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 140px 140px;
+  opacity: 0.18;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.72), transparent 88%);
+}
+
+.portal-shell-redesign {
+  width: min(1600px, calc(100vw - 36px));
+  display: grid;
+  gap: 18px;
+}
+
+.portal-commandbar {
+  position: sticky;
+  top: 12px;
+  z-index: 20;
+}
+
+.portal-commandbar-inner {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  padding: 14px 18px;
+  border: 1px solid rgba(210, 216, 137, 0.14);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(16, 20, 16, 0.96), rgba(9, 11, 10, 0.94));
+  box-shadow: 0 24px 56px rgba(0, 0, 0, 0.36);
+  backdrop-filter: blur(8px);
+}
+
+.portal-brand-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  text-decoration: none;
+}
+
+.portal-brand-mark .brand-emblem {
+  min-width: 54px;
+  min-height: 54px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  border: 1px solid rgba(210, 216, 137, 0.22);
+  background: linear-gradient(180deg, rgba(104, 118, 52, 0.44), rgba(24, 28, 19, 0.94));
+  color: #f5f6ea;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 23px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.portal-brand-mark .brand-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.portal-brand-mark .brand-copy strong {
+  color: #f5f6ea;
+  font-size: 18px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.portal-brand-mark .brand-copy span {
+  color: rgba(233, 238, 208, 0.66);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.portal-nav-top {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  padding: 0;
+  background: none;
+  border: none;
+  box-shadow: none;
+}
+
+.portal-nav-top .nav-btn {
+  flex: 0 0 auto;
+  min-width: 110px;
+}
+
+.portal-command-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.portal-hero-toolbar,
+.portal-hero-nav {
+  grid-column: 1 / -1;
+}
+
+.portal-hero-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.portal-hero-banner {
+  margin-top: 2px;
+}
+
+.portal-hero-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(230px, 0.45fr);
+  gap: 18px;
+  padding: 24px 26px;
+  border: 1px solid rgba(210, 216, 137, 0.16);
+  border-radius: 22px;
+  background:
+    linear-gradient(90deg, rgba(8, 10, 8, 0.5), rgba(8, 10, 8, 0.82)),
+    url("/player/assets/ui/visuals/survivors_talking/survivors_talking_512.jpg") center/cover;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.38);
+}
+
+.portal-hero-copy h1 {
+  margin: 8px 0 10px;
+  font-size: clamp(40px, 5vw, 60px);
+  line-height: 0.94;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.portal-hero-copy p {
+  max-width: 68ch;
+  font-size: 15px;
+  line-height: 1.72;
+}
+
+.portal-hero-side {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.hero-side-card {
+  padding: 16px;
+  border: 1px solid rgba(210, 216, 137, 0.12);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.hero-side-card strong {
+  display: block;
+  margin-top: 8px;
+  color: #f5f6ea;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 28px;
+  line-height: 0.96;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.portal-layout {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.portal-dock {
+  position: sticky;
+  top: 24px;
+}
+
+.dock-card {
+  padding: 18px;
+  border: 1px solid rgba(210, 216, 137, 0.12);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(12, 15, 11, 0.86), rgba(8, 10, 9, 0.96)),
+    url("/player/assets/ui/visuals/weapon_shelf/weapon_shelf_512.jpg") center/cover;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.32);
+}
+
+.portal-stage {
+  gap: 16px;
+}
+
+@media (max-width: 1180px) {
+  .portal-commandbar {
+    position: static;
+  }
+
+  .portal-commandbar-inner {
+    grid-template-columns: 1fr;
+  }
+
+  .portal-nav-top {
+    justify-content: flex-start;
+  }
+
+  .portal-hero-card,
+  .portal-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .portal-dock {
+    position: static;
+  }
+}
+
+@media (max-width: 760px) {
+  .portal-commandbar-inner,
+  .portal-hero-card {
+    padding: 14px;
+  }
+
+  .portal-brand-mark .brand-emblem {
+    min-width: 46px;
+    min-height: 46px;
+    font-size: 20px;
+  }
+
+  .portal-hero-copy h1 {
+    font-size: 34px;
+  }
+}
+
+/* Cinematic player pass:
+   push the portal from dashboard chrome toward an official game-service layout
+   with a flatter black top bar and a larger hero stage. */
+body.player-surface {
+  background:
+    linear-gradient(180deg, rgba(4, 4, 4, 0.68), rgba(4, 4, 4, 0.94)),
+    url("/player/assets/ui/visuals/tunnel/tunnel_512.jpg") center top / cover fixed;
+}
+
+body.player-surface::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(240, 185, 92, 0.16), transparent 22%),
+    radial-gradient(circle at 0% 100%, rgba(115, 124, 72, 0.14), transparent 24%);
+}
+
+.portal-shell-redesign {
+  width: 100%;
+  padding: 0 0 44px;
+  gap: 0;
+}
+
+.portal-commandbar {
+  position: sticky;
+  top: 0;
+  margin: 0;
+}
+
+.portal-commandbar-inner {
+  width: min(1600px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 14px 24px;
+  border-radius: 0 0 20px 20px;
+  border-top: 0;
+  border-color: rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(6, 6, 6, 0.96), rgba(10, 10, 10, 0.94));
+  box-shadow: 0 20px 52px rgba(0, 0, 0, 0.44);
+}
+
+.portal-brand-mark .brand-emblem {
+  min-width: 46px;
+  min-height: 46px;
+  border-radius: 999px;
+  border-color: rgba(255, 255, 255, 0.14);
+  background: radial-gradient(circle at 30% 30%, rgba(219, 63, 35, 0.96), rgba(89, 12, 11, 0.98));
+  font-size: 17px;
+}
+
+.portal-nav-top .nav-btn {
+  min-width: 98px;
+  border-radius: 10px;
+  border-color: transparent;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.86);
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 16px;
+}
+
+.portal-nav-top .nav-btn.active,
+.portal-nav-top .nav-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: #fffdf4;
+}
+
+.portal-hero-banner,
+.portal-layout {
+  width: min(1600px, calc(100% - 32px));
+  margin: 0 auto;
+}
+
+.portal-hero-banner {
+  padding-top: 24px;
+}
+
+.portal-hero-card {
+  min-height: 58vh;
+  align-items: end;
+  padding: 34px 34px;
+  border-radius: 28px;
+  border-color: rgba(255, 255, 255, 0.08);
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.8)),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.66), rgba(0, 0, 0, 0.22)),
+    url("/player/assets/ui/visuals/scum/scum_512.jpg") center / cover;
+}
+
+.portal-hero-copy {
+  max-width: 780px;
+  padding: 28px 30px;
+  border-radius: 24px;
+  background: rgba(8, 8, 8, 0.52);
+}
+
+.portal-hero-copy h1 {
+  font-size: clamp(50px, 7vw, 88px);
+}
+
+.portal-hero-copy p {
+  color: rgba(245, 246, 232, 0.82);
+}
+
+.hero-side-card {
+  min-height: 150px;
+  align-content: end;
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(8, 8, 8, 0.46);
+}
+
+.portal-layout {
+  padding-top: 24px;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 22px;
+}
+
+.dock-card {
+  min-height: 220px;
+  border-color: rgba(255, 255, 255, 0.1);
+  background:
+    linear-gradient(180deg, rgba(6, 6, 6, 0.74), rgba(10, 10, 10, 0.92)),
+    url("/player/assets/ui/visuals/weapon_shelf/weapon_shelf_512.jpg") center / cover;
+}
+
+.panel-card,
+.hero-card,
+.stat-card,
+.shop-card,
+.tip-card,
+.order-card,
+.task-cluster,
+.status-banner {
+  border-color: rgba(255, 255, 255, 0.08);
+  background:
+    linear-gradient(180deg, rgba(12, 12, 12, 0.8), rgba(10, 10, 10, 0.94));
+}
+
+.button-primary {
+  background: linear-gradient(135deg, #d1b06a, #efe0a7);
+  color: #111;
+}
+
+@media (max-width: 1180px) {
+  .portal-commandbar-inner,
+  .portal-hero-card,
+  .portal-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .portal-layout,
+  .portal-hero-banner {
+    width: min(100%, calc(100% - 20px));
+  }
+}
+
+@media (max-width: 760px) {
+  .portal-commandbar-inner,
+  .portal-hero-card {
+    padding: 16px;
+  }
+
+  .portal-hero-copy {
+    padding: 18px;
+  }
+
+  .portal-hero-copy h1 {
+    font-size: 36px;
   }
 }

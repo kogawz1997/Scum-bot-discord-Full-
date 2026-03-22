@@ -1,11 +1,13 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-03-20T17:01:37.461Z",
-  "lastMonitoringAt": "2026-03-20T17:01:35.425Z",
-  "lastAutoBackupAt": "2026-03-20T15:16:34.576Z",
-  "lastReconcileAt": "2026-03-20T16:58:35.386Z",
+  "updatedAt": "2026-03-22T13:54:07.405Z",
+  "lastMonitoringAt": "2026-03-22T13:54:07.199Z",
+  "lastAutoBackupAt": "2026-03-22T13:43:18.186Z",
+  "lastReconcileAt": "2026-03-22T13:54:07.199Z",
   "lastAlertAtByKey": {
-    "platform-auto-backup-created": "2026-03-20T15:16:34.576Z",
-    "delivery-reconcile-anomaly": "2026-03-20T16:58:35.386Z"
+    "platform-auto-backup-created": "2026-03-22T13:43:18.186Z",
+    "tenant-quota-near-limit:tenant-admin-api:apiKeys": "2026-03-21T04:03:26.837Z",
+    "tenant-quota-near-limit:tenant-admin-api:agentRuntimes": "2026-03-21T04:03:26.837Z",
+    "delivery-reconcile-anomaly": "2026-03-22T13:54:07.199Z"
   }
 }

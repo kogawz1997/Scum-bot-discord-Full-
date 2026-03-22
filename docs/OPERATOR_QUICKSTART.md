@@ -127,6 +127,14 @@ Treat these as distinct profiles:
   - one host
   - PostgreSQL runtime
   - split-origin admin/player surfaces
+- `machine-a-control-plane`
+  - Discord/API/database/shop logic
+  - owner / tenant / player web surfaces
+  - worker runtime
+- `machine-b-game-bot`
+  - SCUM client workstation
+  - console-agent
+  - watcher if the live `SCUM.log` lives here
 - `multi-tenant-prod`
   - PostgreSQL-first
   - tenant topology selected intentionally
@@ -139,12 +147,17 @@ Read next:
 - [DATABASE_STRATEGY.md](./DATABASE_STRATEGY.md)
 - [POSTGRESQL_CUTOVER_CHECKLIST.md](./POSTGRESQL_CUTOVER_CHECKLIST.md)
 - [SINGLE_HOST_PRODUCTION_PROFILE.md](./SINGLE_HOST_PRODUCTION_PROFILE.md)
+- [TWO_MACHINE_AGENT_TOPOLOGY.md](./TWO_MACHINE_AGENT_TOPOLOGY.md)
 
 Quick commands:
 
 ```bash
 npm run env:preview:single-host-prod
 npm run env:prepare:single-host-prod
+npm run env:preview:machine-a-control-plane
+npm run env:prepare:machine-a-control-plane
+npm run env:preview:machine-b-game-bot
+npm run env:prepare:machine-b-game-bot
 npm run env:preview:multi-tenant-prod
 npm run env:prepare:multi-tenant-prod
 ```
@@ -160,6 +173,7 @@ npm run env:prepare:multi-tenant-prod
 - Runtime topology / worker ownership
   - [RUNTIME_TOPOLOGY.md](./RUNTIME_TOPOLOGY.md)
   - [RUNTIME_BOUNDARY_EXPLAINER.md](./RUNTIME_BOUNDARY_EXPLAINER.md)
+  - [TWO_MACHINE_AGENT_TOPOLOGY.md](./TWO_MACHINE_AGENT_TOPOLOGY.md)
   - `npm run doctor`
 - Database topology / tenant routing
   - [DATABASE_STRATEGY.md](./DATABASE_STRATEGY.md)

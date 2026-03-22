@@ -25,6 +25,7 @@ If a statement in this repository is not backed by code, tests, CI artifacts, or
 - Operator quickstart: [docs/OPERATOR_QUICKSTART.md](./docs/OPERATOR_QUICKSTART.md)
 - 15-minute setup path: [docs/FIFTEEN_MINUTE_SETUP.md](./docs/FIFTEEN_MINUTE_SETUP.md)
 - Single-host production profile: [docs/SINGLE_HOST_PRODUCTION_PROFILE.md](./docs/SINGLE_HOST_PRODUCTION_PROFILE.md)
+- Two-machine agent topology: [docs/TWO_MACHINE_AGENT_TOPOLOGY.md](./docs/TWO_MACHINE_AGENT_TOPOLOGY.md)
 - Restart announcement preset: [docs/RESTART_ANNOUNCEMENT_PRESET.md](./docs/RESTART_ANNOUNCEMENT_PRESET.md)
 - System status: [PROJECT_HQ.md](./PROJECT_HQ.md)
 - Verification status: [docs/VERIFICATION_STATUS_TH.md](./docs/VERIFICATION_STATUS_TH.md)
@@ -249,6 +250,17 @@ npm run doctor
 npm run security:check
 npm run security:rotation:check
 ```
+
+### Split Machine A / Machine B
+
+If you want the control plane and the SCUM execution node on different hosts:
+
+```bash
+npm run setup:15min:machine-a-control-plane
+npm run setup:15min:machine-b-game-bot
+```
+
+See [docs/TWO_MACHINE_AGENT_TOPOLOGY.md](./docs/TWO_MACHINE_AGENT_TOPOLOGY.md).
 
 ### Cut over from SQLite to PostgreSQL
 

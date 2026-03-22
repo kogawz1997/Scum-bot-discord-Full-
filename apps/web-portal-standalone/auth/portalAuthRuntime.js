@@ -12,6 +12,22 @@ function createPortalAuthRuntime(options = {}) {
   const sessions = options.sessions;
   const oauthStates = options.oauthStates;
 
+  function extractHostname(rawHost) {
+    const input = String(rawHost || '').trim().toLowerCase();
+    if (!input) return '';
+    if (input.startsWith('[')) {
+      const endIndex = input.indexOf(']');
+      return endIndex > 0 ? input.slice(1, endIndex) : input;
+    }
+    const colonIndex = input.indexOf(':');
+    return colonIndex >= 0 ? input.slice(0, colonIndex) : input;
+  }
+
+  function isLoopbackHostname(hostname) {
+    const normalized = String(hostname || '').trim().toLowerCase();
+    return normalized === 'localhost' || normalized === '127.0.0.1' || normalized === '::1';
+  }
+
   function parseCookies(req) {
     const out = {};
     const raw = String(req?.headers?.cookie || '');
@@ -130,6 +146,10 @@ function createPortalAuthRuntime(options = {}) {
     }
 
     const reqHost = String(req?.headers?.host || '').trim().toLowerCase();
+    const reqHostname = extractHostname(reqHost);
+    if (isLoopbackHostname(reqHostname)) {
+      return null;
+    }
     const expectedHost = String(expected.host || '').trim().toLowerCase();
     const forwardedProto = getForwardedProto(req);
     const reqProto = forwardedProto || (req?.socket?.encrypted ? 'https' : 'http');

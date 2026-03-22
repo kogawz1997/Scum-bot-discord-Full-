@@ -794,7 +794,7 @@ logoutBtn.addEventListener('click', async () => {
       button.addEventListener('click', () => {
         const tabKey = String(button.getAttribute('data-control-open-tab') || '').trim();
         if (tabKey) {
-          activateTab(tabKey);
+          activateTab(tabKey, { focus: true });
         }
       });
     });
@@ -1748,7 +1748,7 @@ logoutBtn.addEventListener('click', async () => {
       btn.addEventListener('click', () => {
         const tabKey = String(btn.dataset.overviewTab || '').trim();
         if (tabKey) {
-          activateTab(tabKey);
+          activateTab(tabKey, { focus: true });
         }
       });
     });

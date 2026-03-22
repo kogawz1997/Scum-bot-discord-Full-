@@ -34,6 +34,23 @@ Use it when someone asks:
 - `player portal` is separate from admin flows on purpose
 - `console-agent` is optional and still depends on Windows session + SCUM client state
 
+## Recommended Two-Machine Placement
+
+When `agent` mode is required, the cleaner production split is:
+
+- `Machine A`
+  - `bot`
+  - `admin web`
+  - `worker`
+  - `player portal`
+  - PostgreSQL
+- `Machine B`
+  - `console-agent`
+  - `watcher`
+  - SCUM client
+
+That split keeps the business/control plane on Machine A and isolates SCUM-window risk to Machine B.
+
 ## When Operators Get Stuck
 
 - Delivery issue: open `/tenant` -> `Commerce + Delivery`
@@ -45,4 +62,5 @@ Use it when someone asks:
 
 - [ARCHITECTURE.md](./ARCHITECTURE.md)
 - [RUNTIME_TOPOLOGY.md](./RUNTIME_TOPOLOGY.md)
+- [TWO_MACHINE_AGENT_TOPOLOGY.md](./TWO_MACHINE_AGENT_TOPOLOGY.md)
 - [OPERATOR_QUICKSTART.md](./OPERATOR_QUICKSTART.md)

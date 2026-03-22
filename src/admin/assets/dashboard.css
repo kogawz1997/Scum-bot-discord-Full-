@@ -248,15 +248,28 @@
       background-size: 14px 10px;
     }
 
+    select,
     select option,
     select optgroup {
-      color: var(--option-text);
-      background: var(--option-bg);
+      color-scheme: dark;
+    }
+
+    select option,
+    select optgroup {
+      color: #f4f1e8 !important;
+      background: #121212 !important;
+    }
+
+    select option:checked,
+    select option:hover,
+    select option:focus {
+      color: #ffffff !important;
+      background: #2d61a8 !important;
     }
 
     select option:disabled,
     select optgroup {
-      color: #9eb5cc;
+      color: #b6b6b6 !important;
     }
 
     #datasetSelect option {
@@ -372,6 +385,24 @@
       border-radius: var(--radius);
       padding: 18px;
       box-shadow: var(--shadow-lg);
+    }
+
+    .legacy-fallback-notice {
+      display: grid;
+      gap: 10px;
+    }
+
+    .legacy-fallback-notice p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.45;
+      max-width: 920px;
+    }
+
+    .legacy-summary-panel,
+    .legacy-overview-panel {
+      display: none;
     }
 
     .title {

@@ -53,6 +53,91 @@ function createAdminPublicRoutes(deps) {
     buildSessionCookie,
   } = deps;
 
+  function extractHostname(rawHost) {
+    const input = String(rawHost || '').trim().toLowerCase();
+    if (!input) return '';
+    if (input.startsWith('[')) {
+      const endIndex = input.indexOf(']');
+      return endIndex > 0 ? input.slice(1, endIndex) : input;
+    }
+    const colonIndex = input.indexOf(':');
+    return colonIndex >= 0 ? input.slice(0, colonIndex) : input;
+  }
+
+  function isLoopbackHostname(hostname) {
+    const normalized = String(hostname || '').trim().toLowerCase();
+    return normalized === 'localhost' || normalized === '127.0.0.1' || normalized === '::1';
+  }
+
+  function buildPlayerPortalUrl(req, urlObj, pathname) {
+    const requestHost = String(req?.headers?.host || '').trim();
+    const requestHostname = extractHostname(requestHost);
+    const search = String(urlObj?.search || '');
+    if (isLoopbackHostname(requestHostname)) {
+      const localHost = requestHostname || '127.0.0.1';
+      const localPort = String(process.env.WEB_PORTAL_PORT || '3300').trim() || '3300';
+      return `http://${localHost}:${localPort}${pathname}${search}`;
+    }
+
+    const configuredBase = String(process.env.WEB_PORTAL_BASE_URL || '').trim();
+    if (!configuredBase) return null;
+
+    try {
+      const target = new URL(pathname, configuredBase);
+      target.search = search;
+      return target.toString();
+    } catch {
+      return null;
+    }
+  }
+
+  function buildLegacyFallbackTarget(auth, urlObj) {
+    const query = urlObj?.searchParams;
+    const tab = String(query?.get('tab') || '').trim().toLowerCase();
+    const isTenantScoped = Boolean(auth?.tenantId);
+    const ownerTabTargets = {
+      auth: '/owner#security',
+      platform: '/owner#fleet',
+      metrics: '/owner#observability',
+      control: '/owner#control',
+      config: '/owner#control',
+      danger: '/owner#recovery',
+      delivery: '/owner#observability',
+      economy: '/owner#audit',
+      players: '/owner#fleet',
+      community: '/owner#fleet',
+      moderation: '/owner#fleet',
+    };
+    const tenantTabTargets = {
+      auth: '/tenant#audit',
+      platform: '/tenant#plan-integrations',
+      metrics: '/tenant#insights',
+      control: '/tenant#config',
+      config: '/tenant#config',
+      danger: '/tenant#actions',
+      delivery: '/tenant#commerce',
+      economy: '/tenant#commerce',
+      players: '/tenant#players',
+      community: '/tenant#support-tools',
+      moderation: '/tenant#players',
+    };
+    const tabTargets = isTenantScoped ? tenantTabTargets : ownerTabTargets;
+    const target = tabTargets[tab];
+    if (target) return target;
+    return isTenantScoped ? '/tenant' : '/owner';
+  }
+
+  function buildAdminLoginRoute(pathname) {
+    const raw = String(pathname || '').trim().toLowerCase();
+    if (raw === '/owner' || raw === '/owner/' || raw === '/owner/login' || raw === '/owner/login/') {
+      return '/owner/login';
+    }
+    if (raw === '/tenant' || raw === '/tenant/' || raw === '/tenant/login' || raw === '/tenant/login/') {
+      return '/tenant/login';
+    }
+    return '/admin/login';
+  }
+
   return async function handleAdminPublicRoute(context) {
     const {
       client,
@@ -100,9 +185,38 @@ function createAdminPublicRoutes(deps) {
       return true;
     }
 
-    if (req.method === 'GET' && (pathname === '/admin/login' || pathname === '/admin/login/')) {
+    if (
+      req.method === 'GET'
+      && (pathname === '/player' || pathname === '/player/' || pathname.startsWith('/player/'))
+    ) {
+      const target = buildPlayerPortalUrl(req, urlObj, pathname);
+      if (!target) {
+        sendJson(res, 503, {
+          ok: false,
+          error: 'Player portal URL is invalid',
+        });
+        return true;
+      }
+      res.writeHead(302, { Location: target });
+      res.end();
+      return true;
+    }
+
+    if (
+      req.method === 'GET'
+      && (
+        pathname === '/admin/login'
+        || pathname === '/admin/login/'
+        || pathname === '/owner/login'
+        || pathname === '/owner/login/'
+        || pathname === '/tenant/login'
+        || pathname === '/tenant/login/'
+      )
+    ) {
       if (isAuthorized(req, urlObj)) {
-        res.writeHead(302, { Location: '/admin' });
+        const auth = getAuthContext(req, urlObj);
+        const target = auth?.tenantId ? '/tenant' : '/owner';
+        res.writeHead(302, { Location: target });
         res.end();
         return true;
       }
@@ -129,13 +243,21 @@ function createAdminPublicRoutes(deps) {
         res.end();
         return true;
       }
+      const auth = getAuthContext(req, urlObj);
+      const fallbackEnabled = String(urlObj?.searchParams?.get('fallback') || '').trim() === '1';
+      if (!fallbackEnabled) {
+        const target = buildLegacyFallbackTarget(auth, urlObj);
+        res.writeHead(302, { Location: target });
+        res.end();
+        return true;
+      }
       sendHtml(res, 200, getDashboardHtml());
       return true;
     }
 
     if (req.method === 'GET' && (pathname === '/owner' || pathname === '/owner/')) {
       if (!isAuthorized(req, urlObj)) {
-        res.writeHead(302, { Location: '/admin/login' });
+        res.writeHead(302, { Location: buildAdminLoginRoute(pathname) });
         res.end();
         return true;
       }
@@ -151,7 +273,7 @@ function createAdminPublicRoutes(deps) {
 
     if (req.method === 'GET' && (pathname === '/tenant' || pathname === '/tenant/')) {
       if (!isAuthorized(req, urlObj)) {
-        res.writeHead(302, { Location: '/admin/login' });
+        res.writeHead(302, { Location: buildAdminLoginRoute(pathname) });
         res.end();
         return true;
       }
