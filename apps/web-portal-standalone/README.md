@@ -2,6 +2,8 @@
 
 This app runs the player-facing portal as its own process and keeps the player path separate from the admin control plane.
 
+The player portal does not talk directly to the game-side machine. Player-facing reads and writes must still resolve through the shared control-plane and persistence boundaries.
+
 Current primary routes:
 
 - `/player` for the player portal
@@ -23,6 +25,12 @@ Admin routes are not served from this app:
   - commerce, delivery, support, config
 - `Player`
   - wallet, orders, redeem, profile, Steam link
+
+Public pages served from this app:
+
+- `/landing`
+- `/showcase`
+- `/trial`
 
 The portal intentionally keeps player flows separate from owner/admin operations so role boundaries stay clear.
 

@@ -9,6 +9,7 @@
     formatNumber,
     localizeAdminNotification,
     makePill,
+    renderAgentRuntimeMeta,
     renderList,
     renderStats,
     renderTable,
@@ -1316,6 +1317,7 @@
           render: (row) => [
             `<strong>${escapeHtml(row.runtimeKey || row.name || '-')}</strong>`,
             `<div class="muted code">${escapeHtml(row.channel || '-')}</div>`,
+            renderAgentRuntimeMeta(row),
           ].join(''),
         },
         {

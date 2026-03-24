@@ -20,6 +20,8 @@ Use this index to find the right document set by audience instead of scanning th
 ## Developer Docs
 
 - [ARCHITECTURE.md](./ARCHITECTURE.md)
+- [FIIX_BRIEF.md](./FIIX_BRIEF.md)
+- [fiix.txt](./fiix.txt)
 - [RUNTIME_BOUNDARY_EXPLAINER.md](./RUNTIME_BOUNDARY_EXPLAINER.md)
 - [../apps/web-portal-standalone/README.md](../apps/web-portal-standalone/README.md)
 - [assets/README.md](./assets/README.md)
@@ -48,7 +50,7 @@ Use this index to find the right document set by audience instead of scanning th
 ## Current Primary Routes
 
 - `/owner` and `/owner/login` for platform owner operations
-- `/tenant` and `/tenant/login` for tenant-scoped admin work
+- `/tenant` and `/tenant/login` for tenant-scoped server admin work
 - `/player` and `/player/login` for player-facing portal flows
 - `/admin/legacy` is retained for compatibility only and should not be the first operator path
 

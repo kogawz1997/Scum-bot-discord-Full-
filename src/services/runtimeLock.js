@@ -1,11 +1,13 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { resolveRuntimeDataDir } = require('../utils/runtimeDataDir');
 
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
-const BASE_DATA_DIR = process.env.BOT_DATA_DIR
-  ? path.resolve(process.env.BOT_DATA_DIR)
-  : path.join(PROJECT_ROOT, 'data');
+const BASE_DATA_DIR = resolveRuntimeDataDir({
+  env: process.env,
+  projectRoot: PROJECT_ROOT,
+});
 const LOCK_DIR = path.join(BASE_DATA_DIR, 'runtime-locks');
 
 const activeLocks = new Map();

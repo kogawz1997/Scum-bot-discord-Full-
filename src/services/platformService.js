@@ -14,6 +14,10 @@ const {
 } = require('./deliveryPersistenceDb');
 const { publishAdminLiveUpdate } = require('./adminLiveBus');
 const { ensureTenantDatabaseTargetProvisioned } = require('../utils/tenantDatabaseProvisioning');
+const {
+  mergeAgentRuntimeProfile,
+  normalizeAgentRuntimeProfile,
+} = require('../utils/agentRuntimeProfile');
 
 const PLATFORM_SCOPE_GROUPS = Object.freeze([
   {
@@ -503,9 +507,15 @@ function sanitizeWebhookRow(row, options = {}) {
 
 function sanitizeAgentRow(row) {
   if (!row) return null;
+  const meta = safeMeta(row);
+  const runtimeProfile = normalizeAgentRuntimeProfile({
+    runtimeKey: row.runtimeKey,
+    channel: row.channel,
+    meta,
+  });
   return {
     ...row,
-    meta: safeMeta(row),
+    meta: mergeAgentRuntimeProfile(meta, runtimeProfile),
     lastSeenAt: toIso(row.lastSeenAt),
     createdAt: toIso(row.createdAt),
     updatedAt: toIso(row.updatedAt),
@@ -1387,6 +1397,20 @@ async function recordPlatformAgentHeartbeat(input = {}, actor = 'platform-api') 
     compareVersions(version, minimumVersion) < 0
       ? 'outdated'
       : normalizeStatus(input.status, ['online', 'degraded', 'outdated', 'offline']);
+  const channel = trimText(input.channel, 80) || null;
+  const inputMeta =
+    input.meta && typeof input.meta === 'object' && !Array.isArray(input.meta)
+      ? input.meta
+      : typeof input.meta === 'string'
+        ? parseJsonOrFallback(input.meta, null)
+        : null;
+  const runtimeProfile = normalizeAgentRuntimeProfile({
+    runtimeKey,
+    channel,
+    meta: inputMeta,
+  });
+  const storedMeta = inputMeta ? mergeAgentRuntimeProfile(inputMeta, runtimeProfile) : null;
+  const metaJson = storedMeta ? stringifyMeta(storedMeta) : stringifyMeta(input.meta);
   const row = await runWithOptionalTenantDbIsolation(tenantId, (db) => db.platformAgentRuntime.upsert({
     where: {
       tenantId_runtimeKey: {
@@ -1395,23 +1419,23 @@ async function recordPlatformAgentHeartbeat(input = {}, actor = 'platform-api') 
       },
     },
     update: {
-      channel: trimText(input.channel, 80) || null,
+      channel,
       version,
       minRequiredVersion: minimumVersion,
       status,
       lastSeenAt: new Date(),
-      metaJson: stringifyMeta(input.meta),
+      metaJson,
     },
     create: {
       id: createId('agent'),
       tenantId,
       runtimeKey,
-      channel: trimText(input.channel, 80) || null,
+      channel,
       version,
       minRequiredVersion: minimumVersion,
       status,
       lastSeenAt: new Date(),
-      metaJson: stringifyMeta(input.meta),
+      metaJson,
     },
   }));
   if (status === 'outdated') {

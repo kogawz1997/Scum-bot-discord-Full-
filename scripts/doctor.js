@@ -6,6 +6,7 @@ const { loadMergedEnvFiles } = require('../src/utils/loadEnvFiles');
 const { validateCommandTemplate } = require('../src/utils/commandTemplate');
 const { getAdminSsoRoleMappingSummary } = require('../src/utils/adminSsoRoleMapping');
 const { resolveDatabaseRuntime } = require('../src/utils/dbEngine');
+const { listTrackedMutableArtifacts } = require('../src/utils/trackedMutableArtifacts');
 const {
   createValidationCheck,
   createValidationReport,
@@ -199,8 +200,8 @@ function addCookieScopeChecks() {
     process.env.ADMIN_WEB_SESSION_COOKIE_DOMAIN || '',
   ).trim();
   const adminCookiePath = String(
-    process.env.ADMIN_WEB_SESSION_COOKIE_PATH || '/admin',
-  ).trim() || '/admin';
+    process.env.ADMIN_WEB_SESSION_COOKIE_PATH || '/',
+  ).trim() || '/';
   const portalCookieDomain = String(
     process.env.WEB_PORTAL_COOKIE_DOMAIN || '',
   ).trim();
@@ -242,6 +243,12 @@ function addCookieScopeChecks() {
   ) {
     warnings.push(
       'Admin and player cookies share the same cookie domain while split origins are enabled and ADMIN_WEB_SESSION_COOKIE_PATH=/; tighten cookie scope to reduce cross-surface drift',
+    );
+  }
+
+  if (adminCookiePath !== '/') {
+    throw new Error(
+      'ADMIN_WEB_SESSION_COOKIE_PATH must be / for the current /owner and /tenant admin routes',
     );
   }
 }
@@ -337,8 +344,8 @@ function addPortalReverseProxyChecks() {
 
   const adminOrigin = legacyAdminUrl.origin;
   const adminCookiePath = String(
-    process.env.ADMIN_WEB_SESSION_COOKIE_PATH || '/admin',
-  ).trim() || '/admin';
+    process.env.ADMIN_WEB_SESSION_COOKIE_PATH || '/',
+  ).trim() || '/';
   if (
     adminOrigins.length > 0
     && !adminOrigins.includes(adminOrigin)
@@ -350,13 +357,8 @@ function addPortalReverseProxyChecks() {
 
   if (baseUrl.origin === adminOrigin) {
     warnings.push(
-      'Player portal and admin portal share the same origin; verify path routing and cookie scope carefully',
+      'Player portal and admin portal share the same origin; current role-separated admin routes require ADMIN_WEB_SESSION_COOKIE_PATH=/, so split origins are recommended for tighter cookie isolation',
     );
-    if (adminCookiePath === '/' || !adminCookiePath.startsWith('/admin')) {
-      warnings.push(
-        'When admin/player share the same origin, set ADMIN_WEB_SESSION_COOKIE_PATH=/admin for tighter cookie isolation',
-      );
-    }
   }
 }
 
@@ -375,6 +377,7 @@ function addAuthHardeningChecks() {
   const adminStepUpTtlMinutes = Number(process.env.ADMIN_WEB_STEP_UP_TTL_MINUTES || 15);
   const adminSessionTtlHours = Number(process.env.ADMIN_WEB_SESSION_TTL_HOURS || 12);
   const portalSessionTtlHours = Number(process.env.WEB_PORTAL_SESSION_TTL_HOURS || 12);
+  const localRecoveryEnabled = isTruthy(process.env.ADMIN_WEB_LOCAL_RECOVERY, false);
 
   if (hasExternalAdminOrigin && (!adminTwoFactorEnabled || !adminTwoFactorSecret)) {
     warnings.push(
@@ -385,6 +388,12 @@ function addAuthHardeningChecks() {
   if (hasExternalAdminOrigin && !adminStepUpEnabled) {
     warnings.push(
       'Admin web is exposed externally without step-up auth for sensitive mutations; enable ADMIN_WEB_STEP_UP_ENABLED=true',
+    );
+  }
+
+  if (isProduction && localRecoveryEnabled) {
+    throw new Error(
+      'NODE_ENV=production requires ADMIN_WEB_LOCAL_RECOVERY=false',
     );
   }
 
@@ -405,6 +414,18 @@ function addAuthHardeningChecks() {
       `WEB_PORTAL_SESSION_TTL_HOURS=${portalSessionTtlHours} is longer than 24 hours; review player session lifetime`,
     );
   }
+}
+
+function addTrackedMutableArtifactChecks() {
+  const trackedMutableArtifacts = listTrackedMutableArtifacts();
+  if (trackedMutableArtifacts.length === 0) return;
+  const sample = trackedMutableArtifacts
+    .slice(0, 5)
+    .map((entry) => entry.file)
+    .join(', ');
+  throw new Error(
+    `Tracked mutable/runtime artifacts detected (${trackedMutableArtifacts.length}): ${sample}`,
+  );
 }
 
 function parseRequiredUrl(value, label) {
@@ -693,6 +714,10 @@ runCheck('cookie scope / split-origin drift', () => {
 
 runCheck('auth/session hardening posture', () => {
   addAuthHardeningChecks();
+});
+
+runCheck('tracked mutable artifact hygiene', () => {
+  addTrackedMutableArtifactChecks();
 });
 
 runCheck('RCON runtime consistency', () => {

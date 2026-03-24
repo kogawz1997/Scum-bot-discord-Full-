@@ -16,6 +16,7 @@ yarn-error.log*
 pnpm-debug.log*
 tmp/
 tmp-*
+tmp_*
 temp_*
 tmp-*.log
 tmp-*.txt
@@ -49,6 +50,8 @@ secrets/
 # Runtime artifacts and backups
 artifacts/
 backups/
+data/
+output/
 data/backups/
 data/env-backups/
 data/env-profile-backups/

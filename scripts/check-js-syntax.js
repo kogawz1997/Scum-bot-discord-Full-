@@ -3,7 +3,7 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
 const root = path.resolve(__dirname, '..');
-const includeDirs = ['src'];
+const includeDirs = ['src', 'scripts', 'apps/web-portal-standalone', 'test'];
 const includeFiles = ['scum-log-watcher.js'];
 const jsFiles = [];
 

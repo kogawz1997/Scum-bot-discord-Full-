@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { resolveDatabaseRuntime } = require('../utils/dbEngine');
+const { resolveRuntimeDataDir } = require('../utils/runtimeDataDir');
 
 function isTruthy(value) {
   const text = String(value || '').trim().toLowerCase();
@@ -8,9 +9,10 @@ function isTruthy(value) {
 }
 
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
-const DATA_DIR = process.env.BOT_DATA_DIR
-  ? path.resolve(process.env.BOT_DATA_DIR)
-  : path.join(PROJECT_ROOT, 'data');
+const DATA_DIR = resolveRuntimeDataDir({
+  env: process.env,
+  projectRoot: PROJECT_ROOT,
+});
 
 function ensureDataDir() {
   if (!fs.existsSync(DATA_DIR)) {

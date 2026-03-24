@@ -268,7 +268,7 @@ function applyRootProduction(lines, options) {
   setEnvValue(lines, 'ADMIN_WEB_TRUST_PROXY', 'true');
   setEnvValue(lines, 'ADMIN_WEB_ALLOWED_ORIGINS', options.adminOrigin.origin);
   setEnvValue(lines, 'ADMIN_WEB_SESSION_COOKIE_NAME', 'scum_admin_session');
-  setEnvValue(lines, 'ADMIN_WEB_SESSION_COOKIE_PATH', options.adminPath);
+  setEnvValue(lines, 'ADMIN_WEB_SESSION_COOKIE_PATH', '/');
   setEnvValue(lines, 'ADMIN_WEB_SESSION_COOKIE_SAMESITE', 'Strict');
   setEnvValue(lines, 'ADMIN_WEB_SESSION_COOKIE_DOMAIN', options.adminCookieDomain);
   setEnvValue(

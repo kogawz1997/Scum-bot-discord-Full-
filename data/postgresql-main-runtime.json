@@ -1,9 +1,0 @@
-{
-    "port":  55432,
-    "adminUser":  "scum_platform_admin",
-    "appUser":  "scum_platform_app",
-    "database":  "scum_th_platform",
-    "adminPassword":  "F9kkO7qdOiRIy8GE6e5nP56wVpRgt4kAgrgBTAUXB9b8Yhf1",
-    "appPassword":  "ytyRB1EFTqAVPEim3ogEtkzMdqeE5kA6mYDfyhXIMy4eag0x",
-    "updatedAt":  "2026-03-15T15:31:22.0616692+07:00"
-}

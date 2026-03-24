@@ -5,6 +5,7 @@ const { loadMergedEnvFiles } = require('../src/utils/loadEnvFiles');
 const { validateCommandTemplate } = require('../src/utils/commandTemplate');
 const { getAdminSsoRoleMappingSummary } = require('../src/utils/adminSsoRoleMapping');
 const { resolveDatabaseRuntime } = require('../src/utils/dbEngine');
+const { listTrackedMutableArtifacts } = require('../src/utils/trackedMutableArtifacts');
 const {
   createValidationCheck,
   createValidationReport,
@@ -175,16 +176,16 @@ function addSessionAndOriginHardeningWarnings(env, warnings) {
 
   const portalOrigin = parseOriginOrEmpty(env.WEB_PORTAL_BASE_URL);
   const adminOrigin = parseOriginOrEmpty(env.WEB_PORTAL_LEGACY_ADMIN_URL);
-  const adminCookiePath = String(env.ADMIN_WEB_SESSION_COOKIE_PATH || '/admin').trim() || '/admin';
+  const adminCookiePath = String(env.ADMIN_WEB_SESSION_COOKIE_PATH || '/').trim() || '/';
   const adminCookieDomain = String(env.ADMIN_WEB_SESSION_COOKIE_DOMAIN || '').trim();
   const portalCookieDomain = String(env.WEB_PORTAL_COOKIE_DOMAIN || '').trim();
   if (portalOrigin && adminOrigin && portalOrigin === adminOrigin) {
     warnings.push(
       'WEB_PORTAL_BASE_URL and WEB_PORTAL_LEGACY_ADMIN_URL share the same origin; split admin/player origins are recommended',
     );
-    if (adminCookiePath === '/' || !adminCookiePath.startsWith('/admin')) {
+    if (adminCookiePath === '/') {
       warnings.push(
-        'ADMIN_WEB_SESSION_COOKIE_PATH=/admin is recommended when admin/player share the same origin',
+        'Shared admin/player origin currently requires ADMIN_WEB_SESSION_COOKIE_PATH=/ because owner and tenant surfaces live at /owner and /tenant; split origins remain the safer production posture.',
       );
     }
   }
@@ -273,6 +274,7 @@ function run() {
     String(env.NODE_ENV || '').trim().toLowerCase() === 'production';
   const persistRequireDb = isTruthy(env.PERSIST_REQUIRE_DB);
   const legacySnapshotsEnabled = isTruthy(env.PERSIST_LEGACY_SNAPSHOTS);
+  const adminCookiePath = String(env.ADMIN_WEB_SESSION_COOKIE_PATH || '/').trim() || '/';
 
   checkDiscordToken(env.DISCORD_TOKEN, errors, warnings);
 
@@ -299,6 +301,32 @@ function run() {
   }
 
   addSessionAndOriginHardeningWarnings(env, warnings);
+
+  if (adminCookiePath !== '/') {
+    errors.push(
+      'ADMIN_WEB_SESSION_COOKIE_PATH must be / for the current /owner and /tenant admin routes',
+    );
+  }
+
+  const trackedMutableArtifacts = listTrackedMutableArtifacts();
+  if (trackedMutableArtifacts.length > 0) {
+    const sample = trackedMutableArtifacts
+      .slice(0, 5)
+      .map((entry) => entry.file)
+      .join(', ');
+    errors.push(
+      `Tracked mutable/runtime artifacts detected (${trackedMutableArtifacts.length}): ${sample}`,
+    );
+  }
+
+  if (
+    isProduction
+    && isTruthy(env.ADMIN_WEB_LOCAL_RECOVERY)
+  ) {
+    errors.push(
+      'NODE_ENV=production requires ADMIN_WEB_LOCAL_RECOVERY=false',
+    );
+  }
 
   if (
     String(env.ADMIN_WEB_ALLOW_TOKEN_QUERY || '').trim().toLowerCase() !==
@@ -507,11 +535,18 @@ function run() {
             : 'pass',
       }),
       createValidationCheck('admin web hardening baseline', {
-        status: warnings.some((entry) => entry.includes('ADMIN_WEB_'))
-          ? 'warning'
-          : errors.some((entry) => entry.includes('ADMIN_WEB_'))
-            ? 'failed'
+        status: errors.some((entry) => entry.includes('ADMIN_WEB_'))
+          ? 'failed'
+          : warnings.some((entry) => entry.includes('ADMIN_WEB_'))
+            ? 'warning'
             : 'pass',
+      }),
+      createValidationCheck('tracked mutable artifact hygiene', {
+        ok: trackedMutableArtifacts.length === 0,
+        detail:
+          trackedMutableArtifacts.length === 0
+            ? 'git index is clean from runtime/mutable artifacts'
+            : `${trackedMutableArtifacts.length} tracked mutable artifact(s) detected`,
       }),
       createValidationCheck('agent execution template safety', {
         status:

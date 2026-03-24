@@ -19,12 +19,13 @@ test('classifyRootFiles flags ambiguous txt, temp, and log files in root', () =>
   const findings = classifyRootFiles([
     { name: 'fix.txt' },
     { name: 'tmp-startup.log' },
+    { name: 'tmp_capture.png' },
     { name: 'temp_scum_tail.txt' },
   ]);
 
-  assert.equal(findings.length, 3);
+  assert.equal(findings.length, 4);
   assert.deepEqual(
     findings.map((entry) => entry.ruleId),
-    ['root-txt', 'root-temp-prefix', 'root-txt'],
+    ['root-txt', 'root-temp-prefix', 'root-temp-prefix', 'root-txt'],
   );
 });

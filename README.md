@@ -36,6 +36,8 @@ If a statement in this repository is not backed by code, tests, CI artifacts, or
 - Runtime topology: [docs/RUNTIME_TOPOLOGY.md](./docs/RUNTIME_TOPOLOGY.md)
 - Worklist: [docs/WORKLIST.md](./docs/WORKLIST.md)
 - Product-ready gap matrix: [docs/PRODUCT_READY_GAP_MATRIX.md](./docs/PRODUCT_READY_GAP_MATRIX.md)
+- FIIX brief summary: [docs/FIIX_BRIEF.md](./docs/FIIX_BRIEF.md)
+- Preserved raw FIIX prompt: [docs/fiix.txt](./docs/fiix.txt)
 - Practical adoption plan: [docs/PRACTICAL_ADOPTION_PLAN.md](./docs/PRACTICAL_ADOPTION_PLAN.md)
 - Refactor plan: [docs/REFACTOR_PLAN.md](./docs/REFACTOR_PLAN.md)
 - Config matrix: [docs/CONFIG_MATRIX.md](./docs/CONFIG_MATRIX.md)
@@ -73,6 +75,7 @@ If a statement in this repository is not backed by code, tests, CI artifacts, or
 - Prisma generation and migration commands are provider-aware
 - SQLite-to-PostgreSQL cutover tooling exists in-repo
 - Tests run against isolated provider-specific databases or schemas instead of the live runtime database
+- Mutable runtime state and PostgreSQL runtime dumps are no longer meant to live inside the tracked repository tree; production and DB-only persistence now default to external OS-managed state paths
 - Tenant DB topology resolver and provisioning script now exist for `shared`, `schema-per-tenant`, and `database-per-tenant`
 - Tenant-scoped platform, tenant-config, purchase/shop, delivery persistence, player wallet/account, player portal, community/admin store, and SCUM webhook/community automation paths now resolve Prisma datasource targets through the selected tenant DB topology where tenant context or a default tenant is available
 - `schema-per-tenant` is now the repository target for multi-tenant deployments; `database-per-tenant` remains supported for higher-isolation tiers
@@ -94,6 +97,7 @@ If a statement in this repository is not backed by code, tests, CI artifacts, or
 - Control panel env metadata now classifies keys by policy and apply mode
 - Control panel env writes now return per-key apply summaries and restart guidance instead of a blanket restart-required response
 - Owner control now also exposes `Discord admin-log` language selection so ops alerts can be switched between Thai and English from the web UI
+- Owner and tenant runtime tables now classify connected agents by inferred role and scope, including `sync`, `execute`, and `hybrid` paths
 - Backup restore preview/live status now include post-restore verification and persisted rollback status
 - Bot and worker entrypoints are now mostly bootstrap/runtime composition
 - Admin browser shell/common helpers now live under `src/admin/assets/dashboard-shell.js`
@@ -181,7 +185,7 @@ npm run readiness:prod
 npm run smoke:postdeploy
 ```
 
-Latest local verification on this workstation completed on `2026-03-18` with all commands above passing.
+Latest local verification on this workstation completed on `2026-03-24` with all commands above passing.
 
 Operational guardrails now enforced by validation:
 
@@ -330,13 +334,14 @@ ADMIN_WEB_TRUST_PROXY=true
 ADMIN_WEB_SECURE_COOKIE=true
 ADMIN_WEB_HSTS_ENABLED=true
 ADMIN_WEB_SESSION_COOKIE_NAME=scum_admin_session
-ADMIN_WEB_SESSION_COOKIE_PATH=/admin
+ADMIN_WEB_SESSION_COOKIE_PATH=/
 ADMIN_WEB_SESSION_COOKIE_SAMESITE=Strict
 
 # Auth hardening (แนะนำเปิด)
 ADMIN_WEB_2FA_ENABLED=true
 ADMIN_WEB_2FA_SECRET=put_a_strong_totp_secret_here
 ADMIN_WEB_STEP_UP_ENABLED=true
+ADMIN_WEB_LOCAL_RECOVERY=false
 
 # ถ้าเปิด Discord SSO สำหรับ admin
 ADMIN_WEB_SSO_DISCORD_ENABLED=true
@@ -374,6 +379,12 @@ WEB_PORTAL_DISCORD_CLIENT_ID=...
 WEB_PORTAL_DISCORD_CLIENT_SECRET=...
 WEB_PORTAL_DISCORD_REDIRECT_PATH=/auth/discord/callback
 ```
+
+หมายเหตุ:
+
+- admin surface หลักปัจจุบันคือ `/owner` และ `/tenant`
+- `/admin` ยังเป็น entry/compatibility path ได้ แต่ไม่ใช่ primary operator surface
+- เพราะ owner และ tenant อยู่ที่ top-level routes จึงต้องใช้ `ADMIN_WEB_SESSION_COOKIE_PATH=/`
 
 #### วิธีเช็กว่าตั้งค่าเว็บเสร็จแล้ว
 

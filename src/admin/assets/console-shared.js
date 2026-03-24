@@ -88,6 +88,81 @@
     return `<span class="pill pill-${escapeHtml(resolvedTone)}">${escapeHtml(label || '-')}</span>`;
   }
 
+  function normalizeAgentRoleToken(value) {
+    const text = String(value || '').trim().toLowerCase();
+    if (!text) return '';
+    if (['sync', 'read', 'reader', 'watch', 'watcher', 'monitor'].includes(text)) return 'sync';
+    if (['execute', 'write', 'writer', 'command', 'delivery', 'rcon'].includes(text)) return 'execute';
+    if (['hybrid', 'sync-execute', 'sync_execute', 'both'].includes(text)) return 'hybrid';
+    return '';
+  }
+
+  function normalizeAgentScopeToken(value) {
+    const text = String(value || '').trim().toLowerCase();
+    if (!text) return '';
+    if (['sync_only', 'sync-only', 'read-only', 'readonly'].includes(text)) return 'sync_only';
+    if (['execute_only', 'execute-only', 'write-only', 'writeonly'].includes(text)) return 'execute_only';
+    if (['sync_execute', 'sync-execute', 'hybrid', 'both'].includes(text)) return 'sync_execute';
+    return '';
+  }
+
+  function inferAgentRuntimeProfile(row = {}) {
+    const meta = row?.meta && typeof row.meta === 'object' ? row.meta : {};
+    const explicitRole = normalizeAgentRoleToken(meta.agentRole || meta.role || meta.mode);
+    const explicitScope = normalizeAgentScopeToken(meta.agentScope || meta.scope);
+    let agentRole = explicitRole;
+    if (!agentRole && explicitScope === 'sync_only') agentRole = 'sync';
+    if (!agentRole && explicitScope === 'execute_only') agentRole = 'execute';
+    if (!agentRole && explicitScope === 'sync_execute') agentRole = 'hybrid';
+    if (!agentRole) {
+      const signalText = [
+        row.runtimeKey,
+        row.channel,
+        meta.kind,
+        meta.type,
+        ...(Array.isArray(meta.capabilities) ? meta.capabilities : []),
+      ]
+        .map((entry) => String(entry || '').trim().toLowerCase())
+        .filter(Boolean)
+        .join(' ');
+      const hasSync = ['sync', 'watch', 'watcher', 'read', 'monitor', 'log'].some((token) => signalText.includes(token));
+      const hasExecute = ['execute', 'delivery', 'command', 'rcon', 'console-agent', 'reconcile'].some((token) => signalText.includes(token));
+      if (hasSync && hasExecute) agentRole = 'hybrid';
+      else if (hasSync) agentRole = 'sync';
+      else if (hasExecute) agentRole = 'execute';
+    }
+    const agentScope = explicitScope
+      || (agentRole === 'sync' ? 'sync_only' : '')
+      || (agentRole === 'execute' ? 'execute_only' : '')
+      || (agentRole === 'hybrid' ? 'sync_execute' : '');
+    return { agentRole, agentScope };
+  }
+
+  function getAgentRuntimeRoleLabel(role) {
+    if (role === 'sync') return t('common.agentRoleSync', 'Sync agent');
+    if (role === 'execute') return t('common.agentRoleExecute', 'Execute agent');
+    if (role === 'hybrid') return t('common.agentRoleHybrid', 'Hybrid agent');
+    return '';
+  }
+
+  function getAgentRuntimeScopeLabel(scope) {
+    if (scope === 'sync_only') return t('common.agentScopeSyncOnly', 'Read path only');
+    if (scope === 'execute_only') return t('common.agentScopeExecuteOnly', 'Write path only');
+    if (scope === 'sync_execute') return t('common.agentScopeHybrid', 'Read + write path');
+    return '';
+  }
+
+  function renderAgentRuntimeMeta(row = {}) {
+    const profile = inferAgentRuntimeProfile(row);
+    const chips = [];
+    const roleLabel = getAgentRuntimeRoleLabel(profile.agentRole);
+    const scopeLabel = getAgentRuntimeScopeLabel(profile.agentScope);
+    if (roleLabel) chips.push(makePill(roleLabel, profile.agentRole === 'hybrid' ? 'success' : 'info'));
+    if (scopeLabel) chips.push(makePill(scopeLabel, 'neutral'));
+    if (chips.length === 0) return '';
+    return `<div class="tag-row">${chips.join('')}</div>`;
+  }
+
   function joinNotificationParts(parts = []) {
     return parts.filter(Boolean).join(' • ');
   }
@@ -866,6 +941,7 @@
     formatStatusTone,
     localizeAdminNotification,
     makePill,
+    renderAgentRuntimeMeta,
     renderList,
     renderStats,
     renderTable,

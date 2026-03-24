@@ -237,7 +237,7 @@ function evaluateRotationDrift(env, secretCatalog) {
   const adminRedirectUrl = parseUrl(env.ADMIN_WEB_SSO_DISCORD_REDIRECT_URI);
   const adminCookieDomain = String(env.ADMIN_WEB_SESSION_COOKIE_DOMAIN || '').trim();
   const portalCookieDomain = String(env.WEB_PORTAL_COOKIE_DOMAIN || '').trim();
-  const adminCookiePath = String(env.ADMIN_WEB_SESSION_COOKIE_PATH || '/admin').trim() || '/admin';
+  const adminCookiePath = String(env.ADMIN_WEB_SESSION_COOKIE_PATH || '/').trim() || '/';
   const deliveryOwners = resolveDeliveryOwners(env);
 
   if (deliveryOwners.includes('bot') && deliveryOwners.includes('worker')) {
@@ -300,14 +300,19 @@ function evaluateRotationDrift(env, secretCatalog) {
     );
   }
 
+  if (adminCookiePath !== '/') {
+    errors.push(
+      'ADMIN_WEB_SESSION_COOKIE_PATH must be / for the current /owner and /tenant admin routes.',
+    );
+  }
+
   if (
     portalBaseUrl
     && legacyAdminUrl
     && portalBaseUrl.origin === legacyAdminUrl.origin
-    && (adminCookiePath === '/' || !adminCookiePath.startsWith('/admin'))
   ) {
     warnings.push(
-      'Admin/player share the same origin while ADMIN_WEB_SESSION_COOKIE_PATH is not isolated to /admin; rotated admin sessions may bleed across surfaces.',
+      'Admin/player share the same origin and admin cookies must remain scoped to / for the current /owner and /tenant routes; split origins are recommended for tighter isolation after rotation.',
     );
   }
 

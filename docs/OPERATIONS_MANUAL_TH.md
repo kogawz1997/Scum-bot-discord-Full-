@@ -1,208 +1,56 @@
-# คู่มือใช้งานและตั้งค่าระบบ SCUM TH Platform
+# คู่มือปฏิบัติการ SCUM TH Platform
 
-เอกสารนี้เป็นคู่มือปฏิบัติการหลักของระบบ ใช้สำหรับติดตั้ง, ตั้งค่า, รัน, ทดสอบ, ตรวจสุขภาพ, และดูแลระบบในงานจริง
+อัปเดตล่าสุด: **2026-03-24**
 
-อัปเดตล่าสุด: **2026-03-15**
+เอกสารนี้เป็นคู่มือปฏิบัติการหลักสำหรับ owner และ operator ที่ต้องดูแลระบบจริงบนเครื่องหรือ environment เป้าหมาย
 
-เอกสารที่เกี่ยวข้อง
+เอกสารที่เกี่ยวข้อง:
 
-- ภาพรวมระบบ: [README.md](../README.md)
-- อธิบายตัวแปร `.env`: [ENV_REFERENCE_TH.md](./ENV_REFERENCE_TH.md)
-- รายงาน gap ระหว่าง `.env` จริงกับ production baseline: [PRODUCTION_ENV_GAP_TH.md](./PRODUCTION_ENV_GAP_TH.md)
-- สถานะและ roadmap: [PROJECT_HQ.md](../PROJECT_HQ.md)
-- deployment เพิ่มเติม: [DEPLOYMENT_STORY.md](./DEPLOYMENT_STORY.md)
+- ภาพรวมระบบ: [../README.md](../README.md)
+- Quickstart: [OPERATOR_QUICKSTART.md](./OPERATOR_QUICKSTART.md)
+- Env reference: [ENV_REFERENCE_TH.md](./ENV_REFERENCE_TH.md)
+- Production env gap: [PRODUCTION_ENV_GAP_TH.md](./PRODUCTION_ENV_GAP_TH.md)
 - สถาปัตยกรรม: [ARCHITECTURE.md](./ARCHITECTURE.md)
-- policy การ migration / rollback / restore: [MIGRATION_ROLLBACK_POLICY_TH.md](./MIGRATION_ROLLBACK_POLICY_TH.md)
+- Runtime boundary: [RUNTIME_BOUNDARY_EXPLAINER.md](./RUNTIME_BOUNDARY_EXPLAINER.md)
+- นโยบาย restore/rollback: [MIGRATION_ROLLBACK_POLICY_TH.md](./MIGRATION_ROLLBACK_POLICY_TH.md)
 
-## 1. โครงสร้าง runtime
+## 1. โครง runtime ปัจจุบัน
+
+ระบบแบ่ง runtime หลักดังนี้:
 
 1. `bot`
-
-- Discord slash commands
-- panel / button / modal
-- admin web
-- SCUM webhook receiver
-
 2. `worker`
-
-- delivery queue
-- retry / dead-letter / watchdog
-- rent bike queue
-
 3. `watcher`
-
-- อ่าน `SCUM.log`
-- parse event และยิงเข้า webhook
-
 4. `admin web`
-
-- dashboard แอดมิน
-- config, audit, snapshot, observability, delivery tools
-- tenant config, security events, step-up auth
-
 5. `player portal`
+6. `console-agent` แบบ optional
 
-- เว็บผู้เล่น login ผ่าน Discord
-- dashboard / profile / wallet / shop / orders
+route หลักของเว็บ:
 
-6. `console-agent`
+- owner: `/owner`
+- server admin: `/tenant`
+- player: `/player`
+- legacy fallback: `/admin/legacy`
 
-- bridge คำสั่งจาก worker ไปยัง SCUM admin client
-- ใช้กับ `agent mode`
+## 2. คำสั่งตรวจ baseline
 
-## 2. โหมดส่งของ
+ก่อนแตะ production หรือหลังแก้ config สำคัญ ให้ใช้ baseline นี้:
 
-### 2.1 RCON mode
-
-ใช้เมื่อเซิร์ฟเวอร์รองรับการ execute คำสั่งผ่าน remote command จริง
-
-ค่าหลัก:
-
-- `DELIVERY_EXECUTION_MODE=agent`
-- `RCON_HOST`
-- `RCON_PORT`
-- `RCON_PASSWORD`
-- `RCON_PROTOCOL=source|battleye`
-
-### 2.2 Agent mode
-
-ใช้เมื่อเซิร์ฟเวอร์ login ได้ แต่ command delivery ต้องวิ่งผ่าน SCUM client จริง
-
-flow:
-
-```text
-Purchase
--> Delivery Queue
--> Worker
--> Console Agent
--> PowerShell Bridge
--> SCUM Admin Client
--> Admin Channel Command
-```
-
-สิ่งที่มีแล้ว:
-
-- preflight ก่อน enqueue
-- timeline / step log / audit / evidence
-- circuit breaker และ failover policy
-
-## 3. Database
-
-runtime ปัจจุบันบนเครื่องนี้ใช้ PostgreSQL
-
-ค่าหลัก:
-
-```env
-DATABASE_PROVIDER=postgresql
-DATABASE_URL=postgresql://user:password@127.0.0.1:55432/scum_th_platform?schema=public
-PERSIST_REQUIRE_DB=true
-PERSIST_LEGACY_SNAPSHOTS=false
-```
-
-helper ที่มี:
-
-```bat
-npm run postgres:local:setup
-npm run db:generate:postgresql
-npm run db:migrate:deploy:postgresql
-```
-
-ถ้าต้องการ cut over จาก SQLite:
-
-```bat
-npm run db:cutover:postgresql -- --source-sqlite prisma/prisma/production.db
-```
-
-หมายเหตุ:
-
-- SQLite ยังมีไว้สำหรับ dev/import/compatibility path
-- test runner จะสร้าง isolated schema/database แยกจาก runtime จริง
-
-## 4. ติดตั้งครั้งแรก
-
-### 4.1 แบบเร็ว
-
-```bat
-npm run setup:easy
-```
-
-### 4.2 แบบ manual
-
-```bat
-npm install
-copy .env.example .env
-npm run db:generate:postgresql
-npm run db:migrate:deploy:postgresql
+```bash
 npm run doctor
+npm run security:check
+npm run readiness:prod
+npm run smoke:postdeploy
 ```
 
-## 5. Runtime split
+คำสั่งเสริมที่ควรรันเมื่อต้องแตะ secret หรือ topology:
 
-ค่าหลักใน `.env`:
-
-```env
-BOT_ENABLE_SCUM_WEBHOOK=true
-BOT_ENABLE_RESTART_SCHEDULER=true
-BOT_ENABLE_ADMIN_WEB=true
-BOT_ENABLE_RENTBIKE_SERVICE=false
-BOT_ENABLE_DELIVERY_WORKER=false
-
-WORKER_ENABLE_RENTBIKE=true
-WORKER_ENABLE_DELIVERY=true
+```bash
+npm run security:rotation:check
+npm run doctor:topology:prod
 ```
 
-กติกา:
-
-- ถ้าใช้ `worker` แยก process แล้ว อย่าเปิด `BOT_ENABLE_DELIVERY_WORKER=true`
-- อย่าเปิด delivery worker ซ้ำทั้ง bot และ worker พร้อมกัน
-
-## 6. Admin Web
-
-ค่าหลัก:
-
-```env
-ADMIN_WEB_HOST=127.0.0.1
-ADMIN_WEB_PORT=3200
-ADMIN_WEB_ALLOWED_ORIGINS=https://admin.genz.noah-dns.online
-ADMIN_WEB_ENFORCE_ORIGIN_CHECK=true
-ADMIN_WEB_SECURE_COOKIE=true
-ADMIN_WEB_TRUST_PROXY=true
-ADMIN_WEB_2FA_ENABLED=true
-ADMIN_WEB_STEP_UP_ENABLED=true
-ADMIN_WEB_SSO_DISCORD_ENABLED=true
-
-# Session hardening (ค่า default ของระบบ)
-ADMIN_WEB_SESSION_COOKIE_NAME=scum_admin_session
-ADMIN_WEB_SESSION_COOKIE_PATH=/admin
-ADMIN_WEB_SESSION_COOKIE_SAMESITE=Strict
-ADMIN_WEB_SESSION_IDLE_MINUTES=120
-ADMIN_WEB_SESSION_MAX_PER_USER=5
-ADMIN_WEB_SESSION_BIND_USER_AGENT=true
-```
-
-สิ่งที่มีใน admin web:
-
-- DB login
-- Discord SSO
-- 2FA
-- step-up auth
-- security events
-- session revoke
-- backup / restore preview
-- delivery tools
-- tenant config scope บางส่วน
-
-หมายเหตุการใช้งาน/ความปลอดภัย:
-
-- การเรียก `POST /admin/api/*` จะถูกตรวจ CSRF ผ่าน `origin`/`sec-fetch-site` เมื่อผู้ใช้มี session แล้ว และเปิด `ADMIN_WEB_ENFORCE_ORIGIN_CHECK=true`
-- auth มี 3 โหมด:
-  - session cookie จาก `/admin/login`
-  - token auth ผ่าน `x-admin-token` หรือ `Authorization: Bearer <token>` (และจะยอมให้ query string ได้ก็ต่อเมื่อ `ADMIN_WEB_ALLOW_TOKEN_QUERY=true`)
-  - Discord SSO (ถ้าเปิด `ADMIN_WEB_SSO_DISCORD_ENABLED=true`)
-
-## 7. Health / readiness / smoke
-
-health endpoints:
+## 3. Health endpoints
 
 - bot: `http://127.0.0.1:3210/healthz`
 - worker: `http://127.0.0.1:3211/healthz`
@@ -211,44 +59,156 @@ health endpoints:
 - admin web: `http://127.0.0.1:3200/healthz`
 - player portal: `http://127.0.0.1:3300/healthz`
 
-คำสั่งตรวจหลัก:
+## 4. Admin web baseline
 
-```bat
-npm run doctor
-npm run security:check
-npm run readiness:prod
-npm run smoke:postdeploy
+ค่า production ที่ควรใช้:
+
+```env
+ADMIN_WEB_ALLOWED_ORIGINS=https://admin.example.com
+ADMIN_WEB_SECURE_COOKIE=true
+ADMIN_WEB_HSTS_ENABLED=true
+ADMIN_WEB_TRUST_PROXY=true
+ADMIN_WEB_SESSION_COOKIE_PATH=/
+ADMIN_WEB_2FA_ENABLED=true
+ADMIN_WEB_STEP_UP_ENABLED=true
+ADMIN_WEB_LOCAL_RECOVERY=false
 ```
 
-## 8. การรันระบบ
+หมายเหตุ:
 
-### รันเองทีละตัว
+- route หลักตอนนี้คือ `/owner` และ `/tenant`
+- `/admin` ยังใช้เป็น entry/compatibility path ได้ แต่ไม่ใช่ primary operator surface
+- `ADMIN_WEB_SESSION_COOKIE_PATH` ต้องเป็น `/` ไม่ใช่ `/admin`
 
-```bat
+## 5. Player portal baseline
+
+```env
+WEB_PORTAL_BASE_URL=https://player.example.com
+WEB_PORTAL_LEGACY_ADMIN_URL=https://admin.example.com/admin
+WEB_PORTAL_SECURE_COOKIE=true
+WEB_PORTAL_ENFORCE_ORIGIN_CHECK=true
+WEB_PORTAL_DISCORD_REDIRECT_PATH=/auth/discord/callback
+```
+
+## 6. Delivery modes
+
+### RCON mode
+
+ใช้เมื่อ server รองรับ remote command ตรง:
+
+```env
+DELIVERY_EXECUTION_MODE=rcon
+RCON_HOST=127.0.0.1
+RCON_PORT=27015
+RCON_PASSWORD=...
+```
+
+### Agent mode
+
+ใช้เมื่อ delivery ต้องผ่าน SCUM client หรือ console-agent:
+
+```env
+DELIVERY_EXECUTION_MODE=agent
+SCUM_CONSOLE_AGENT_BASE_URL=http://127.0.0.1:3213
+SCUM_CONSOLE_AGENT_TOKEN=...
+SCUM_CONSOLE_AGENT_EXEC_TEMPLATE=...
+```
+
+ข้อจำกัด:
+
+- agent mode ยังพึ่ง Windows session และ SCUM client จริง
+- ห้ามอ้างว่างานนี้เสร็จทุก environment ถ้ายังไม่มี live proof จากเครื่องปลายทางจริง
+
+## 7. Database และ runtime-data
+
+production baseline:
+
+```env
+DATABASE_PROVIDER=postgresql
+PRISMA_SCHEMA_PROVIDER=postgresql
+PERSIST_REQUIRE_DB=true
+PERSIST_LEGACY_SNAPSHOTS=false
+```
+
+หมายเหตุ:
+
+- mutable runtime state และ PostgreSQL runtime dumps ไม่ควรถูก track ใน repo
+- ถ้าตั้ง `BOT_DATA_DIR` เอง ระบบจะใช้ path นั้น
+- ถ้าไม่ตั้ง:
+  - local/dev แบบไม่บังคับ DB-only จะใช้ `./data`
+  - production หรือ `PERSIST_REQUIRE_DB=true` จะใช้ external OS-managed state dir อัตโนมัติ
+
+## 8. owner / server admin / player role split
+
+- `Owner`
+  - ดู tenant ทั้งระบบ
+  - runtime, security, recovery, commercial
+  - ใช้ตรวจ incident และกำหนด policy ระดับแพลตฟอร์ม
+- `Server Admin`
+  - ดูแลเฉพาะ tenant หรือเซิร์ฟเวอร์ของลูกค้า
+  - commerce, delivery, support, config
+- `Player`
+  - wallet, orders, redeem, profile, Steam link
+
+## 9. Agent role และ scope
+
+ระบบตอนนี้แยกภาพ agent ในหน้า owner/admin ได้ชัดขึ้น:
+
+- `Sync agent`
+  - เส้นทางอ่านเท่านั้น
+  - อ่าน log/state และส่งกลับ control plane
+- `Execute agent`
+  - เส้นทางเขียน/สั่งงานเท่านั้น
+  - รับ job แล้วสั่งงานหรือส่งของ
+- `Hybrid agent`
+  - เส้นทางอ่าน + เขียน
+  - ใช้เมื่อ runtime เดียวรับทั้ง sync และ execute
+
+owner สามารถเปิดหน้า runtime เพื่อตรวจ role/scope เหล่านี้ได้จากในเว็บโดยตรง
+
+## 10. Discord admin-log language
+
+owner สามารถเปลี่ยนภาษา Discord ops alerts จากในเว็บได้ที่:
+
+- `/owner#control`
+- field: `Discord admin-log language`
+
+สิ่งที่เปลี่ยน:
+
+- ข้อความ owner-facing ใน `#admin-log`
+- persist ลง control-panel env key `ADMIN_LOG_LANGUAGE`
+
+## 11. PM2 และการรันระบบ
+
+รันทีละตัว:
+
+```bash
 npm run start:bot
 npm run start:worker
 npm run start:watcher
-npm run start:scum-agent
 npm run start:web-standalone
+npm run start:scum-agent
 ```
 
-### ใช้ PM2
+รันผ่าน PM2:
 
-```bat
+```bash
 npm run pm2:start:prod
 npm run pm2:reload:prod
 ```
 
-## 9. ข้อจำกัดปัจจุบัน
+## 12. ข้อจำกัดที่ยังต้องยอมรับ
 
-- current `.env` บนเครื่องนี้ใช้ `DELIVERY_EXECUTION_MODE=agent`
-- `agent mode` ยังพึ่ง Windows session และ SCUM admin client จริง
-- tenant isolation มี PostgreSQL RLS foundation แล้วสำหรับตาราง tenant-scoped บางส่วน แต่ยังไม่ใช่ database-per-tenant
-- admin web ยังไม่ครอบทุก setting ในระบบ
+- native proof ยังต้องเก็บเพิ่มในหลาย environment
+- console-agent ยังขึ้นกับ Windows session และ SCUM client
+- restore/rollback ยังเป็น guarded flow ไม่ใช่ automatic rollback เต็มรูปแบบ
+- admin config control ยังครอบคลุมไม่ทุก setting
 
-## 10. หลักฐานที่ควรใช้เวลาอ้างอิง
+## 13. เช็กลิสต์ก่อนประกาศว่า production พร้อม
 
-- `artifacts/ci/verification-summary.json`
-- `artifacts/ci/verification-summary.md`
-- `artifacts/ci/*.log`
-- integration tests ใน `test/`
+1. `doctor`, `security:check`, `readiness:prod`, `smoke:postdeploy` ผ่าน
+2. ใช้ PostgreSQL runtime จริง
+3. ปิด local recovery
+4. เปิด 2FA และ step-up
+5. ใช้ HTTPS origins จริง
+6. เก็บ evidence ของ delivery/runtime/restore ตาม environment เป้าหมาย

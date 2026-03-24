@@ -38,7 +38,7 @@ test('split-origin env scaffold script writes admin/player production env files'
     const portalEnv = fs.readFileSync(portalOut, 'utf8');
 
     assert.match(rootEnv, /^ADMIN_WEB_ALLOWED_ORIGINS=https:\/\/admin\.example\.com$/m);
-    assert.match(rootEnv, /^ADMIN_WEB_SESSION_COOKIE_PATH=\/admin$/m);
+    assert.match(rootEnv, /^ADMIN_WEB_SESSION_COOKIE_PATH=\/$/m);
     assert.match(rootEnv, /^ADMIN_WEB_SESSION_COOKIE_DOMAIN=admin\.example\.com$/m);
     assert.match(rootEnv, /^ADMIN_WEB_2FA_ENABLED=true$/m);
     assert.match(rootEnv, /^ADMIN_WEB_2FA_SECRET=[A-Z2-7]{32}$/m);

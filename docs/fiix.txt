@@ -1,0 +1,395 @@
+You are working on an existing SCUM platform repository that already has multiple runtime roles and partial modularization. Your task is to perform a production-oriented architectural refactor and feature completion for a managed-service model in ONE coordinated implementation pass, while preserving existing behavior as much as possible.
+
+IMPORTANT CONTEXT:
+This project is NOT a simple Discord bot anymore. It is a SCUM service platform that should support:
+- centralized control plane
+- web admin panel
+- player/user-facing web portal
+- Discord bot integration
+- game-side sync agent for logs/state ingestion
+- game-side execute agent for delivery/command execution
+- multi-tenant architecture where different customers/servers are isolated
+- per-server and per-agent token scoping
+- integration with SCUM log/state reading and command execution flows
+
+BUSINESS MODEL TARGET:
+This system is intended to be operated by a provider, not sold as source code.
+Customers may install agent software on their own game-side or delivery-side machine.
+The provider hosts the control plane, web app, Discord integration, routing, billing-ready architecture, audit, and monitoring.
+
+CORE ARCHITECTURE TARGET:
+Refactor and extend the repository toward a clean control-plane architecture with these major layers:
+
+1. Client/UI Layer
+- Discord bot
+- Admin web
+- Player portal
+
+2. Control Plane / API Layer
+- centralized routing and authority
+- tenant/server/guild/agent mapping
+- order, delivery, sync, auth, admin, and agent endpoints
+
+3. Domain Layer
+- business logic for auth, tenants, servers, agents, players, economy, catalog, orders, delivery, sync, notifications, billing, support, audit, security
+
+4. Async Worker / Job Layer
+- order processing
+- delivery execution routing
+- sync ingestion processing
+- notifications
+- cleanup / scheduled jobs
+
+5. Game Integration Layer
+- SCUM-specific readers/parsers/writers/proof/adapters
+
+6. Agent Layer
+- Sync agent role: read-only game/log/state ingestion
+- Execute agent role: write/execute delivery and action jobs
+
+7. Data Layer
+- repositories
+- projections
+- persistence
+- audit/event history
+
+8. Platform Layer
+- config
+- health
+- queue
+- observability
+- security
+- diagnostics
+
+ABSOLUTE ARCHITECTURAL RULES:
+- Discord bot must NOT talk directly to the game-side machine.
+- Admin web must NOT talk directly to the game-side machine.
+- Player portal must NOT talk directly to the game-side machine.
+- All UI requests must go through the centralized control plane or shared application/domain boundaries.
+- Agent must NOT make business decisions.
+- Agent must only:
+  - authenticate
+  - sync game data
+  - receive jobs
+  - execute jobs
+  - report health
+  - report results
+  - send diagnostics/logging
+- Read path and write path MUST be separated:
+  - read/sync path = logs, state, events, snapshots
+  - write/execute path = delivery, reward, command execution
+- SCUM-specific logic must be isolated from core business logic.
+- Multi-tenant and per-server isolation must be preserved everywhere.
+- Every important action must be auditable.
+- Security-sensitive behavior must not be changed casually.
+
+TARGET RUNTIME STRUCTURE:
+Reorganize or adapt the project toward this shape, using migration/shims if needed:
+
+repo/
+  apps/
+    api/
+    discord-bot/
+    admin-web/
+    player-portal/
+    worker/
+    watcher/
+    agent/
+  src/
+    domain/
+      auth/
+      tenants/
+      servers/
+      agents/
+      players/
+      economy/
+      catalog/
+      orders/
+      delivery/
+      sync/
+      notifications/
+      billing/
+      support/
+      audit/
+      security/
+    integrations/
+      scum/
+        commands/
+        parsers/
+        readers/
+        writers/
+        proof/
+        adapters/
+        models/
+    data/
+      repositories/
+      projections/
+      prisma/
+      mappers/
+    jobs/
+      order/
+      delivery/
+      sync/
+      notification/
+      cleanup/
+    contracts/
+      api/
+      agent/
+      jobs/
+      events/
+    platform/
+      config/
+      health/
+      observability/
+      security/
+      queue/
+      diagnostics/
+    shared/
+      errors/
+      result/
+      validation/
+      ids/
+      time/
+
+HIGH PRIORITY FEATURE TARGETS:
+Implement or complete architecture for all of the following:
+
+A. MULTI-TENANT / SERVER ISOLATION
+The system must support:
+- tenant
+- server
+- discord guild mapping
+- agent mapping
+- role mapping
+- plan-ready architecture
+Each order, job, sync event, and agent session must be scoped with the proper tenant and server identity.
+
+B. TWO AGENT ROLES
+Support two distinct agent roles:
+1. sync role
+   - reads SCUM.log or other game-side state inputs
+   - sends normalized sync/event/state payloads back to control plane
+   - read-only role
+2. execute role
+   - receives delivery/command jobs from control plane
+   - performs execution
+   - reports result and proof
+   - write/execute role
+
+Allow either:
+- two separate agent identities
+OR
+- one agent program with role-based configuration/scope
+But the behavior and security boundary must still clearly distinguish sync and execute responsibilities.
+
+C. AGENT TOKEN SYSTEM
+Implement or complete an agent token system with:
+- create token from web/admin side
+- token scoped to tenant_id + server_id + agent_id + role/scope
+- token stored hashed in DB
+- token shown only once when created
+- token revocation
+- token rotation
+- online/offline and last_seen tracking
+- minimum viable version tracking
+- optional minimum-supported-version policy
+- support for sync_only / execute_only / sync_execute scopes if appropriate
+
+D. DISCORD + WEB + CONTROL PLANE ROUTING
+The centralized system must:
+- receive commands from Discord or web
+- map incoming request to tenant/server/guild
+- authorize action
+- create order/job
+- route job only to the correct execute agent
+- never allow cross-tenant or cross-server leakage
+- expose sync-derived information back to web/Discord from centralized DB/projections, not from direct machine calls
+
+E. SCUM-SPECIFIC INTEGRATION BOUNDARY
+Move or isolate all SCUM-specific code into:
+src/integrations/scum/
+with submodules for:
+- readers
+- parsers
+- writers
+- proof
+- adapters
+Keep core business logic out of these modules.
+
+F. SYNC INGESTION PIPELINE
+Implement/complete a read pipeline:
+- sync agent reads logs/state
+- agent sends payload to control plane
+- control plane validates and normalizes payload
+- persist event/snapshot/sync records
+- update projections for web and Discord display
+- track last_sync_at / freshness / source / sync errors
+
+G. DELIVERY / EXECUTION PIPELINE
+Implement/complete a write pipeline:
+- Discord/web/admin action enters control plane
+- domain validates order/permission
+- job created
+- worker routes job to correct execute agent
+- agent executes
+- result/proof returned
+- job status updated
+- audit log written
+- notification returned to Discord/web
+
+H. WEB MANAGEMENT SURFACES
+Admin-side web flows should support at least:
+- tenant/server management
+- Discord guild linking
+- agent registration/token creation
+- agent status view
+- sync/execute role visibility
+- config/control plane mapping
+- order and delivery history
+- audit visibility
+- diagnostics visibility
+- basic role/permission management
+Do not build fake UI placeholders only. Connect real backend flows where reasonable.
+
+I. CONTRACT NORMALIZATION
+Introduce shared contracts as needed:
+- AgentHeartbeat
+- AgentRegistration / AgentSession
+- AgentJobRequest
+- AgentJobResult
+- AgentSyncPayload
+- DeliveryJobPayload
+- Standard API success/error envelopes where useful
+Do not over-engineer, but make internal boundaries consistent.
+
+J. OBSERVABILITY / DIAGNOSTICS
+Add or improve:
+- agent online/offline status
+- heartbeat timestamps
+- sync freshness
+- job failure visibility
+- delivery attempts
+- error logging
+- diagnostics bundle or structured logs where practical
+- health endpoints or runtime visibility where the repo already supports similar patterns
+
+DATABASE / DATA MODEL EXPECTATIONS:
+Create or improve the model so that it can support tables/entities roughly like:
+- users
+- user_sessions
+- roles
+- permissions
+- tenants
+- tenant_members
+- servers
+- server_discord_links
+- agents
+- agent_tokens
+- agent_heartbeats
+- agent_logs
+- players
+- player_links
+- wallets
+- wallet_transactions
+- catalog_items
+- orders
+- order_items
+- delivery_jobs
+- delivery_attempts
+- delivery_results
+- delivery_proofs
+- sync_events
+- sync_runs
+- player_snapshots
+- server_snapshots
+- audit_logs
+- security_events
+- diagnostics_bundles
+If exact names differ, keep them coherent with the project style, but preserve these capabilities.
+
+SECURITY REQUIREMENTS:
+- Tokens must be hashed at rest
+- Tokens must be revocable
+- Tokens must be scope-limited
+- Agent auth must be bound to correct tenant/server
+- Prevent cross-tenant and cross-server routing mistakes
+- Add replay-resistant and misuse-resistant structure where practical
+- Do not expose raw secrets carelessly
+- Do not weaken existing auth/session/2FA behavior
+
+DEPLOYMENT / COMPATIBILITY REQUIREMENTS:
+- Preserve current working behavior as much as possible
+- Do not break single-host mode unless you also provide a migration-safe alternative
+- Do not break split-runtime mode
+- Do not break two-machine mode
+- If directory or entrypoint changes affect scripts/docs/config, update them carefully
+- Use compatibility shims where necessary instead of destructive rewrites
+
+IMPORTANT LIMITATION HANDLING:
+- Do NOT falsely claim the Windows session / live SCUM client dependency is solved unless you actually implement a true alternative execution path
+- If the current execution agent still depends on a live game window, preserve that reality and document it clearly
+- Improve the architecture around it, but do not invent fake completion
+
+WORKING STRATEGY:
+Perform the work in this exact order, but within this single run:
+1. Analyze existing repo structure and current runtime boundaries
+2. Produce a concrete migration plan internally
+3. Reorganize runtime entrypoints into apps/ where safe
+4. Thin oversized entry files into bootstrap/wiring entrypoints
+5. Extract or strengthen domain boundaries
+6. Extract SCUM-specific integration code
+7. Add/complete agent role separation and token scoping
+8. Add/complete routing for Discord/web -> control plane -> correct agent
+9. Add/complete sync ingestion and delivery execution boundaries
+10. Update imports/scripts/docs/config references as needed
+11. Run available checks/tests if available
+12. Output a detailed final report
+
+OUTPUT REQUIREMENTS:
+At the end, return ALL of the following:
+1. Architecture summary
+2. File/folder migration map
+3. Database/data model summary
+4. Agent role design summary
+5. Token/security summary
+6. Sync flow summary
+7. Execute/delivery flow summary
+8. Compatibility notes
+9. Remaining known limitations
+10. Follow-up recommendations
+
+CODING STYLE RULES:
+- Keep code focused and practical
+- Prefer incremental refactor over destructive rewrite
+- Avoid giant god-files
+- Avoid circular dependencies
+- Prefer explicit naming
+- Use the repo’s existing style unless a clearer standard is necessary
+- Keep comments unless the file is fully replaced by a better structure
+- Do not generate placeholder code that is obviously non-functional
+
+DO NOT:
+- do not rewrite the entire project from scratch
+- do not collapse runtimes together
+- do not mix SCUM code back into generic business logic
+- do not let Discord/web call game-side code directly
+- do not use one all-powerful token for everything
+- do not remove tenant/server scope boundaries
+- do not silently change env semantics, ports, auth meaning, or security-sensitive behavior without updating references and documenting it
+- do not leave architecture half-converted without clear compatibility bridges
+
+If a risky rename would cause too much breakage, implement a compatibility shim or staged migration approach.
+Be thorough, but preserve working behavior.
+
+Now start by inspecting the current repository structure and then perform the full coordinated implementation toward this target architecture.
+QUALITY BAR:
+Do not stop at superficial folder moves.
+The final result must reflect real architectural separation:
+- sync/read responsibilities separated from execute/write responsibilities
+- centralized control plane routing
+- scoped agent registration/token model
+- Discord/web integration routed safely through central logic
+- SCUM-specific integration isolated
+- tenant/server/agent/guild relationships made explicit in code and data flow
+
+If some parts cannot be fully completed safely in one pass, implement the strongest safe version and document exactly what remains.

@@ -63,7 +63,7 @@ test('rotate-production-secrets applies explicit split origins without hardcoded
     );
 
     assert.match(rootEnv, /^ADMIN_WEB_ALLOWED_ORIGINS=https:\/\/admin\.example\.com$/m);
-    assert.match(rootEnv, /^ADMIN_WEB_SESSION_COOKIE_PATH=\/admin$/m);
+    assert.match(rootEnv, /^ADMIN_WEB_SESSION_COOKIE_PATH=\/$/m);
     assert.match(rootEnv, /^ADMIN_WEB_SESSION_COOKIE_DOMAIN=admin\.example\.com$/m);
     assert.match(rootEnv, /^ADMIN_WEB_2FA_ENABLED=true$/m);
     assert.match(rootEnv, /^ADMIN_WEB_2FA_SECRET=[A-Z2-7]{32}$/m);
@@ -95,7 +95,7 @@ test('rotate-production-secrets preserves existing origin topology when no expli
       '.env',
       [
         'ADMIN_WEB_ALLOWED_ORIGINS=https://ops.example.net',
-        'ADMIN_WEB_SESSION_COOKIE_PATH=/admin',
+        'ADMIN_WEB_SESSION_COOKIE_PATH=/',
         'ADMIN_WEB_SSO_DISCORD_REDIRECT_URI=https://ops.example.net/admin/auth/discord/callback',
       ].join('\n'),
     );

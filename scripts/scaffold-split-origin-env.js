@@ -79,7 +79,7 @@ function renderRootEnv(templateText, options) {
     ADMIN_WEB_HSTS_ENABLED: 'true',
     ADMIN_WEB_TRUST_PROXY: 'true',
     ADMIN_WEB_SESSION_COOKIE_NAME: 'scum_admin_session',
-    ADMIN_WEB_SESSION_COOKIE_PATH: adminPath,
+    ADMIN_WEB_SESSION_COOKIE_PATH: '/',
     ADMIN_WEB_SESSION_COOKIE_SAMESITE: 'Strict',
     ADMIN_WEB_SESSION_COOKIE_DOMAIN: adminHost,
     ADMIN_WEB_2FA_ENABLED: 'true',

@@ -20,7 +20,7 @@ const ROOT_FILE_RULES = [
   },
   {
     id: 'root-temp-prefix',
-    pattern: /^(tmp-|temp_)/i,
+    pattern: /^(tmp-|tmp_|temp_)/i,
     message:
       'Temporary/proof files should not live in the repository root; move them into artifacts/ or a dedicated evidence folder.',
   },

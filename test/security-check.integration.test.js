@@ -76,6 +76,7 @@ test('security-check warns for shared admin-player origin, long sessions, and mi
     WEB_PORTAL_MODE: 'player',
     WEB_PORTAL_BASE_URL: 'https://admin.example.com',
     WEB_PORTAL_LEGACY_ADMIN_URL: 'https://admin.example.com/admin',
+    ADMIN_WEB_SESSION_COOKIE_PATH: '/',
     WEB_PORTAL_DISCORD_CLIENT_ID: '1478651427088760842',
     WEB_PORTAL_DISCORD_CLIENT_SECRET: 'portal-secret-1234567890',
     WEB_PORTAL_SESSION_TTL_HOURS: '36',
@@ -90,6 +91,7 @@ test('security-check warns for shared admin-player origin, long sessions, and mi
   assert.match(output, /ADMIN_WEB_SESSION_TTL_HOURS=48/i);
   assert.match(output, /WEB_PORTAL_SESSION_TTL_HOURS=36/i);
   assert.match(output, /share the same origin/i);
+  assert.match(output, /split admin\/player origins are recommended/i);
   assert.match(output, /fall back to ADMIN_WEB_SSO_DEFAULT_ROLE/i);
 });
 
@@ -146,4 +148,31 @@ test('security-check fails when delivery worker ownership is duplicated across b
 
   assert.notEqual(result.status, 0);
   assert.match(`${result.stdout}\n${result.stderr}`, /Do not enable delivery worker on both bot and worker/i);
+});
+
+test('security-check fails when production keeps local recovery enabled', () => {
+  const result = runSecurityCheck({
+    NODE_ENV: 'production',
+    DISCORD_TOKEN: 'MTQ3ODY1MTQyNzA4ODc2MDg0Mg.ABCDEF.qwertyuiopasdfghjklzxcvbnm12',
+    SCUM_WEBHOOK_SECRET: 'webhook-secret-12345678901234567890',
+    ADMIN_WEB_PASSWORD: 'admin-password-123456',
+    ADMIN_WEB_TOKEN: 'admin-token-12345678901234567890',
+    ADMIN_WEB_ALLOW_TOKEN_QUERY: 'false',
+    ADMIN_WEB_ENFORCE_ORIGIN_CHECK: 'true',
+    ADMIN_WEB_ALLOWED_ORIGINS: 'https://admin.example.com',
+    ADMIN_WEB_SECURE_COOKIE: 'true',
+    ADMIN_WEB_HSTS_ENABLED: 'true',
+    ADMIN_WEB_LOCAL_RECOVERY: 'true',
+    DATABASE_URL: PROD_DB_URL,
+    PERSIST_REQUIRE_DB: 'true',
+    PERSIST_LEGACY_SNAPSHOTS: 'false',
+    WEB_PORTAL_MODE: 'player',
+    WEB_PORTAL_DISCORD_CLIENT_ID: '1478651427088760842',
+    WEB_PORTAL_DISCORD_CLIENT_SECRET: 'portal-secret-1234567890',
+    BOT_ENABLE_DELIVERY_WORKER: 'false',
+    WORKER_ENABLE_DELIVERY: 'false',
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.match(`${result.stdout}\n${result.stderr}`, /ADMIN_WEB_LOCAL_RECOVERY=false/i);
 });

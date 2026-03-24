@@ -29,7 +29,6 @@ const IGNORED_DIRS = new Set([
   '.vs',
   '_compare',
   'coverage',
-  'data',
   'logs',
   'node_modules',
 ]);

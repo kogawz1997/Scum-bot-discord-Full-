@@ -15,8 +15,8 @@ Use it when you need to answer one of these questions quickly:
 
 - Platform owner login: `/owner/login`
 - Platform owner console: `/owner`
-- Tenant admin login: `/tenant/login`
-- Tenant admin console: `/tenant`
+- Server admin login: `/tenant/login`
+- Server admin console: `/tenant`
 - Player-facing checks and login: `/player` / `/player/login`
 
 Do not use legacy pages first unless the main surface clearly does not expose the workflow you need.
@@ -102,6 +102,24 @@ What it changes:
 
 - owner-facing Discord ops alerts between Thai and English
 - persisted control-panel env state for `ADMIN_LOG_LANGUAGE`
+
+### Need to verify agent responsibility or routing scope
+
+Open:
+
+- Owner: `Runtime`
+- Tenant: `Overview` or the runtime tables in the scoped console
+
+Look for:
+
+- `Sync agent`
+- `Execute agent`
+- `Hybrid agent`
+- `Read path only`
+- `Write path only`
+- `Read + write path`
+
+Use this when you need to confirm whether a machine is ingesting state, executing jobs, or doing both.
 
 ### Backup / restore / rollback incident
 

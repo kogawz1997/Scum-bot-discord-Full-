@@ -34,7 +34,7 @@ function createValidEnv(overrides = {}) {
     ADMIN_WEB_ALLOWED_ORIGINS: 'https://admin.example.com',
     ADMIN_WEB_SSO_DISCORD_REDIRECT_URI:
       'https://admin.example.com/admin/auth/discord/callback',
-    ADMIN_WEB_SESSION_COOKIE_PATH: '/admin',
+    ADMIN_WEB_SESSION_COOKIE_PATH: '/',
     WEB_PORTAL_MODE: 'player',
     WEB_PORTAL_BASE_URL: 'https://player.example.com',
     WEB_PORTAL_LEGACY_ADMIN_URL: 'https://admin.example.com/admin',

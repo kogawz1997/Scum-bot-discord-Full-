@@ -81,6 +81,7 @@ test('player portal template keeps trust signals, notification center, and order
   assert.match(html, /id="orderDetailNextStep"/);
   assert.match(html, /id="playerLanguageSelect"/);
   assert.match(html, /portal-i18n\.js/);
+  assert.doesNotMatch(html, /fiix/i);
 });
 
 test('public entry pages include language selector and portal i18n runtime', () => {

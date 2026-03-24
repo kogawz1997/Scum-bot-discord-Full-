@@ -784,13 +784,13 @@ tr:last-child td {
 }
 
 /* 20260323 shell rebuild override */
-.portal-shell.portal-shell-fiix {
+.portal-shell.portal-shell-workbench {
   width: min(1560px, calc(100% - 28px));
   padding: 20px 0 44px;
   gap: 16px;
 }
 
-.portal-shell-fiix .portal-topbar {
+.portal-shell-workbench .portal-topbar {
   min-height: 70px;
   padding: 14px 18px;
   border-radius: 22px;
@@ -798,33 +798,33 @@ tr:last-child td {
   gap: 16px;
 }
 
-.portal-shell-fiix .brand-copy strong {
+.portal-shell-workbench .brand-copy strong {
   font-size: 1.2rem;
 }
 
-.portal-shell-fiix .brand-copy span {
+.portal-shell-workbench .brand-copy span {
   font-size: 0.74rem;
 }
 
-.portal-shell-fiix .portal-topnav {
+.portal-shell-workbench .portal-topnav {
   gap: 8px;
 }
 
-.portal-shell-fiix .nav-btn {
+.portal-shell-workbench .nav-btn {
   min-height: 38px;
   padding: 0 14px;
   border-radius: 999px;
 }
 
-.portal-shell-fiix .portal-top-actions {
+.portal-shell-workbench .portal-top-actions {
   gap: 8px;
 }
 
-.portal-shell-fiix .portal-top-actions .language-picker span {
+.portal-shell-workbench .portal-top-actions .language-picker span {
   display: none;
 }
 
-.portal-shell-fiix .portal-command-stage {
+.portal-shell-workbench .portal-command-stage {
   min-height: 320px;
   padding: 18px;
   border-radius: 26px;
@@ -833,14 +833,14 @@ tr:last-child td {
   align-items: stretch;
 }
 
-.portal-shell-fiix .portal-command-copy {
+.portal-shell-workbench .portal-command-copy {
   display: grid;
   align-content: end;
   gap: 14px;
   padding: 10px 8px 6px;
 }
 
-.portal-shell-fiix .portal-command-copy h1 {
+.portal-shell-workbench .portal-command-copy h1 {
   margin: 0;
   max-width: 12ch;
   font-size: clamp(2.7rem, 5vw, 5.1rem);
@@ -849,95 +849,95 @@ tr:last-child td {
   text-wrap: balance;
 }
 
-.portal-shell-fiix .portal-command-copy p {
+.portal-shell-workbench .portal-command-copy p {
   margin: 0;
   max-width: 46ch;
   font-size: 1rem;
   line-height: 1.75;
 }
 
-.portal-shell-fiix .portal-command-visual {
+.portal-shell-workbench .portal-command-visual {
   min-height: 100%;
   border-radius: 20px;
   overflow: hidden;
 }
 
-.portal-shell-fiix .command-visual-image {
+.portal-shell-workbench .command-visual-image {
   animation: portal-visual-drift 15s ease-in-out infinite alternate;
 }
 
-.portal-shell-fiix .signal-card {
+.portal-shell-workbench .signal-card {
   border-radius: 18px;
   max-width: 340px;
 }
 
-.portal-shell-fiix .portal-main {
+.portal-shell-workbench .portal-main {
   gap: 16px;
 }
 
-.portal-shell-fiix .tab-panel {
+.portal-shell-workbench .tab-panel {
   gap: 16px;
 }
 
-.portal-shell-fiix .hero-grid,
-.portal-shell-fiix .panel-grid.two-col,
-.portal-shell-fiix .focus-layout {
+.portal-shell-workbench .hero-grid,
+.portal-shell-workbench .panel-grid.two-col,
+.portal-shell-workbench .focus-layout {
   gap: 16px;
 }
 
-.portal-shell-fiix .panel-card,
-.portal-shell-fiix .hero-card,
-.portal-shell-fiix .guide-card,
-.portal-shell-fiix .tip-card,
-.portal-shell-fiix .order-card {
+.portal-shell-workbench .panel-card,
+.portal-shell-workbench .hero-card,
+.portal-shell-workbench .guide-card,
+.portal-shell-workbench .tip-card,
+.portal-shell-workbench .order-card {
   border-radius: 18px;
 }
 
-.portal-shell-fiix .stats-grid {
+.portal-shell-workbench .stats-grid {
   gap: 12px;
 }
 
 /* 20260324 player deep rebuild */
-.portal-shell-fiix .portal-workbench {
+.portal-shell-workbench .portal-workbench {
   display: grid;
   grid-template-columns: minmax(0, 1.08fr) minmax(320px, 0.72fr);
   gap: 16px;
 }
 
-.portal-shell-fiix .portal-workbench-main,
-.portal-shell-fiix .portal-workbench-side,
-.portal-shell-fiix .player-identity-head,
-.portal-shell-fiix .player-side-panel,
-.portal-shell-fiix .player-service-panel {
+.portal-shell-workbench .portal-workbench-main,
+.portal-shell-workbench .portal-workbench-side,
+.portal-shell-workbench .player-identity-head,
+.portal-shell-workbench .player-side-panel,
+.portal-shell-workbench .player-service-panel {
   display: grid;
   gap: 16px;
 }
 
-.portal-shell-fiix .portal-workbench-main > *,
-.portal-shell-fiix .portal-workbench-side > * {
+.portal-shell-workbench .portal-workbench-main > *,
+.portal-shell-workbench .portal-workbench-side > * {
   animation: portal-fade-up 0.46s ease both;
 }
 
-.portal-shell-fiix .portal-workbench-main > *:nth-child(2),
-.portal-shell-fiix .portal-workbench-side > *:nth-child(2) {
+.portal-shell-workbench .portal-workbench-main > *:nth-child(2),
+.portal-shell-workbench .portal-workbench-side > *:nth-child(2) {
   animation-delay: 0.05s;
 }
 
-.portal-shell-fiix .portal-workbench-main > *:nth-child(3),
-.portal-shell-fiix .portal-workbench-side > *:nth-child(3) {
+.portal-shell-workbench .portal-workbench-main > *:nth-child(3),
+.portal-shell-workbench .portal-workbench-side > *:nth-child(3) {
   animation-delay: 0.1s;
 }
 
-.portal-shell-fiix .player-identity-stage {
+.portal-shell-workbench .player-identity-stage {
   gap: 18px;
   align-content: start;
 }
 
-.portal-shell-fiix .player-identity-head .profile-head {
+.portal-shell-workbench .player-identity-head .profile-head {
   align-items: flex-start;
 }
 
-.portal-shell-fiix .player-identity-head strong {
+.portal-shell-workbench .player-identity-head strong {
   display: block;
   font-family: "Barlow Condensed", sans-serif;
   font-size: clamp(2.2rem, 3vw, 3.4rem);
@@ -946,18 +946,18 @@ tr:last-child td {
   text-transform: uppercase;
 }
 
-.portal-shell-fiix .player-identity-head .muted {
+.portal-shell-workbench .player-identity-head .muted {
   display: block;
   margin-top: 6px;
 }
 
-.portal-shell-fiix .player-snapshot-grid {
+.portal-shell-workbench .player-snapshot-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
 }
 
-.portal-shell-fiix .snapshot-card {
+.portal-shell-workbench .snapshot-card {
   padding: 16px;
   border: 1px solid var(--line);
   border-radius: 18px;
@@ -968,34 +968,34 @@ tr:last-child td {
   gap: 12px;
 }
 
-.portal-shell-fiix .player-service-panel,
-.portal-shell-fiix .player-side-panel,
-.portal-shell-fiix .player-cart-panel {
+.portal-shell-workbench .player-service-panel,
+.portal-shell-workbench .player-side-panel,
+.portal-shell-workbench .player-cart-panel {
   align-content: start;
 }
 
-.portal-shell-fiix .player-side-panel {
+.portal-shell-workbench .player-side-panel {
   min-height: 100%;
 }
 
-.portal-shell-fiix .shop-filter-strip {
+.portal-shell-workbench .shop-filter-strip {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 220px;
   gap: 12px;
 }
 
-.portal-shell-fiix .shop-grid.shop-grid-command {
+.portal-shell-workbench .shop-grid.shop-grid-command {
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 }
 
-.portal-shell-fiix .shop-card {
+.portal-shell-workbench .shop-card {
   padding: 16px;
   border-radius: 18px;
   gap: 12px;
   align-content: start;
 }
 
-.portal-shell-fiix .shop-thumb {
+.portal-shell-workbench .shop-thumb {
   min-height: 168px;
   border-radius: 16px;
   overflow: hidden;
@@ -1007,13 +1007,13 @@ tr:last-child td {
   place-items: center;
 }
 
-.portal-shell-fiix .shop-thumb img {
+.portal-shell-workbench .shop-thumb img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.portal-shell-fiix .shop-card h3 {
+.portal-shell-workbench .shop-card h3 {
   margin: 0;
   font-family: "Barlow Condensed", sans-serif;
   font-size: 1.8rem;
@@ -1022,58 +1022,58 @@ tr:last-child td {
   text-transform: uppercase;
 }
 
-.portal-shell-fiix .shop-price {
+.portal-shell-workbench .shop-price {
   font-family: "Barlow Condensed", sans-serif;
   font-size: 2rem;
   line-height: 0.9;
   color: var(--accent-strong);
 }
 
-.portal-shell-fiix .player-cart-panel .feed-list {
+.portal-shell-workbench .player-cart-panel .feed-list {
   gap: 10px;
 }
 
-.portal-shell-fiix .order-grid {
+.portal-shell-workbench .order-grid {
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 14px;
 }
 
-.portal-shell-fiix .order-card {
+.portal-shell-workbench .order-card {
   padding: 16px;
   border-radius: 18px;
   gap: 12px;
   align-content: start;
 }
 
-.portal-shell-fiix .order-timeline {
+.portal-shell-workbench .order-timeline {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
 @media (max-width: 1180px) {
-  .portal-shell-fiix .portal-topbar,
-  .portal-shell-fiix .portal-command-stage {
+  .portal-shell-workbench .portal-topbar,
+  .portal-shell-workbench .portal-command-stage {
     grid-template-columns: 1fr;
   }
 
-  .portal-shell-fiix .portal-topnav {
+  .portal-shell-workbench .portal-topnav {
     justify-content: flex-start;
   }
 
-  .portal-shell-fiix .portal-workbench {
+  .portal-shell-workbench .portal-workbench {
     grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 760px) {
-  .portal-shell-fiix .portal-command-copy h1 {
+  .portal-shell-workbench .portal-command-copy h1 {
     max-width: none;
     font-size: clamp(2.3rem, 12vw, 4rem);
   }
 
-  .portal-shell-fiix .player-snapshot-grid,
-  .portal-shell-fiix .shop-filter-strip {
+  .portal-shell-workbench .player-snapshot-grid,
+  .portal-shell-workbench .shop-filter-strip {
     grid-template-columns: 1fr;
   }
 }
