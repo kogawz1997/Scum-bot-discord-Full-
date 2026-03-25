@@ -91,7 +91,12 @@ test('control panel env policy summary matches catalog totals and exposes import
   assert.equal(keys.has('ADMIN_WEB_LOGIN_MAX_ATTEMPTS'), true);
   assert.equal(keys.has('ADMIN_WEB_SSO_DISCORD_OWNER_ROLE_NAMES'), true);
   assert.equal(keys.has('DISCORD_TOKEN'), true);
+  assert.equal(keys.has('NODE_ENV'), true);
+  assert.equal(keys.has('DATABASE_PROVIDER'), true);
+  assert.equal(keys.has('BOT_DATA_DIR'), true);
   assert.equal(keys.has('TENANT_DB_TOPOLOGY_MODE'), true);
+  assert.equal(keys.has('BOT_HEALTH_HOST'), true);
+  assert.equal(keys.has('BOT_HEALTH_PORT'), true);
   assert.equal(keys.has('SCUM_WATCHER_ENABLED'), true);
   assert.equal(keys.has('SCUM_WATCHER_REQUIRED'), true);
   assert.equal(keys.has('SCUM_WATCHER_HEALTH_PORT'), true);
@@ -101,6 +106,7 @@ test('control panel env policy summary matches catalog totals and exposes import
   assert.equal(keys.has('WEB_PORTAL_ENFORCE_ORIGIN_CHECK'), true);
   assert.equal(keys.has('WEB_PORTAL_DISCORD_CLIENT_SECRET'), true);
   assert.equal(keys.has('WEB_PORTAL_MAP_EMBED_ENABLED'), true);
+  assert.equal(keys.has('WEB_PORTAL_LEGACY_ADMIN_URL'), true);
   assert.equal(keys.has('WEB_PORTAL_PORT'), true);
 });
 

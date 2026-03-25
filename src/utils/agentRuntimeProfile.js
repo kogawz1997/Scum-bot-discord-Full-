@@ -141,7 +141,8 @@ function normalizeAgentRuntimeProfile(input = {}) {
 
   const scope = explicitScope || deriveScopeFromRole(inferredRole);
   const agentId = trimText(meta.agentId || meta.id || meta.agentKey, 120) || null;
-  const serverId = trimText(meta.serverId || meta.guildId || meta.nodeId, 120) || null;
+  const serverId = trimText(meta.serverId || meta.nodeId, 120) || null;
+  const guildId = trimText(meta.guildId || meta.discordGuildId, 120) || null;
   const agentLabel = trimText(meta.agentLabel || meta.label || meta.runtimeLabel, 120) || null;
 
   return {
@@ -149,6 +150,7 @@ function normalizeAgentRuntimeProfile(input = {}) {
     agentScope: scope || null,
     agentId,
     serverId,
+    guildId,
     agentLabel,
     capabilities,
   };
@@ -161,6 +163,7 @@ function mergeAgentRuntimeProfile(meta, profile) {
   if (profile.agentScope) next.agentScope = profile.agentScope;
   if (profile.agentId) next.agentId = profile.agentId;
   if (profile.serverId) next.serverId = profile.serverId;
+  if (profile.guildId) next.guildId = profile.guildId;
   if (profile.agentLabel) next.agentLabel = profile.agentLabel;
   if (Array.isArray(profile.capabilities) && profile.capabilities.length > 0) next.capabilities = profile.capabilities;
   return Object.keys(next).length > 0 ? next : null;

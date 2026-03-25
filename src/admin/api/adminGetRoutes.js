@@ -86,6 +86,12 @@ function createAdminGetRoutes(deps) {
     listPlatformApiKeys,
     listPlatformWebhookEndpoints,
     listPlatformAgentRuntimes,
+    listPlatformServerRegistry,
+    listPlatformServerLinks,
+    listPlatformAgentRegistry,
+    listPlatformAgentSessions,
+    listPlatformSyncRuns,
+    listPlatformSyncEvents,
     listMarketplaceOffers,
     reconcileDeliveryState,
     clampMetricsWindowMs,
@@ -468,6 +474,159 @@ function createAdminGetRoutes(deps) {
       });
       data = filterRowsByTenantScope(data, auth);
       sendJson(res, 200, { ok: true, data });
+      return true;
+    }
+
+    if (pathname === '/admin/api/platform/servers') {
+      const auth = ensureRole(req, urlObj, 'mod', res);
+      if (!auth) return true;
+      const tenantId = resolveScopedTenantId(
+        req,
+        res,
+        auth,
+        requiredString(urlObj.searchParams.get('tenantId')),
+        { required: false },
+      );
+      if (requiredString(urlObj.searchParams.get('tenantId')) && !tenantId) return true;
+      sendJson(res, 200, {
+        ok: true,
+        data: await listPlatformServerRegistry({
+          tenantId,
+          serverId: requiredString(urlObj.searchParams.get('serverId')),
+        }),
+      });
+      return true;
+    }
+
+    if (pathname === '/admin/api/platform/server-discord-links') {
+      const auth = ensureRole(req, urlObj, 'mod', res);
+      if (!auth) return true;
+      const tenantId = resolveScopedTenantId(
+        req,
+        res,
+        auth,
+        requiredString(urlObj.searchParams.get('tenantId')),
+        { required: false },
+      );
+      if (requiredString(urlObj.searchParams.get('tenantId')) && !tenantId) return true;
+      sendJson(res, 200, {
+        ok: true,
+        data: await listPlatformServerLinks({
+          tenantId,
+          serverId: requiredString(urlObj.searchParams.get('serverId')),
+          guildId: requiredString(urlObj.searchParams.get('guildId')),
+        }),
+      });
+      return true;
+    }
+
+    if (pathname === '/admin/api/platform/agent-registry') {
+      const auth = ensureRole(req, urlObj, 'mod', res);
+      if (!auth) return true;
+      const tenantId = resolveScopedTenantId(
+        req,
+        res,
+        auth,
+        requiredString(urlObj.searchParams.get('tenantId')),
+        { required: false },
+      );
+      if (requiredString(urlObj.searchParams.get('tenantId')) && !tenantId) return true;
+      sendJson(res, 200, {
+        ok: true,
+        data: await listPlatformAgentRegistry({
+          tenantId,
+          serverId: requiredString(urlObj.searchParams.get('serverId')),
+        }),
+      });
+      return true;
+    }
+
+    if (pathname === '/admin/api/platform/agent-runtimes') {
+      const auth = ensureRole(req, urlObj, 'mod', res);
+      if (!auth) return true;
+      const tenantId = resolveScopedTenantId(
+        req,
+        res,
+        auth,
+        requiredString(urlObj.searchParams.get('tenantId')),
+        { required: false },
+      );
+      if (requiredString(urlObj.searchParams.get('tenantId')) && !tenantId) return true;
+      sendJson(res, 200, {
+        ok: true,
+        data: await listPlatformAgentRuntimes({
+          tenantId,
+          status: requiredString(urlObj.searchParams.get('status')) || undefined,
+          limit: asInt(urlObj.searchParams.get('limit'), 100) || 100,
+          allowGlobal: !tenantId,
+        }),
+      });
+      return true;
+    }
+
+    if (pathname === '/admin/api/platform/agent-sessions') {
+      const auth = ensureRole(req, urlObj, 'mod', res);
+      if (!auth) return true;
+      const tenantId = resolveScopedTenantId(
+        req,
+        res,
+        auth,
+        requiredString(urlObj.searchParams.get('tenantId')),
+        { required: false },
+      );
+      if (requiredString(urlObj.searchParams.get('tenantId')) && !tenantId) return true;
+      sendJson(res, 200, {
+        ok: true,
+        data: await listPlatformAgentSessions({
+          tenantId,
+          serverId: requiredString(urlObj.searchParams.get('serverId')),
+          agentId: requiredString(urlObj.searchParams.get('agentId')),
+        }),
+      });
+      return true;
+    }
+
+    if (pathname === '/admin/api/platform/sync-runs') {
+      const auth = ensureRole(req, urlObj, 'mod', res);
+      if (!auth) return true;
+      const tenantId = resolveScopedTenantId(
+        req,
+        res,
+        auth,
+        requiredString(urlObj.searchParams.get('tenantId')),
+        { required: false },
+      );
+      if (requiredString(urlObj.searchParams.get('tenantId')) && !tenantId) return true;
+      sendJson(res, 200, {
+        ok: true,
+        data: await listPlatformSyncRuns({
+          tenantId,
+          serverId: requiredString(urlObj.searchParams.get('serverId')),
+          agentId: requiredString(urlObj.searchParams.get('agentId')),
+        }),
+      });
+      return true;
+    }
+
+    if (pathname === '/admin/api/platform/sync-events') {
+      const auth = ensureRole(req, urlObj, 'mod', res);
+      if (!auth) return true;
+      const tenantId = resolveScopedTenantId(
+        req,
+        res,
+        auth,
+        requiredString(urlObj.searchParams.get('tenantId')),
+        { required: false },
+      );
+      if (requiredString(urlObj.searchParams.get('tenantId')) && !tenantId) return true;
+      sendJson(res, 200, {
+        ok: true,
+        data: await listPlatformSyncEvents({
+          tenantId,
+          serverId: requiredString(urlObj.searchParams.get('serverId')),
+          agentId: requiredString(urlObj.searchParams.get('agentId')),
+        }),
+      });
       return true;
     }
 

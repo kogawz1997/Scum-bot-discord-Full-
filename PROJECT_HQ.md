@@ -3,7 +3,7 @@
 [![CI](https://github.com/kogawz1997/Scum-bot-discord-Full-/actions/workflows/ci.yml/badge.svg)](https://github.com/kogawz1997/Scum-bot-discord-Full-/actions/workflows/ci.yml)
 [![Release](https://github.com/kogawz1997/Scum-bot-discord-Full-/actions/workflows/release.yml/badge.svg)](https://github.com/kogawz1997/Scum-bot-discord-Full-/actions/workflows/release.yml)
 
-Last updated: **2026-03-20**
+Last updated: **2026-03-25**
 
 This document is the working status register for the repository. It should stay factual. Do not use it as a sales page.
 
@@ -19,6 +19,7 @@ This document is the working status register for the repository. It should stay 
 - Product-ready gap matrix: [docs/PRODUCT_READY_GAP_MATRIX.md](./docs/PRODUCT_READY_GAP_MATRIX.md)
 - Refactor plan: [docs/REFACTOR_PLAN.md](./docs/REFACTOR_PLAN.md)
 - Config matrix: [docs/CONFIG_MATRIX.md](./docs/CONFIG_MATRIX.md)
+- Fix master list mapping: [docs/FIX_MASTERLIST_STATUS.md](./docs/FIX_MASTERLIST_STATUS.md)
 - Database strategy: [docs/DATABASE_STRATEGY.md](./docs/DATABASE_STRATEGY.md)
 - PostgreSQL cutover checklist: [docs/POSTGRESQL_CUTOVER_CHECKLIST.md](./docs/POSTGRESQL_CUTOVER_CHECKLIST.md)
 - Migration / rollback / restore: [docs/MIGRATION_ROLLBACK_POLICY_TH.md](./docs/MIGRATION_ROLLBACK_POLICY_TH.md)
@@ -30,6 +31,7 @@ This document is the working status register for the repository. It should stay 
 ### Closed
 
 - Runtime is split into `bot`, `worker`, `watcher`, `admin web`, `player portal`, and `console-agent`
+- Staged runtime entry wrappers now exist under `apps/api`, `apps/admin-web`, `apps/discord-bot`, `apps/worker`, `apps/watcher`, and `apps/agent`
 - This workstation has already cut over the runtime database to PostgreSQL
 - Prisma tooling is provider-aware and test-safe
 - Runtime env parsing has a dedicated boundary under `src/config/`
@@ -38,6 +40,8 @@ This document is the working status register for the repository. It should stay 
 - Bot interactions and ops-alert routing have been extracted from the main entry file
 - Admin auth includes DB login, Discord SSO, TOTP 2FA, step-up auth, session revoke, and security event logging
 - Admin route groups are partly split under `src/admin/api/` and `src/admin/audit/`
+- Control-plane agent contracts, server registry, agent registry, sync ingestion, and execute-routing boundaries now exist under `src/contracts/agent/`, `src/domain/servers/`, `src/domain/agents/`, `src/domain/sync/`, and `src/domain/delivery/`
+- SCUM-specific sync/execute adapters and parsers now live under `src/integrations/scum/`
 - Admin page/static loading, request/body parsing, request routing, access/security/control-panel helpers, live/SSE/metrics helpers, security export helpers, and Discord OAuth client calls are split out of the main server entry file
 - Player API groups are partly split under `apps/web-portal-standalone/api/`
 - Player portal page routing, canonical redirects, env/body/player helper assembly, response/security helpers, and canonical runtime helpers now have dedicated runtime modules
@@ -57,6 +61,7 @@ This document is the working status register for the repository. It should stay 
 - Console-agent health/preflight now expose classified failure reasons, recovery hints, and managed-process auto-restart telemetry for operator use
 - Backup restore preview/live status now carry an explicit verification checklist/result so restore only reports success after counts/config verification passes
 - Admin control-panel env writes now return per-key apply summaries, restart guidance, and audit payloads instead of treating every edit as the same generic restart-required change
+- Admin env catalog now also exposes core runtime identity and bind metadata such as `NODE_ENV`, `DATABASE_PROVIDER`, `BOT_DATA_DIR`, bot health bind settings, and portal admin-origin binding for operator review
 - This workstation has live watcher proof: watcher reports `ready` against a real `SCUM.log` path and exposes recent parsed `admin-command` events
 - Delivery verification now has a first-party native-proof backend that reads `SCUM.db`
 - This workstation has live native delivery proof from game state for `Water_05l`, `BakedBeans`, `Emergency_bandage`, `Weapon_M1911`, `Weapon_AK47`, `Magazine_M1911`, `Backpack_02_01`, `Cal_7_62x39mm_Ammobox`, and representative `teleport_spawn` / `announce_teleport_spawn` wrapper profiles
@@ -67,6 +72,10 @@ This document is the working status register for the repository. It should stay 
 - Short operator/bootstrap docs now include a 15-minute setup path, single-host production profile, restart announcement preset, runtime boundary explainer, and operator-oriented docs index
 - Secret rotation now has an explicit runbook, drift/reporting CLI, exportable owner-surface view, and post-rotation validation guidance
 - Delivery lifecycle reporting now has owner/tenant visibility plus operator-facing recommended actions instead of raw queue/dead-letter tables only
+- Owner control now also exposes `Discord admin-log language` so owner-facing ops alerts can switch between Thai and English from the web surface
+- Agent tables in owner/admin views now classify runtime rows into `sync`, `execute`, and `hybrid` paths with explicit scope labels for read/write responsibility
+- Control-plane routes now terminate scoped agent registration/session/sync requests and persist explicit tenant/server/guild/agent relationships for routing and freshness tracking
+- Mutable runtime state and PostgreSQL runtime dumps are no longer intended to live inside the tracked repository tree; production and DB-only persistence now default to external OS-managed state paths
 - Admin browser shell/common helpers are extracted under `src/admin/assets/dashboard-shell.js`
 - Admin snapshot/session/form browser runtime is extracted under `src/admin/assets/dashboard-runtime.js`
 - Admin browser DOM refs, mutable state, and event binding/startup wiring are extracted under `src/admin/assets/dashboard-dom.js`, `src/admin/assets/dashboard-state.js`, and `src/admin/assets/dashboard-bindings.js`
@@ -120,8 +129,8 @@ Important detail:
 - `readiness:prod` now includes `smoke:postdeploy`
 - `smoke:postdeploy` no longer treats required runtimes as healthy based only on HTTP 200 and `{ ok: true }`
 - optional runtimes such as a disabled watcher or an optional console-agent are reported without failing the run
-- the latest local full pass on this workstation completed on `2026-03-18`
-- the latest live schema-per-tenant runtime pass on this workstation completed on `2026-03-18` with `npm test` and `node scripts/readiness-gate.js --production`
+- the latest local full pass on this workstation completed on `2026-03-24`
+- the latest live schema-per-tenant runtime pass on this workstation completed on `2026-03-24` with `npm test` and `node scripts/readiness-gate.js --production`
 - a targeted provider-backed tenant-topology suite covering admin/community/player/webhook paths also passed locally on `2026-03-17`
 
 ## Remaining Non-Delivery Gaps

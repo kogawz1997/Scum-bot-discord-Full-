@@ -42,6 +42,12 @@ const {
   readAcrossDeliveryPersistenceScopes,
   groupRowsByTenant,
 } = require('./deliveryPersistenceDb');
+const {
+  createAgentExecutionRoutingService,
+} = require('../domain/delivery/agentExecutionRoutingService');
+const {
+  requestConsoleAgent,
+} = require('../integrations/scum/adapters/consoleAgentClient');
 
 // In-memory delivery state is shared across bot, worker, and admin code paths and
 // mirrored to Prisma so split-runtime deployments behave the same as single-process mode.
@@ -116,6 +122,7 @@ const PERSISTENCE_SYNC_INTERVAL_MS = Math.max(
   500,
   asNumber(process.env.DELIVERY_PERSISTENCE_SYNC_INTERVAL_MS, 2000),
 );
+const agentExecutionRoutingService = createAgentExecutionRoutingService();
 
 function nowIso() {
   return new Date().toISOString();
@@ -1368,7 +1375,9 @@ function getRconTemplate() {
   return '';
 }
 
-function getAgentBaseUrl() {
+function getAgentBaseUrl(route = null) {
+  const routed = String(route?.baseUrl || '').trim();
+  if (routed) return routed.replace(/\/+$/, '');
   const explicit = String(process.env.SCUM_CONSOLE_AGENT_BASE_URL || '').trim();
   if (explicit) return explicit.replace(/\/+$/, '');
   const host = String(process.env.SCUM_CONSOLE_AGENT_HOST || '127.0.0.1').trim() || '127.0.0.1';
@@ -1377,6 +1386,40 @@ function getAgentBaseUrl() {
     Math.trunc(asNumber(process.env.SCUM_CONSOLE_AGENT_PORT, 3213)),
   );
   return `http://${host}:${port}`;
+}
+
+function buildAgentRouteContext(input = {}) {
+  return {
+    tenantId: String(input?.tenantId || '').trim() || null,
+    serverId: String(input?.serverId || '').trim() || null,
+    guildId: String(input?.guildId || '').trim() || null,
+  };
+}
+
+function resolveAgentConnection(input = {}) {
+  const routeContext = buildAgentRouteContext(input);
+  const routed = agentExecutionRoutingService.resolveExecuteAgentRoute(routeContext);
+  const token = String(process.env.SCUM_CONSOLE_AGENT_TOKEN || '').trim();
+  if (routed?.ok && routed.route?.baseUrl) {
+    return {
+      ok: true,
+      baseUrl: getAgentBaseUrl(routed.route),
+      token,
+      source: 'registry',
+      route: routed.route,
+      context: routed.context || null,
+      fallbackReason: null,
+    };
+  }
+  return {
+    ok: true,
+    baseUrl: getAgentBaseUrl(),
+    token,
+    source: 'env',
+    route: null,
+    context: routed?.context || null,
+    fallbackReason: routed?.reason || null,
+  };
 }
 
 function normalizeFailoverMode(value) {
@@ -1658,38 +1701,41 @@ function extractAgentRecovery(payload) {
   return null;
 }
 
-async function fetchAgentHealth(settings) {
-  const baseUrl = getAgentBaseUrl();
-  const controller = new AbortController();
-  const timeout = setTimeout(
-    () => controller.abort(),
-    Math.max(1000, Math.min(settings.commandTimeoutMs, 5000)),
-  );
+async function fetchAgentHealth(settings, routeInput = {}) {
+  const connection = resolveAgentConnection(routeInput);
+  const baseUrl = connection.baseUrl;
   try {
-    const res = await fetch(`${baseUrl}/healthz`, {
+    const response = await requestConsoleAgent('/healthz', {
+      baseUrl,
       method: 'GET',
-      signal: controller.signal,
       headers: {
         Accept: 'application/json',
       },
+      timeoutMs: Math.max(1000, Math.min(settings.commandTimeoutMs, 5000)),
     });
-    const payload = await res.json().catch(() => null);
-    if (!res.ok || !payload?.ok) {
+    const payload = response.payload;
+    if (!response.ok) {
       return {
         ok: false,
         reachable: false,
         baseUrl,
-        errorCode: String(payload?.errorCode || payload?.statusCode || 'AGENT_HEALTH_FAILED'),
+        errorCode: String(payload?.errorCode || payload?.statusCode || `AGENT_HEALTH_${response.status || 'FAILED'}`),
         error:
-          trimText(payload?.error || payload?.message || `agent health failed (${res.status})`, 300),
+          trimText(payload?.error || payload?.message || `agent health failed (${response.status})`, 300),
         classification: extractAgentClassification(payload),
         recovery: extractAgentRecovery(payload),
+        routeSource: connection.source,
+        route: connection.route,
+        fallbackReason: connection.fallbackReason,
       };
     }
     return {
       ok: true,
       reachable: true,
       baseUrl,
+      routeSource: connection.source,
+      route: connection.route,
+      fallbackReason: connection.fallbackReason,
       ...payload,
     };
   } catch (error) {
@@ -1701,15 +1747,17 @@ async function fetchAgentHealth(settings) {
       error: trimText(error?.message || 'agent health request failed', 300),
       classification: null,
       recovery: null,
+      routeSource: connection.source,
+      route: connection.route,
+      fallbackReason: connection.fallbackReason,
     };
-  } finally {
-    clearTimeout(timeout);
   }
 }
 
-async function fetchAgentPreflight(settings) {
-  const baseUrl = getAgentBaseUrl();
-  const token = String(process.env.SCUM_CONSOLE_AGENT_TOKEN || '').trim();
+async function fetchAgentPreflight(settings, routeInput = {}) {
+  const connection = resolveAgentConnection(routeInput);
+  const baseUrl = connection.baseUrl;
+  const token = connection.token;
   if (!token) {
     return {
       ok: false,
@@ -1717,40 +1765,45 @@ async function fetchAgentPreflight(settings) {
       baseUrl,
       errorCode: 'AGENT_TOKEN_MISSING',
       error: 'SCUM_CONSOLE_AGENT_TOKEN is not set',
+      routeSource: connection.source,
+      route: connection.route,
+      fallbackReason: connection.fallbackReason,
     };
   }
 
-  const controller = new AbortController();
-  const timeout = setTimeout(
-    () => controller.abort(),
-    Math.max(1000, Math.min(settings.commandTimeoutMs, 5000)),
-  );
   try {
-    const res = await fetch(`${baseUrl}/preflight`, {
+    const response = await requestConsoleAgent('/preflight', {
+      baseUrl,
+      token,
       method: 'GET',
-      signal: controller.signal,
       headers: {
         Accept: 'application/json',
-        Authorization: `Bearer ${token}`,
       },
+      timeoutMs: Math.max(1000, Math.min(settings.commandTimeoutMs, 5000)),
     });
-    const payload = await res.json().catch(() => null);
-    if (!res.ok || payload?.ok !== true) {
+    const payload = response.payload;
+    if (!response.ok || payload?.ok !== true) {
       return {
         ok: false,
-        reachable: res.ok || res.status < 500,
+        reachable: response.ok || response.status < 500,
         baseUrl,
         errorCode: String(payload?.errorCode || 'AGENT_PREFLIGHT_FAILED'),
-        error: trimText(payload?.error || payload?.message || `agent preflight failed (${res.status})`, 300),
+        error: trimText(payload?.error || payload?.message || `agent preflight failed (${response.status})`, 300),
         result: payload?.result || null,
         classification: extractAgentClassification(payload),
         recovery: extractAgentRecovery(payload),
+        routeSource: connection.source,
+        route: connection.route,
+        fallbackReason: connection.fallbackReason,
       };
     }
     return {
       ok: true,
       reachable: true,
       baseUrl,
+      routeSource: connection.source,
+      route: connection.route,
+      fallbackReason: connection.fallbackReason,
       ...payload,
     };
   } catch (error) {
@@ -1762,9 +1815,10 @@ async function fetchAgentPreflight(settings) {
       error: trimText(error?.message || 'agent preflight request failed', 300),
       classification: null,
       recovery: null,
+      routeSource: connection.source,
+      route: connection.route,
+      fallbackReason: connection.fallbackReason,
     };
-  } finally {
-    clearTimeout(timeout);
   }
 }
 
@@ -2502,8 +2556,13 @@ async function getDeliveryPreflightReport(options = {}) {
       meta: execTemplate ? { template: execTemplate } : null,
     }));
 
-    const health = await fetchAgentHealth(settings);
-    const preflight = health?.ok ? await fetchAgentPreflight(settings) : null;
+    const routeInput = {
+      tenantId: String(options.tenantId || '').trim() || null,
+      serverId: String(options.serverId || '').trim() || null,
+      guildId: String(options.guildId || '').trim() || null,
+    };
+    const health = await fetchAgentHealth(settings, routeInput);
+    const preflight = health?.ok ? await fetchAgentPreflight(settings, routeInput) : null;
     report.agent = {
       tokenConfigured,
       execTemplateConfigured: execTemplate.length > 0,
@@ -3517,9 +3576,10 @@ async function runRconCommand(gameCommand, settings) {
   };
 }
 
-async function runAgentCommand(gameCommand, settings) {
-  const baseUrl = getAgentBaseUrl();
-  const token = String(process.env.SCUM_CONSOLE_AGENT_TOKEN || '').trim();
+async function runAgentCommand(gameCommand, settings, routeInput = {}) {
+  const connection = resolveAgentConnection(routeInput);
+  const baseUrl = connection.baseUrl;
+  const token = connection.token;
   if (!token) {
     throw createDeliveryError('AGENT_TOKEN_MISSING', 'SCUM_CONSOLE_AGENT_TOKEN is not set', {
       retryable: false,
@@ -3529,22 +3589,15 @@ async function runAgentCommand(gameCommand, settings) {
     });
   }
 
-  const controller = new AbortController();
-  const timeout = setTimeout(
-    () => controller.abort(),
-    Math.max(1000, settings.commandTimeoutMs + 1000),
-  );
-
-  let res;
+  let payload = null;
+  let response = null;
   try {
-    res = await fetch(`${baseUrl}/execute`, {
+    response = await requestConsoleAgent('/execute', {
+      baseUrl,
+      token,
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ command: gameCommand }),
-      signal: controller.signal,
+      body: { command: gameCommand },
+      timeoutMs: Math.max(1000, settings.commandTimeoutMs + 1000),
     });
   } catch (error) {
     throw createDeliveryError(
@@ -3555,40 +3608,36 @@ async function runAgentCommand(gameCommand, settings) {
         step: 'agent-command',
         command: gameCommand,
         meta: {
-          classification,
-          recovery,
-          result: payload?.result || null,
+          classification: null,
+          recovery: null,
+          result: null,
+          routeSource: connection.source,
+          route: connection.route,
+          fallbackReason: connection.fallbackReason,
         },
         recoveryHint: 'ตรวจ console-agent, Windows session และ SCUM client ก่อน retry',
       },
     );
-  } finally {
-    clearTimeout(timeout);
   }
 
-  let payload = null;
-  try {
-    payload = await res.json();
-  } catch {
-    payload = null;
-  }
+  payload = response?.payload || null;
 
-  if (!res.ok || !payload?.ok || !payload?.result) {
+  if (!response?.ok || !payload?.ok || !payload?.result) {
     const classification = extractAgentClassification(payload);
     const recovery = extractAgentRecovery(payload);
     throw createDeliveryError(
-      String(payload?.errorCode || `AGENT_HTTP_${res.status}`),
+      String(payload?.errorCode || `AGENT_HTTP_${response?.status || 'FAILED'}`),
       trimText(
         payload?.error
           || payload?.message
-          || `SCUM console agent error ${res.status}`,
+          || `SCUM console agent error ${response?.status || 'failed'}`,
         500,
       ),
       {
         retryable:
           typeof classification?.retryable === 'boolean'
             ? classification.retryable
-            : (res.status >= 500 || res.status === 429),
+            : ((response?.status || 500) >= 500 || response?.status === 429),
         step: 'agent-command',
         command: gameCommand,
         recoveryHint: 'ตรวจ agent health, auth token และ SCUM client ก่อน retry',
@@ -3610,13 +3659,16 @@ async function runAgentCommand(gameCommand, settings) {
     stdout: trimText(payload.result.stdout, 1200),
     stderr: trimText(payload.result.stderr, 1200),
     pid: payload.result.pid || null,
+    routeSource: connection.source,
+    route: connection.route,
+    fallbackReason: connection.fallbackReason,
   };
 }
 
-async function runGameCommand(gameCommand, settings) {
+async function runGameCommand(gameCommand, settings, routeInput = {}) {
   if (settings.executionMode === 'agent') {
     try {
-      const result = await runAgentCommand(gameCommand, settings);
+      const result = await runAgentCommand(gameCommand, settings, routeInput);
       recordAgentSuccess();
       return result;
     } catch (error) {
@@ -3920,6 +3972,7 @@ function normalizeJob(input) {
   return {
     purchaseCode,
     tenantId: String(input.tenantId || '').trim() || null,
+    serverId: String(input.serverId || '').trim() || null,
     userId: String(input.userId || '').trim(),
     itemId: String(input.itemId || '').trim(),
     itemName: String(input.itemName || '').trim() || null,
@@ -3956,6 +4009,7 @@ function normalizeDeadLetter(input) {
   return {
     purchaseCode,
     tenantId: String(input.tenantId || '').trim() || null,
+    serverId: String(input.serverId || '').trim() || null,
     userId: String(input.userId || '').trim() || null,
     itemId: String(input.itemId || '').trim() || null,
     itemName: String(input.itemName || '').trim() || null,
@@ -5302,7 +5356,11 @@ async function processJob(job) {
         });
         let output;
         try {
-          output = await runGameCommand(gameCommand, executionSettings);
+          output = await runGameCommand(gameCommand, executionSettings, {
+            tenantId: job?.tenantId || purchase?.tenantId || null,
+            serverId: job?.serverId || purchase?.serverId || null,
+            guildId: job?.guildId || purchase?.guildId || null,
+          });
         } catch (error) {
           queueAudit(
             'error',
@@ -5907,6 +5965,9 @@ async function enqueuePurchaseDelivery(purchase, context = {}) {
 
     const preflightReport = await getDeliveryPreflightReport({
       settings,
+      tenantId: String(context.tenantId || purchase.tenantId || '').trim() || null,
+      serverId: String(context.serverId || purchase.serverId || '').trim() || null,
+      guildId: String(context.guildId || purchase.guildId || '').trim() || null,
       purchaseCode,
       itemId: String(purchase.itemId),
       itemName,
@@ -5974,6 +6035,7 @@ async function enqueuePurchaseDelivery(purchase, context = {}) {
   const job = normalizeJob({
     purchaseCode,
     tenantId: String(context.tenantId || purchase.tenantId || '').trim() || null,
+    serverId: String(context.serverId || purchase.serverId || '').trim() || null,
     userId: String(purchase.userId),
     itemId: String(purchase.itemId),
     itemName,

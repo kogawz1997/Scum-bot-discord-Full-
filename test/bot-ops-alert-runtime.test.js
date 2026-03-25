@@ -33,6 +33,8 @@ test('delivery reconcile anomaly alerts render compact summaries instead of raw 
         detail: 'Delivered purchase has no delivery audit evidence',
       },
     ],
+  }, {
+    locale: 'en',
   });
 
   assert.match(message, /^\[OPS\]\[WARN\] Delivery Reconcile Anomaly/m);
@@ -53,6 +55,8 @@ test('tenant quota alerts render readable tenant summaries', () => {
     used: 1,
     limit: 2,
     remaining: 1,
+  }, {
+    locale: 'en',
   });
 
   assert.match(message, /^\[OPS\]\[WARN\] Tenant Quota Near Limit/m);
@@ -80,6 +84,7 @@ test('ops alert embed payload renders severity card with structured fields', () 
     ],
   }, {
     at: '2026-03-18T09:41:44.528Z',
+    locale: 'en',
   });
 
   assert.equal(Array.isArray(message.embeds), true);
@@ -104,6 +109,8 @@ test('platform auto restart alerts render readable structured summaries', () => 
     serviceKey: 'player-portal',
     reason: 'fetch failed',
     exitCode: 0,
+  }, {
+    locale: 'en',
   });
 
   assert.match(message, /^\[OPS\]\[INFO\] Platform Auto Recovery Succeeded/m);
@@ -146,6 +153,8 @@ test('agent circuit alerts render structured summaries instead of raw payloads',
     lastFailureMessage: 'Agent execution failed',
     circuitOpenedAt: '2026-03-24T07:20:00.000Z',
     circuitOpenUntil: '2026-03-24T07:25:00.000Z',
+  }, {
+    locale: 'en',
   });
 
   assert.match(message, /^\[OPS\]\[ERROR\] Agent Circuit Open/m);
@@ -157,58 +166,64 @@ test('agent circuit alerts render structured summaries instead of raw payloads',
 });
 
 test('ops alert route sends embeds to the admin-log channel', async () => {
-  const adminLiveBus = new EventEmitter();
-  const sent = [];
-  const adminLogChannel = {
-    name: 'admin-log',
-    isTextBased: () => true,
-    send: async (payload) => {
-      sent.push(payload);
-      return payload;
-    },
-  };
-  const guild = {
-    channels: {
-      cache: {
-        find: (predicate) => {
-          if (predicate(adminLogChannel)) return adminLogChannel;
-          return null;
+  const previousLanguage = process.env.ADMIN_LOG_LANGUAGE;
+  process.env.ADMIN_LOG_LANGUAGE = 'en';
+  try {
+    const adminLiveBus = new EventEmitter();
+    const sent = [];
+    const adminLogChannel = {
+      name: 'admin-log',
+      isTextBased: () => true,
+      send: async (payload) => {
+        sent.push(payload);
+        return payload;
+      },
+    };
+    const guild = {
+      channels: {
+        cache: {
+          find: (predicate) => {
+            if (predicate(adminLogChannel)) return adminLogChannel;
+            return null;
+          },
         },
       },
-    },
-  };
-  const client = {
-    guilds: {
-      cache: new Map([['guild-1', guild]]),
-    },
-  };
+    };
+    const client = {
+      guilds: {
+        cache: new Map([['guild-1', guild]]),
+      },
+    };
 
-  const bindOpsAlertRoute = createBindOpsAlertRoute({
-    adminLiveBus,
-    channels: {
-      adminLog: 'admin-log',
-      shopLog: 'shop-log',
-    },
-  });
-  bindOpsAlertRoute(client);
+    const bindOpsAlertRoute = createBindOpsAlertRoute({
+      adminLiveBus,
+      channels: {
+        adminLog: 'admin-log',
+        shopLog: 'shop-log',
+      },
+    });
+    bindOpsAlertRoute(client);
 
-  adminLiveBus.emit('update', {
-    type: 'ops-alert',
-    at: '2026-03-18T09:41:44.528Z',
-    payload: {
-      source: 'platform-monitor',
-      kind: 'runtime-offline',
-      runtimeLabel: 'Admin Web',
-      reason: 'fetch failed',
-      url: 'http://127.0.0.1:3200',
-    },
-  });
+    adminLiveBus.emit('update', {
+      type: 'ops-alert',
+      at: '2026-03-18T09:41:44.528Z',
+      payload: {
+        source: 'platform-monitor',
+        kind: 'runtime-offline',
+        runtimeLabel: 'Admin Web',
+        reason: 'fetch failed',
+        url: 'http://127.0.0.1:3200',
+      },
+    });
 
-  await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
 
-  assert.equal(sent.length, 1);
-  assert.equal(Array.isArray(sent[0].embeds), true);
-  const embed = sent[0].embeds[0].toJSON();
-  assert.equal(embed.title, 'Runtime Offline');
-  assert.ok(embed.fields.some((field) => field.name === 'Runtime' && field.value === 'Admin Web'));
+    assert.equal(sent.length, 1);
+    assert.equal(Array.isArray(sent[0].embeds), true);
+    const embed = sent[0].embeds[0].toJSON();
+    assert.equal(embed.title, 'Runtime Offline');
+    assert.ok(embed.fields.some((field) => field.name === 'Runtime' && field.value === 'Admin Web'));
+  } finally {
+    process.env.ADMIN_LOG_LANGUAGE = previousLanguage;
+  }
 });

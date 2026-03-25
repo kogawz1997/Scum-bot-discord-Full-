@@ -230,10 +230,35 @@ function resolvePlayerOrigin(portalLines, args) {
   );
 }
 
-function resolveAdminPath(rootLines, args) {
-  return normalizePathSegment(
-    args.adminPath || getEnvValue(rootLines, 'ADMIN_WEB_SESSION_COOKIE_PATH'),
-    '/admin',
+function extractPathFromUrl(value, fallback = '') {
+  const parsed = tryParseUrl(value);
+  if (!parsed) return fallback;
+  const pathname = String(parsed.pathname || '').trim();
+  if (!pathname || pathname === '/') return fallback;
+  return normalizePathSegment(pathname, fallback || '/');
+}
+
+function extractAdminPathFromRedirect(value) {
+  const parsed = tryParseUrl(value);
+  if (!parsed) return '';
+  let pathname = String(parsed.pathname || '').trim();
+  if (!pathname) return '';
+  pathname = pathname.replace(/\/auth\/discord\/callback$/i, '');
+  if (!pathname) return '';
+  return normalizePathSegment(pathname, '/');
+}
+
+function resolveAdminPath(rootLines, portalLines, args) {
+  if (String(args.adminPath || '').trim()) {
+    return normalizePathSegment(args.adminPath, '/admin');
+  }
+
+  return (
+    extractPathFromUrl(getEnvValue(portalLines, 'WEB_PORTAL_LEGACY_ADMIN_URL'))
+    || extractAdminPathFromRedirect(
+      getEnvValue(rootLines, 'ADMIN_WEB_SSO_DISCORD_REDIRECT_URI'),
+    )
+    || '/admin'
   );
 }
 
@@ -374,7 +399,7 @@ function main() {
 
   const adminOrigin = resolveAdminOrigin(rootLines, args);
   const playerOrigin = resolvePlayerOrigin(portalLines, args);
-  const adminPath = resolveAdminPath(rootLines, args);
+  const adminPath = resolveAdminPath(rootLines, portalLines, args);
 
   const options = {
     ...args,

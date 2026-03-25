@@ -31,6 +31,10 @@ function createAdminPublicRoutes(deps) {
     getPlatformPublicOverview,
     getPlatformAnalyticsOverview,
     recordPlatformAgentHeartbeat,
+    verifyPlatformApiKey,
+    registerPlatformAgent,
+    recordPlatformAgentSession,
+    ingestPlatformAgentSync,
     reconcileDeliveryState,
     dispatchPlatformWebhookEvent,
     ssoDiscordActive,
@@ -150,6 +154,64 @@ function createAdminPublicRoutes(deps) {
     if (auth?.tenantId) return 'tenant';
     if (auth?.role) return 'owner';
     return 'admin';
+  }
+
+  function extractPlatformApiKey(req) {
+    const rawHeader = req?.headers?.['x-platform-api-key'];
+    const directKey = Array.isArray(rawHeader) ? rawHeader[0] : rawHeader;
+    const normalizedDirectKey = String(directKey || '').trim();
+    if (normalizedDirectKey) return normalizedDirectKey;
+
+    const authorization = String(req?.headers?.authorization || '').trim();
+    if (authorization.toLowerCase().startsWith('bearer ')) {
+      return authorization.slice(7).trim();
+    }
+    return '';
+  }
+
+  async function ensurePlatformApiKeyAny(req, res, scopeSets = []) {
+    const normalizedScopeSets = Array.isArray(scopeSets)
+      ? scopeSets.filter((entry) => Array.isArray(entry) && entry.length > 0)
+      : [];
+    if (normalizedScopeSets.length === 0 || typeof verifyPlatformApiKey !== 'function') {
+      return ensurePlatformApiKey(req, res, normalizedScopeSets[0] || []);
+    }
+
+    const rawKey = extractPlatformApiKey(req);
+    if (!rawKey) {
+      sendJson(res, 401, { ok: false, error: 'Missing platform API key' });
+      return null;
+    }
+
+    const failures = [];
+    for (const requiredScopes of normalizedScopeSets) {
+      const result = await verifyPlatformApiKey(rawKey, requiredScopes);
+      if (result?.ok) return result;
+      failures.push(result || { ok: false, reason: 'invalid-api-key' });
+      if (result?.reason && !['insufficient-scope', 'invalid-api-key', 'missing-api-key'].includes(result.reason)) {
+        const statusCode = result.reason === 'tenant-access-suspended' ? 403 : 401;
+        sendJson(res, statusCode, { ok: false, error: result.reason });
+        return null;
+      }
+    }
+
+    const insufficient = failures.find((entry) => entry?.reason === 'insufficient-scope') || null;
+    if (insufficient) {
+      const missingScopes = Array.from(new Set(
+        failures.flatMap((entry) => Array.isArray(entry?.missingScopes) ? entry.missingScopes : []),
+      ));
+      sendJson(res, 403, {
+        ok: false,
+        error: 'insufficient-scope',
+        data: {
+          missingScopes,
+        },
+      });
+      return null;
+    }
+
+    sendJson(res, 401, { ok: false, error: 'invalid-api-key' });
+    return null;
   }
 
   return async function handleAdminPublicRoute(context) {
@@ -373,6 +435,136 @@ function createAdminPublicRoutes(deps) {
             return true;
           }
           sendJson(res, 200, { ok: true, data: result.runtime });
+          return true;
+        }
+
+        if (req.method === 'POST' && pathname === '/platform/api/v1/agent/register') {
+          const platformAuth = await ensurePlatformApiKeyAny(req, res, [
+            ['agent:register'],
+            ['agent:write'],
+          ]);
+          if (!platformAuth) return true;
+          const body = await readJsonBody(req);
+          const result = await registerPlatformAgent?.({
+            id: requiredString(body, 'id'),
+            tenantId: requiredString(body, 'tenantId') || platformAuth.tenant?.id || null,
+            serverId: requiredString(body, 'serverId'),
+            guildId: requiredString(body, 'guildId'),
+            agentId: requiredString(body, 'agentId'),
+            runtimeKey: requiredString(body, 'runtimeKey'),
+            displayName: requiredString(body, 'displayName') || requiredString(body, 'name'),
+            role: requiredString(body, 'role'),
+            scope: requiredString(body, 'scope'),
+            channel: requiredString(body, 'channel'),
+            version: requiredString(body, 'version'),
+            minimumVersion: requiredString(body, 'minimumVersion') || requiredString(body, 'minRequiredVersion'),
+            baseUrl: requiredString(body, 'baseUrl'),
+            hostname: requiredString(body, 'hostname'),
+            meta: body.meta,
+          }, {
+            tenantId: platformAuth.tenant?.id || null,
+            apiKeyId: platformAuth.apiKey?.id || null,
+          }, 'platform-api');
+          if (!result?.ok) {
+            sendJson(res, 400, { ok: false, error: result?.reason || 'platform-agent-register-failed' });
+            return true;
+          }
+          sendJson(res, 200, {
+            ok: true,
+            data: {
+              agent: result.agent,
+              binding: result.binding,
+            },
+          });
+          return true;
+        }
+
+        if (req.method === 'POST' && pathname === '/platform/api/v1/agent/session') {
+          const platformAuth = await ensurePlatformApiKeyAny(req, res, [
+            ['agent:session'],
+            ['agent:write'],
+          ]);
+          if (!platformAuth) return true;
+          const body = await readJsonBody(req);
+          const result = await recordPlatformAgentSession?.({
+            sessionId: requiredString(body, 'sessionId'),
+            tenantId: requiredString(body, 'tenantId') || platformAuth.tenant?.id || null,
+            serverId: requiredString(body, 'serverId'),
+            guildId: requiredString(body, 'guildId'),
+            agentId: requiredString(body, 'agentId'),
+            runtimeKey: requiredString(body, 'runtimeKey'),
+            role: requiredString(body, 'role'),
+            scope: requiredString(body, 'scope'),
+            channel: requiredString(body, 'channel'),
+            version: requiredString(body, 'version'),
+            heartbeatAt: requiredString(body, 'heartbeatAt'),
+            baseUrl: requiredString(body, 'baseUrl'),
+            hostname: requiredString(body, 'hostname'),
+            diagnostics: body.diagnostics,
+            meta: body.meta,
+          }, {
+            tenantId: platformAuth.tenant?.id || null,
+            apiKeyId: platformAuth.apiKey?.id || null,
+          }, 'platform-api');
+          if (!result?.ok) {
+            sendJson(res, 400, { ok: false, error: result?.reason || 'platform-agent-session-failed' });
+            return true;
+          }
+          sendJson(res, 200, {
+            ok: true,
+            data: {
+              session: result.session,
+              agent: result.agent,
+            },
+          });
+          return true;
+        }
+
+        if (req.method === 'POST' && pathname === '/platform/api/v1/agent/sync') {
+          const platformAuth = await ensurePlatformApiKeyAny(req, res, [
+            ['agent:sync'],
+            ['agent:write'],
+          ]);
+          if (!platformAuth) return true;
+          const body = await readJsonBody(req);
+          const result = await ingestPlatformAgentSync?.({
+            syncRunId: requiredString(body, 'syncRunId'),
+            tenantId: requiredString(body, 'tenantId') || platformAuth.tenant?.id || null,
+            serverId: requiredString(body, 'serverId'),
+            guildId: requiredString(body, 'guildId'),
+            agentId: requiredString(body, 'agentId'),
+            runtimeKey: requiredString(body, 'runtimeKey'),
+            role: requiredString(body, 'role'),
+            scope: requiredString(body, 'scope'),
+            channel: requiredString(body, 'channel'),
+            version: requiredString(body, 'version'),
+            heartbeatAt: requiredString(body, 'heartbeatAt'),
+            sourceType: requiredString(body, 'sourceType'),
+            sourcePath: requiredString(body, 'sourcePath'),
+            freshnessAt: requiredString(body, 'freshnessAt'),
+            eventCount: body.eventCount,
+            snapshot: body.snapshot,
+            events: body.events,
+            errors: body.errors,
+            payload: body.payload,
+            meta: body.meta,
+          }, {
+            tenantId: platformAuth.tenant?.id || null,
+            apiKeyId: platformAuth.apiKey?.id || null,
+          }, 'platform-api');
+          if (!result?.ok) {
+            sendJson(res, 400, { ok: false, error: result?.reason || 'platform-agent-sync-failed' });
+            return true;
+          }
+          sendJson(res, 200, {
+            ok: true,
+            data: {
+              syncRun: result.syncRun,
+              syncEvents: result.syncEvents,
+              server: result.server,
+              agent: result.agent,
+            },
+          });
           return true;
         }
 

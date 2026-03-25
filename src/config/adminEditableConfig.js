@@ -52,6 +52,20 @@ function defineEnvField(field) {
 const CONTROL_PANEL_ENV_FIELDS = Object.freeze([
   defineEnvField({
     file: 'root',
+    key: 'NODE_ENV',
+    type: 'text',
+    policy: 'runtime-only',
+    description: 'Runtime mode for all server-side processes',
+  }),
+  defineEnvField({
+    file: 'root',
+    key: 'DATABASE_PROVIDER',
+    type: 'text',
+    policy: 'runtime-only',
+    description: 'Primary runtime database provider',
+  }),
+  defineEnvField({
+    file: 'root',
     key: 'DATABASE_URL',
     type: 'secret',
     policy: 'runtime-only',
@@ -97,6 +111,13 @@ const CONTROL_PANEL_ENV_FIELDS = Object.freeze([
   defineEnvField({ file: 'root', key: 'PRISMA_SCHEMA_PROVIDER', type: 'text', description: 'Prisma provider for runtime boot' }),
   defineEnvField({ file: 'root', key: 'PERSIST_REQUIRE_DB', type: 'boolean', description: 'Require database persistence at runtime' }),
   defineEnvField({ file: 'root', key: 'PERSIST_LEGACY_SNAPSHOTS', type: 'boolean', description: 'Allow legacy file snapshots' }),
+  defineEnvField({
+    file: 'root',
+    key: 'BOT_DATA_DIR',
+    type: 'text',
+    policy: 'runtime-only',
+    description: 'External runtime-data directory for DB-only or production mode',
+  }),
   defineEnvField({ file: 'root', key: 'DISCORD_GUILD_ID', type: 'text', description: 'Primary Discord guild binding' }),
   defineEnvField({ file: 'root', key: 'ADMIN_WEB_HOST', type: 'text', policy: 'runtime-only', description: 'Admin web bind host' }),
   defineEnvField({ file: 'root', key: 'ADMIN_WEB_PORT', type: 'number', policy: 'runtime-only', description: 'Admin web bind port' }),
@@ -155,6 +176,8 @@ const CONTROL_PANEL_ENV_FIELDS = Object.freeze([
   defineEnvField({ file: 'root', key: 'BOT_ENABLE_DELIVERY_WORKER', type: 'boolean', description: 'Run delivery worker in bot process' }),
   defineEnvField({ file: 'root', key: 'BOT_ENABLE_OPS_ALERT_ROUTE', type: 'boolean', description: 'Expose ops alert route in bot process' }),
   defineEnvField({ file: 'root', key: 'BOT_ENABLE_RESTART_SCHEDULER', type: 'boolean', description: 'Enable restart scheduler in bot process' }),
+  defineEnvField({ file: 'root', key: 'BOT_HEALTH_HOST', type: 'text', policy: 'runtime-only', description: 'Bot health bind host' }),
+  defineEnvField({ file: 'root', key: 'BOT_HEALTH_PORT', type: 'number', policy: 'runtime-only', description: 'Bot health bind port' }),
   defineEnvField({ file: 'root', key: 'WORKER_ENABLE_DELIVERY', type: 'boolean', description: 'Run delivery queue in worker process' }),
   defineEnvField({ file: 'root', key: 'WORKER_ENABLE_RENTBIKE', type: 'boolean', description: 'Run rent-bike queue in worker process' }),
   defineEnvField({ file: 'root', key: 'WORKER_HEALTH_HOST', type: 'text', policy: 'runtime-only', description: 'Worker health bind host' }),

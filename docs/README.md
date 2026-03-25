@@ -22,6 +22,7 @@ Use this index to find the right document set by audience instead of scanning th
 - [ARCHITECTURE.md](./ARCHITECTURE.md)
 - [FIIX_BRIEF.md](./FIIX_BRIEF.md)
 - [fiix.txt](./fiix.txt)
+- [FIX_MASTERLIST_STATUS.md](./FIX_MASTERLIST_STATUS.md)
 - [RUNTIME_BOUNDARY_EXPLAINER.md](./RUNTIME_BOUNDARY_EXPLAINER.md)
 - [../apps/web-portal-standalone/README.md](../apps/web-portal-standalone/README.md)
 - [assets/README.md](./assets/README.md)
@@ -53,6 +54,16 @@ Use this index to find the right document set by audience instead of scanning th
 - `/tenant` and `/tenant/login` for tenant-scoped server admin work
 - `/player` and `/player/login` for player-facing portal flows
 - `/admin/legacy` is retained for compatibility only and should not be the first operator path
+
+## Current Runtime Entry Points
+
+- `apps/discord-bot/server.js`
+- `apps/admin-web/server.js`
+- `apps/api/server.js`
+- `apps/worker/server.js`
+- `apps/watcher/server.js`
+- `apps/agent/server.js`
+- `apps/web-portal-standalone/server.js`
 
 ## Product / Release Docs
 

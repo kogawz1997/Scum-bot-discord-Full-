@@ -191,6 +191,7 @@ const {
   createSubscription,
   createTenant,
   dispatchPlatformWebhookEvent,
+  emitPlatformEvent,
   getPlanCatalog,
   getPlatformAnalyticsOverview,
   getPlatformPermissionCatalog,
@@ -207,6 +208,8 @@ const {
   listPlatformWebhookEndpoints,
   recordPlatformAgentHeartbeat,
   reconcileDeliveryState,
+  revokePlatformApiKey,
+  rotatePlatformApiKey,
   verifyPlatformApiKey,
 } = require('./services/platformService');
 const {
@@ -282,6 +285,20 @@ const {
   listPlatformTenantConfigs,
   upsertPlatformTenantConfig,
 } = require('./services/platformTenantConfigService');
+const {
+  createServerRegistryService,
+} = require('./domain/servers/serverRegistryService');
+const {
+  createAgentRegistryService,
+} = require('./domain/agents/agentRegistryService');
+const {
+  createSyncIngestionService,
+} = require('./domain/sync/syncIngestionService');
+const {
+  listAgentSessions: listControlPlaneAgentSessions,
+  listSyncEvents: listControlPlaneSyncEvents,
+  listSyncRuns: listControlPlaneSyncRuns,
+} = require('./data/repositories/controlPlaneRegistryRepository');
 const { createAdminAuthRuntime } = require('./admin/auth/adminAuthRuntime');
 const {
   createAdminUserStoreRuntime,
@@ -669,6 +686,38 @@ const {
   tryNotifyTicket,
 } = createAdminTicketRuntime();
 
+const serverRegistryService = createServerRegistryService();
+const agentRegistryService = createAgentRegistryService({
+  createPlatformApiKey,
+  listPlatformApiKeys,
+  listPlatformAgentRuntimes,
+  recordPlatformAgentHeartbeat,
+  revokePlatformApiKey,
+  rotatePlatformApiKey,
+  getPlatformTenantById,
+});
+const syncIngestionService = createSyncIngestionService({
+  emitPlatformEvent,
+});
+
+const {
+  createServer,
+  createServerDiscordLink,
+  listServerLinks: listPlatformServerLinks,
+  listServerRegistry: listPlatformServerRegistry,
+} = serverRegistryService;
+const {
+  createAgentToken: createPlatformAgentToken,
+  listAgentRegistry: listPlatformAgentRegistry,
+  recordSession: recordPlatformAgentSession,
+  registerAgent: registerPlatformAgent,
+  revokeAgentToken: revokePlatformAgentToken,
+  rotateAgentToken: rotatePlatformAgentToken,
+} = agentRegistryService;
+const {
+  ingestPayload: ingestPlatformAgentSync,
+} = syncIngestionService;
+
 const handleAdminEntityPostRoute = createAdminEntityPostRoutes({
   sendJson,
   requiredString,
@@ -743,6 +792,10 @@ const handleAdminPublicRoute = createAdminPublicRoutes({
   getPlatformPublicOverview,
   getPlatformAnalyticsOverview,
   recordPlatformAgentHeartbeat,
+  verifyPlatformApiKey,
+  registerPlatformAgent,
+  recordPlatformAgentSession,
+  ingestPlatformAgentSync,
   reconcileDeliveryState,
   dispatchPlatformWebhookEvent,
   ssoDiscordActive: SSO_DISCORD_ACTIVE,
@@ -835,6 +888,12 @@ const handleAdminGetRoute = createAdminGetRoutes({
   listPlatformApiKeys,
   listPlatformWebhookEndpoints,
   listPlatformAgentRuntimes,
+  listPlatformServerRegistry,
+  listPlatformServerLinks,
+  listPlatformAgentRegistry,
+  listPlatformAgentSessions: listControlPlaneAgentSessions,
+  listPlatformSyncRuns: listControlPlaneSyncRuns,
+  listPlatformSyncEvents: listControlPlaneSyncEvents,
   listMarketplaceOffers,
   reconcileDeliveryState,
   clampMetricsWindowMs,
@@ -967,12 +1026,17 @@ const handleAdminPlatformPostRoute = createAdminPlatformPostRoutes({
   getCurrentObservabilitySnapshot,
   publishAdminLiveUpdate,
   createTenant,
+  createServer,
+  createServerDiscordLink,
   createSubscription,
   issuePlatformLicense,
   listPlatformLicenses,
   acceptPlatformLicenseLegal,
   createPlatformApiKey,
   createPlatformWebhookEndpoint,
+  createPlatformAgentToken,
+  revokePlatformAgentToken,
+  rotatePlatformAgentToken,
   dispatchPlatformWebhookEvent,
   createMarketplaceOffer,
   reconcileDeliveryState,

@@ -27,12 +27,14 @@ test('normalizeAgentRuntimeProfile infers execute agents from console and delive
     meta: {
       capabilities: ['rcon', 'command'],
       serverId: 'server-b',
+      guildId: 'guild-b',
     },
   });
 
   assert.equal(profile.agentRole, 'execute');
   assert.equal(profile.agentScope, 'execute_only');
   assert.equal(profile.serverId, 'server-b');
+  assert.equal(profile.guildId, 'guild-b');
 });
 
 test('normalizeAgentRuntimeProfile keeps explicit hybrid scope when provided', () => {
@@ -59,6 +61,7 @@ test('mergeAgentRuntimeProfile preserves original meta while adding normalized f
     {
       agentRole: 'sync',
       agentScope: 'sync_only',
+      guildId: 'guild-ops',
       capabilities: ['logs'],
     },
   );
@@ -68,6 +71,7 @@ test('mergeAgentRuntimeProfile preserves original meta while adding normalized f
     owner: 'ops',
     agentRole: 'sync',
     agentScope: 'sync_only',
+    guildId: 'guild-ops',
     capabilities: ['logs'],
   });
 });

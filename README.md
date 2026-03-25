@@ -1,4 +1,4 @@
-# SCUM TH Platform
+﻿# SCUM TH Platform
 
 [![CI](https://github.com/kogawz1997/Scum-bot-discord-Full-/actions/workflows/ci.yml/badge.svg)](https://github.com/kogawz1997/Scum-bot-discord-Full-/actions/workflows/ci.yml)
 [![Release](https://github.com/kogawz1997/Scum-bot-discord-Full-/actions/workflows/release.yml/badge.svg)](https://github.com/kogawz1997/Scum-bot-discord-Full-/actions/workflows/release.yml)
@@ -6,7 +6,7 @@
 ![discord.js](https://img.shields.io/badge/discord.js-v14.25.1-5865F2?style=for-the-badge&logo=discord&logoColor=white)
 ![Prisma](https://img.shields.io/badge/Prisma-5.22.0-2D3748?style=for-the-badge&logo=prisma&logoColor=white)
 
-Last updated: **2026-03-24**
+Last updated: **2026-03-25**
 
 SCUM TH Platform is a control plane for a SCUM community stack built around:
 
@@ -36,6 +36,7 @@ If a statement in this repository is not backed by code, tests, CI artifacts, or
 - Runtime topology: [docs/RUNTIME_TOPOLOGY.md](./docs/RUNTIME_TOPOLOGY.md)
 - Worklist: [docs/WORKLIST.md](./docs/WORKLIST.md)
 - Product-ready gap matrix: [docs/PRODUCT_READY_GAP_MATRIX.md](./docs/PRODUCT_READY_GAP_MATRIX.md)
+- Fix master list status: [docs/FIX_MASTERLIST_STATUS.md](./docs/FIX_MASTERLIST_STATUS.md)
 - FIIX brief summary: [docs/FIIX_BRIEF.md](./docs/FIIX_BRIEF.md)
 - Preserved raw FIIX prompt: [docs/fiix.txt](./docs/fiix.txt)
 - Practical adoption plan: [docs/PRACTICAL_ADOPTION_PLAN.md](./docs/PRACTICAL_ADOPTION_PLAN.md)
@@ -56,6 +57,7 @@ If a statement in this repository is not backed by code, tests, CI artifacts, or
 
 ### Runtime and topology
 
+- Staged runtime entrypoints now exist under `apps/api`, `apps/admin-web`, `apps/discord-bot`, `apps/worker`, `apps/watcher`, and `apps/agent`
 - Split processes for `bot`, `worker`, `watcher`, `admin web`, `player portal`, and `console-agent`
 - Health endpoints for each runtime
 - Topology checks, production checks, smoke checks, and PM2 manifests
@@ -68,6 +70,9 @@ If a statement in this repository is not backed by code, tests, CI artifacts, or
 - Player API groups are partly split under `apps/web-portal-standalone/api/`
 - Player portal page routing and canonical redirects now live under `apps/web-portal-standalone/runtime/portalPageRoutes.js`
 - Player portal page/static loading, response/security helpers, reward/wheel helpers, and HTTP lifecycle wiring now live under `apps/web-portal-standalone/runtime/`
+- Control-plane agent contracts now live under `src/contracts/agent/`
+- Control-plane registry/domain services now live under `src/data/repositories/controlPlaneRegistryRepository.js`, `src/domain/servers/`, `src/domain/agents/`, `src/domain/sync/`, and `src/domain/delivery/`
+- Centralized control-plane routes now accept agent registration, session heartbeat, and sync ingestion through `/platform/api/v1/agent/*`
 
 ### Persistence
 
@@ -109,6 +114,7 @@ If a statement in this repository is not backed by code, tests, CI artifacts, or
 ### Operations and observability
 
 - Runtime supervisor with per-role status
+- Control-plane registry now persists explicit tenant/server/guild/agent relationships for agent routing and sync freshness
 - Notification center and reconcile findings in admin
 - Owner console now supports one-click tenant diagnostics export so support can gather tenant runtime, delivery, request-error, and commercial context from one place
 - Owner console now also exposes tenant support-case context, delivery lifecycle reporting, and guarded automation control from the primary surface
@@ -221,14 +227,16 @@ Environment coverage status is summarized in [docs/assets/live-native-proof-cove
 
 ```mermaid
 flowchart LR
-  A[SCUM.log] --> B[Watcher runtime]
-  B --> C[/scum-event webhook]
-  C --> D[Bot / Admin Web]
-  D --> E[(PostgreSQL)]
-  F[Worker] --> E
-  F --> G[Delivery runtime]
-  G --> H[RCON or Console Agent]
-  I[Player Portal] --> E
+  A["Discord Bot"] --> B["Control plane routes"]
+  C["Admin Web"] --> B
+  D["Player Portal"] --> B
+  E["Sync Agent"] -->|"read/sync only"| B
+  B --> F["Domain + repositories"]
+  F --> G["Worker / delivery jobs"]
+  G --> H["Execute Agent"]
+  E --> I["SCUM log / state readers"]
+  H --> J["SCUM command / proof adapters"]
+  F --> K["PostgreSQL + projections"]
 ```
 
 See [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) for file-level references.
@@ -313,13 +321,13 @@ DELIVERY_NATIVE_PROOF_WAIT_FOR_STATE_MS=15000
 DELIVERY_NATIVE_PROOF_POLL_INTERVAL_MS=1500
 ```
 
-### Web Setup (Admin Web + Player Portal) แบบละเอียด
+### Web Setup (Admin Web + Player Portal)
 
-#### Admin Web (แนะนำสำหรับ production)
+#### Admin Web (recommended production baseline)
 
-โฟลเดอร์ admin web: `src/adminWebServer.js` (รันผ่าน runtime bot)
+Admin web runs through the bot runtime entrypoint at `src/adminWebServer.js`.
 
-ตัวอย่าง `.env` ที่แนะนำ (ปรับโดเมน/พอร์ตตามของจริง):
+Recommended production `.env` values:
 
 ```env
 ADMIN_WEB_HOST=0.0.0.0
@@ -337,13 +345,13 @@ ADMIN_WEB_SESSION_COOKIE_NAME=scum_admin_session
 ADMIN_WEB_SESSION_COOKIE_PATH=/
 ADMIN_WEB_SESSION_COOKIE_SAMESITE=Strict
 
-# Auth hardening (แนะนำเปิด)
+# Auth hardening
 ADMIN_WEB_2FA_ENABLED=true
 ADMIN_WEB_2FA_SECRET=put_a_strong_totp_secret_here
 ADMIN_WEB_STEP_UP_ENABLED=true
 ADMIN_WEB_LOCAL_RECOVERY=false
 
-# ถ้าเปิด Discord SSO สำหรับ admin
+# If Discord SSO is enabled for admin access
 ADMIN_WEB_SSO_DISCORD_ENABLED=true
 ADMIN_WEB_SSO_DISCORD_CLIENT_ID=...
 ADMIN_WEB_SSO_DISCORD_CLIENT_SECRET=...
@@ -351,11 +359,11 @@ ADMIN_WEB_SSO_DISCORD_REDIRECT_URI=https://admin.genz.noah-dns.online/admin/auth
 ADMIN_WEB_SSO_DISCORD_GUILD_ID=...
 ```
 
-#### Player Portal (แนะนำสำหรับ production)
+#### Player Portal (recommended production baseline)
 
-โฟลเดอร์ portal: `apps/web-portal-standalone/` (รันแยก process)
+The player portal runs as a separate process from `apps/web-portal-standalone/`.
 
-ตัวอย่าง `.env` (ไฟล์ของ portal) ที่แนะนำ:
+Recommended portal `.env` values:
 
 ```env
 WEB_PORTAL_MODE=player
@@ -380,13 +388,13 @@ WEB_PORTAL_DISCORD_CLIENT_SECRET=...
 WEB_PORTAL_DISCORD_REDIRECT_PATH=/auth/discord/callback
 ```
 
-หมายเหตุ:
+Notes:
 
-- admin surface หลักปัจจุบันคือ `/owner` และ `/tenant`
-- `/admin` ยังเป็น entry/compatibility path ได้ แต่ไม่ใช่ primary operator surface
-- เพราะ owner และ tenant อยู่ที่ top-level routes จึงต้องใช้ `ADMIN_WEB_SESSION_COOKIE_PATH=/`
+- Primary admin surfaces are `/owner` and `/tenant`.
+- `/admin` remains an entry and compatibility path, but it is not the primary operator surface.
+- Because owner and tenant live on top-level routes, `ADMIN_WEB_SESSION_COOKIE_PATH=/` is required.
 
-#### วิธีเช็กว่าตั้งค่าเว็บเสร็จแล้ว
+#### Validate Web Deployment
 
 ```bash
 npm run doctor:web-standalone:prod
@@ -395,7 +403,7 @@ npm run readiness:prod
 npm run smoke:postdeploy
 ```
 
-ถ้า smoke script ใช้ public base url ผ่าน env แยก ให้ตั้ง:
+If the smoke script reads base URLs from the environment, set:
 
 ```bat
 set SMOKE_ADMIN_BASE_URL=https://admin.genz.noah-dns.online/admin

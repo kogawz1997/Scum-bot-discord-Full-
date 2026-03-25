@@ -4,21 +4,59 @@ This document describes the runtime split that the repository currently supports
 
 ## Active Runtime Roles
 
-| Role          | Entry                                                                             | Main responsibility                                                                 | Health                     |
-| ------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | -------------------------- |
-| Bot           | [src/bot.js](../src/bot.js)                                                       | Discord gateway, command dispatch, optional admin web mount, optional webhook mount | `BOT_HEALTH_PORT`          |
-| Worker        | [src/worker.js](../src/worker.js)                                                 | Delivery worker, rent bike queue, worker heartbeat                                  | `WORKER_HEALTH_PORT`       |
-| Watcher       | [src/services/scumLogWatcherRuntime.js](../src/services/scumLogWatcherRuntime.js) | SCUM log tailing and webhook forwarding                                             | `SCUM_WATCHER_HEALTH_PORT` |
-| Admin Web     | [src/adminWebServer.js](../src/adminWebServer.js)                                 | Admin auth, config, audit, observability, backup/restore                            | `ADMIN_WEB_PORT`           |
-| Player Portal | [apps/web-portal-standalone/server.js](../apps/web-portal-standalone/server.js)   | Player login, wallet, shop, profile, redeem                                         | `WEB_PORTAL_PORT`          |
-| Console Agent | [src/scum-console-agent.js](../src/scum-console-agent.js)                         | Agent-side command execution bridge                                                 | `SCUM_CONSOLE_AGENT_PORT`  |
+| Role          | Entry                                                                           | Main responsibility                                                                 | Health                     |
+| ------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | -------------------------- |
+| Bot           | [apps/discord-bot/server.js](../apps/discord-bot/server.js)                     | Discord gateway, command dispatch, optional admin web mount, optional webhook mount | `BOT_HEALTH_PORT`          |
+| Worker        | [apps/worker/server.js](../apps/worker/server.js)                               | Delivery worker, rent bike queue, worker heartbeat                                  | `WORKER_HEALTH_PORT`       |
+| Watcher       | [apps/watcher/server.js](../apps/watcher/server.js)                             | SCUM log tailing plus sync forwarding to control plane                              | `SCUM_WATCHER_HEALTH_PORT` |
+| Admin Web     | [apps/admin-web/server.js](../apps/admin-web/server.js)                         | Admin auth, config, audit, observability, backup/restore                            | `ADMIN_WEB_PORT`           |
+| Player Portal | [apps/web-portal-standalone/server.js](../apps/web-portal-standalone/server.js) | Player login, wallet, shop, profile, redeem                                         | `WEB_PORTAL_PORT`          |
+| Console Agent | [apps/agent/server.js](../apps/agent/server.js)                                 | Agent-side command execution bridge                                                 | `SCUM_CONSOLE_AGENT_PORT`  |
+| API shim      | [apps/api/server.js](../apps/api/server.js)                                     | Compatibility bootstrap for the centralized control-plane HTTP surface              | `ADMIN_WEB_PORT`           |
 
 ## Startup Boundaries
 
+- Staged runtime wrappers now live under [apps/](../apps/).
 - Bot bootstrap helpers live under [src/bootstrap/](../src/bootstrap/).
 - Runtime flag parsing lives under [src/config/](../src/config/).
 - Shared env assertions remain in [src/utils/env.js](../src/utils/env.js).
 - Runtime supervisor logic lives in [src/services/runtimeSupervisorService.js](../src/services/runtimeSupervisorService.js).
+- Agent contracts and scope normalization live under [src/contracts/agent/](../src/contracts/agent/).
+- Centralized control-plane registry/domain boundaries live under:
+  - [src/data/repositories/controlPlaneRegistryRepository.js](../src/data/repositories/controlPlaneRegistryRepository.js)
+  - [src/domain/servers/](../src/domain/servers/)
+  - [src/domain/agents/](../src/domain/agents/)
+  - [src/domain/sync/](../src/domain/sync/)
+  - [src/domain/delivery/](../src/domain/delivery/)
+- SCUM-specific adapters/parsers now live under [src/integrations/scum/](../src/integrations/scum/).
+
+## Control Plane Routes
+
+The centralized HTTP layer now terminates agent traffic instead of allowing Discord/web to talk to game-side machines directly.
+
+- `POST /platform/api/v1/agent/register`
+  - scoped registration
+  - binds agent identity to tenant/server/guild/runtime context
+- `POST /platform/api/v1/agent/session`
+  - heartbeat/session refresh
+  - updates online/offline freshness
+- `POST /platform/api/v1/agent/sync`
+  - read/sync path only
+  - validates payload, normalizes, persists sync runs/events, and updates projections
+
+Admin-side control-plane routes now also expose:
+
+- `POST /admin/api/platform/server`
+- `POST /admin/api/platform/server-discord-link`
+- `POST /admin/api/platform/agent-token`
+- `POST /admin/api/platform/agent-token/revoke`
+- `POST /admin/api/platform/agent-token/rotate`
+- `GET /admin/api/platform/servers`
+- `GET /admin/api/platform/server-discord-links`
+- `GET /admin/api/platform/agent-registry`
+- `GET /admin/api/platform/agent-sessions`
+- `GET /admin/api/platform/sync-runs`
+- `GET /admin/api/platform/sync-events`
 
 ## Supported Topologies
 
@@ -36,6 +74,7 @@ This is the target production topology.
 
 - `Machine A`
   - `bot`
+  - `admin web`
   - `worker`
   - `player portal`
   - PostgreSQL
@@ -57,8 +96,11 @@ This exists for local development and targeted verification.
 ## Current Constraints
 
 - Delivery can run in `rcon` or `agent` mode, but agent mode still depends on a live SCUM window and Windows session.
+- Read/sync and write/execute are now split by role and scope, but a `hybrid` agent identity remains supported as a compatibility bridge.
 - Tenant-aware application paths are topology-ready through selected schema/database-per-tenant routing plus PostgreSQL RLS strict mode; this workstation now boots with `TENANT_DB_TOPOLOGY_MODE=schema-per-tenant` and default tenant `1259096998045421672`.
 - Watcher health is allowed to report `disabled` when the runtime is intentionally turned off.
+- Runtime state should not be tracked inside the repository in production or DB-only mode; persistence now defaults to external OS-managed state paths unless explicitly overridden.
+- Owner/admin runtime views now expose `sync`, `execute`, and `hybrid` agent role/scope hints so operator responsibility is visible from the control plane.
 
 ## Review Checklist
 

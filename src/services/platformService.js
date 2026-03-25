@@ -46,9 +46,22 @@ const PLATFORM_SCOPE_GROUPS = Object.freeze([
     scopes: ['webhook:read', 'webhook:write'],
   },
   {
+    key: 'server',
+    title: 'Server + Guild Mapping',
+    scopes: ['server:read', 'server:write'],
+  },
+  {
     key: 'analytics',
     title: 'Analytics + Monitoring',
-    scopes: ['analytics:read', 'delivery:reconcile', 'agent:write'],
+    scopes: [
+      'analytics:read',
+      'delivery:reconcile',
+      'agent:write',
+      'agent:register',
+      'agent:session',
+      'agent:sync',
+      'agent:execute',
+    ],
   },
 ]);
 
@@ -1238,6 +1251,53 @@ async function listPlatformApiKeys(options = {}) {
   return rows.map(sanitizeApiKeyRow);
 }
 
+async function revokePlatformApiKey(apiKeyId, actor = 'system') {
+  const id = trimText(apiKeyId, 120);
+  if (!id) return { ok: false, reason: 'invalid-api-key-id' };
+  const rows = await listPlatformApiKeys({ allowGlobal: true, limit: 1000 });
+  const target = rows.find((row) => String(row?.id || '') === id) || null;
+  if (!target) return { ok: false, reason: 'platform-apikey-not-found' };
+  const row = await runWithOptionalTenantDbIsolation(target.tenantId, (db) => db.platformApiKey.update({
+    where: { id },
+    data: {
+      status: 'revoked',
+      revokedAt: new Date(),
+    },
+  })).catch(() => null);
+  if (!row) return { ok: false, reason: 'platform-apikey-revoke-failed' };
+  await emitPlatformEvent('platform.apikey.revoked', {
+    tenantId: target.tenantId,
+    apiKeyId: id,
+    actor,
+  }, { tenantId: target.tenantId });
+  return {
+    ok: true,
+    apiKey: sanitizeApiKeyRow(row),
+  };
+}
+
+async function rotatePlatformApiKey(input = {}, actor = 'system') {
+  const apiKeyId = trimText(input.apiKeyId, 120);
+  if (!apiKeyId) return { ok: false, reason: 'invalid-api-key-id' };
+  const rows = await listPlatformApiKeys({ allowGlobal: true, limit: 1000 });
+  const target = rows.find((row) => String(row?.id || '') === apiKeyId) || null;
+  if (!target) return { ok: false, reason: 'platform-apikey-not-found' };
+  const created = await createPlatformApiKey({
+    tenantId: target.tenantId,
+    name: trimText(input.name, 160) || target.name,
+    scopes: Array.isArray(target.scopes) ? target.scopes : [],
+    status: 'active',
+  }, actor);
+  if (!created.ok) return created;
+  await revokePlatformApiKey(apiKeyId, actor).catch(() => null);
+  return {
+    ok: true,
+    apiKey: created.apiKey,
+    rawKey: created.rawKey,
+    rotatedFrom: apiKeyId,
+  };
+}
+
 async function verifyPlatformApiKey(rawKey, requiredScopes = []) {
   const key = trimText(rawKey, 500);
   if (!key) return { ok: false, reason: 'missing-api-key' };
@@ -2271,6 +2331,7 @@ module.exports = {
   createSubscription,
   createTenant,
   dispatchPlatformWebhookEvent,
+  emitPlatformEvent,
   getPlanCatalog,
   getPlatformAnalyticsOverview,
   getPlatformPermissionCatalog,
@@ -2288,5 +2349,7 @@ module.exports = {
   listPlatformWebhookEndpoints,
   recordPlatformAgentHeartbeat,
   reconcileDeliveryState,
+  revokePlatformApiKey,
+  rotatePlatformApiKey,
   verifyPlatformApiKey,
 };

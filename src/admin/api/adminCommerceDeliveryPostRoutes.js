@@ -498,6 +498,8 @@ function createAdminCommerceDeliveryPostRoutes(deps) {
             userId: requiredString(body, 'userId') || undefined,
             purchaseCode: requiredString(body, 'purchaseCode') || undefined,
             tenantId: tenantId || undefined,
+            serverId: requiredString(body, 'serverId') || undefined,
+            guildId: requiredString(body, 'guildId') || undefined,
           }),
         });
       } catch (error) {
@@ -533,6 +535,8 @@ function createAdminCommerceDeliveryPostRoutes(deps) {
             teleportTarget: requiredString(body, 'teleportTarget') || undefined,
             returnTarget: requiredString(body, 'returnTarget') || undefined,
             tenantId: tenantId || undefined,
+            serverId: requiredString(body, 'serverId') || undefined,
+            guildId: requiredString(body, 'guildId') || undefined,
           }),
         });
       } catch (error) {
@@ -574,6 +578,8 @@ function createAdminCommerceDeliveryPostRoutes(deps) {
             teleportTarget: requiredString(body, 'teleportTarget') || undefined,
             returnTarget: requiredString(body, 'returnTarget') || undefined,
             tenantId: tenantId || undefined,
+            serverId: requiredString(body, 'serverId') || undefined,
+            guildId: requiredString(body, 'guildId') || undefined,
           }),
         });
       } catch (error) {
@@ -634,6 +640,8 @@ function createAdminCommerceDeliveryPostRoutes(deps) {
             userId: requiredString(body, 'userId') || undefined,
             purchaseCode: requiredString(body, 'purchaseCode') || undefined,
             tenantId: tenantId || undefined,
+            serverId: requiredString(body, 'serverId') || undefined,
+            guildId: requiredString(body, 'guildId') || undefined,
           }),
         });
       } catch (error) {

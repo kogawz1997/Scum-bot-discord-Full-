@@ -171,8 +171,8 @@ test('admin API auth + validation integration flow', async (t) => {
   });
 
   const baseUrl = `http://127.0.0.1:${port}`;
-  async function request(pathname, method = 'GET', body = null, cookie = '') {
-    const headers = {};
+  async function request(pathname, method = 'GET', body = null, cookie = '', extraHeaders = {}) {
+    const headers = { ...extraHeaders };
     if (body != null) headers['content-type'] = 'application/json';
     if (cookie) headers.cookie = cookie;
     const res = await fetch(`${baseUrl}${pathname}`, {

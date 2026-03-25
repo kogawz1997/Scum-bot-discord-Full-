@@ -1,6 +1,6 @@
 # Config Matrix
 
-Last updated: **2026-03-16**
+Last updated: **2026-03-25**
 
 This document is the operator-facing matrix for core configuration. It is not a complete dump of every env key. For the full list, see [ENV_REFERENCE_TH.md](./ENV_REFERENCE_TH.md).
 
@@ -26,6 +26,7 @@ This document is the operator-facing matrix for core configuration. It is not a 
 | `TENANT_DB_TOPOLOGY_MODE`  | Optional | Yes             | all     | env-only | `shared`, `schema-per-tenant`, or `database-per-tenant`            |
 | `PERSIST_REQUIRE_DB`       | Yes      | Yes             | all     | restart  | should stay `true` in production                                   |
 | `PERSIST_LEGACY_SNAPSHOTS` | Yes      | Yes             | all     | restart  | should stay `false` in production                                  |
+| `BOT_DATA_DIR`             | Optional | Yes             | all     | env-only | production and DB-only mode should prefer external OS-managed path |
 
 ## Discord Bot
 
@@ -75,24 +76,47 @@ This document is the operator-facing matrix for core configuration. It is not a 
 | `SCUM_CONSOLE_AGENT_REQUIRED`      | Optional | No              | delivery        | restart  | allows optional degraded agent with fallback                                                                     |
 | `SCUM_CONSOLE_AGENT_EXEC_TEMPLATE` | Optional | Yes             | agent           | env-only | required for exec backend                                                                                        |
 
+## Sync Agent / Control Plane Routing
+
+| Key                           | Required | Production-only | Used by | UI scope | Notes                                                                                          |
+| ----------------------------- | -------- | --------------- | ------- | -------- | ---------------------------------------------------------------------------------------------- |
+| `SYNC_TRANSPORT`              | Optional | No              | watcher | restart  | `webhook`, `control-plane`, or `dual`; use `control-plane` or `dual` for scoped sync ingestion |
+| `SCUM_SYNC_CONTROL_PLANE_URL` | Optional | Yes             | watcher | env-only | canonical control-plane origin for sync payload posts                                          |
+| `SCUM_SYNC_AGENT_TOKEN`       | Optional | Yes             | watcher | no-ui    | scoped agent token for read/sync path                                                          |
+| `SYNC_TENANT_ID`              | Optional | Yes             | watcher | env-only | explicit tenant scope for sync payloads                                                        |
+| `SYNC_SERVER_ID`              | Optional | Yes             | watcher | env-only | explicit server scope for sync payloads                                                        |
+| `SYNC_AGENT_ID`               | Optional | Yes             | watcher | env-only | stable agent identity for sync path                                                            |
+| `SYNC_RUNTIME_KEY`            | Optional | Yes             | watcher | env-only | runtime identity associated with the sync agent                                                |
+| `SYNC_AGENT_VERSION`          | Optional | No              | watcher | env-only | agent version reported to control plane                                                        |
+| `SYNC_AGENT_CHANNEL`          | Optional | No              | watcher | env-only | optional channel or workstation label                                                          |
+| `PLATFORM_API_BASE_URL`       | Optional | Yes             | agent   | env-only | fallback control-plane base URL for staged agent clients                                       |
+| `PLATFORM_AGENT_TOKEN`        | Optional | Yes             | agent   | no-ui    | fallback scoped agent token for staged agent clients                                           |
+
+Operator rule:
+
+- use separate tokens for sync/read and execute/write when possible
+- `hybrid` remains supported as a compatibility bridge, not the preferred long-term posture
+- Discord/web/admin must still route through the control plane; these keys are for game-side agents only
+
 ## Admin Web
 
-| Key                                   | Required | Production-only | Used by   | UI scope | Notes                          |
-| ------------------------------------- | -------- | --------------- | --------- | -------- | ------------------------------ |
-| `ADMIN_WEB_PORT`                      | Yes      | Yes             | admin web | env-only | bind port                      |
-| `ADMIN_WEB_HOST`                      | Optional | Yes             | admin web | env-only | bind host                      |
-| `ADMIN_WEB_PASSWORD`                  | Yes      | Yes             | admin web | no-ui    | bootstrap/admin recovery path  |
-| `ADMIN_WEB_TOKEN`                     | Yes      | Yes             | admin web | no-ui    | secret                         |
-| `ADMIN_WEB_2FA_ENABLED`               | Yes      | Yes             | admin web | restart  | should be `true` in production |
-| `ADMIN_WEB_2FA_SECRET`                | Yes      | Yes             | admin web | no-ui    | secret                         |
-| `ADMIN_WEB_STEP_UP_ENABLED`           | Yes      | Yes             | admin web | restart  | should be `true` in production |
-| `ADMIN_WEB_SSO_DISCORD_ENABLED`       | Optional | No              | admin web | restart  | SSO feature flag               |
-| `ADMIN_WEB_SSO_DISCORD_CLIENT_ID`     | Optional | Yes             | admin web | restart  | OAuth client id                |
-| `ADMIN_WEB_SSO_DISCORD_CLIENT_SECRET` | Optional | Yes             | admin web | no-ui    | secret                         |
-| `ADMIN_WEB_SSO_DISCORD_GUILD_ID`      | Optional | Yes             | admin web | restart  | guild scope for SSO            |
-| `ADMIN_WEB_SECURE_COOKIE`             | Yes      | Yes             | admin web | restart  | should be `true` in production |
-| `ADMIN_WEB_ENFORCE_ORIGIN_CHECK`      | Yes      | Yes             | admin web | restart  | should be `true` in production |
-| `ADMIN_WEB_ALLOWED_ORIGINS`           | Optional | Yes             | admin web | restart  | comma-separated allowlist      |
+| Key                                   | Required | Production-only | Used by   | UI scope | Notes                                    |
+| ------------------------------------- | -------- | --------------- | --------- | -------- | ---------------------------------------- |
+| `ADMIN_WEB_PORT`                      | Yes      | Yes             | admin web | env-only | bind port                                |
+| `ADMIN_WEB_HOST`                      | Optional | Yes             | admin web | env-only | bind host                                |
+| `ADMIN_WEB_PASSWORD`                  | Yes      | Yes             | admin web | no-ui    | bootstrap/admin recovery path            |
+| `ADMIN_WEB_TOKEN`                     | Yes      | Yes             | admin web | no-ui    | secret                                   |
+| `ADMIN_WEB_2FA_ENABLED`               | Yes      | Yes             | admin web | restart  | should be `true` in production           |
+| `ADMIN_WEB_2FA_SECRET`                | Yes      | Yes             | admin web | no-ui    | secret                                   |
+| `ADMIN_WEB_STEP_UP_ENABLED`           | Yes      | Yes             | admin web | restart  | should be `true` in production           |
+| `ADMIN_WEB_SSO_DISCORD_ENABLED`       | Optional | No              | admin web | restart  | SSO feature flag                         |
+| `ADMIN_WEB_SSO_DISCORD_CLIENT_ID`     | Optional | Yes             | admin web | restart  | OAuth client id                          |
+| `ADMIN_WEB_SSO_DISCORD_CLIENT_SECRET` | Optional | Yes             | admin web | no-ui    | secret                                   |
+| `ADMIN_WEB_SSO_DISCORD_GUILD_ID`      | Optional | Yes             | admin web | restart  | guild scope for SSO                      |
+| `ADMIN_WEB_SECURE_COOKIE`             | Yes      | Yes             | admin web | restart  | should be `true` in production           |
+| `ADMIN_WEB_ENFORCE_ORIGIN_CHECK`      | Yes      | Yes             | admin web | restart  | should be `true` in production           |
+| `ADMIN_WEB_ALLOWED_ORIGINS`           | Optional | Yes             | admin web | restart  | comma-separated allowlist                |
+| `ADMIN_LOG_LANGUAGE`                  | Optional | No              | admin web | runtime  | owner-facing Discord ops alerts language |
 
 ## Player Portal
 
@@ -114,7 +138,8 @@ Current state:
 
 - some runtime, bot, delivery, and feature settings are editable through admin UI
 - some env-backed settings can be edited but still require restart
-- admin env metadata now covers SSO role mapping, login/rate-limit settings, cookie/origin policy, persistence flags, watcher health settings, agent tuning, tenant DB topology settings, native delivery proof settings, and portal OAuth/map settings
+- admin env metadata now covers runtime identity and bind settings, persistence flags, bot and watcher health settings, SSO role mapping, login/rate-limit settings, cookie/origin policy, agent tuning, tenant DB topology settings, native delivery proof settings, and portal OAuth/map settings
+- owner control now also covers `ADMIN_LOG_LANGUAGE` for the Discord `#admin-log` workflow
 - secrets and low-level bind/topology settings remain env-only by design
 
 Use this rule for review:
@@ -128,8 +153,9 @@ Use this rule for review:
 | ------------- | ------------------------------------------------------------------------ | ----------------------------------------------------- |
 | bot           | `NODE_ENV`, `DATABASE_PROVIDER`, `DATABASE_URL`, `DISCORD_TOKEN`         | webhook/admin/restart feature flags                   |
 | worker        | `NODE_ENV`, `DATABASE_PROVIDER`, `DATABASE_URL`                          | delivery/rentbike worker flags                        |
-| watcher       | `NODE_ENV`, `DATABASE_PROVIDER`, `DATABASE_URL` if persistence is needed | `SCUM_LOG_PATH`, watcher flags                        |
+| watcher       | `NODE_ENV`, `DATABASE_PROVIDER`, `DATABASE_URL` if persistence is needed | `SCUM_LOG_PATH`, watcher flags, sync transport config |
 | console-agent | `SCUM_CONSOLE_AGENT_TOKEN` and backend-specific config                   | bind host/port, exec template, process backend config |
+| sync agent    | scoped token plus control-plane URL and tenant/server/agent identity     | version/channel labels                                |
 | player portal | `WEB_PORTAL_BASE_URL`, OAuth config, DB config                           | cookie/origin hardening options                       |
 
 ## Related Documents

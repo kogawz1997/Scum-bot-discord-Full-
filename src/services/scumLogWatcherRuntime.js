@@ -27,6 +27,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { assertWatcherEnv } = require('../utils/env');
 const { startRuntimeHealthServer } = require('./runtimeHealthServer');
+const {
+  parseScumLogLine,
+} = require('../integrations/scum/parsers/logEventParser');
+const {
+  postAgentSyncPayload,
+} = require('../integrations/scum/adapters/controlPlaneSyncClient');
 
 function envFlag(value, fallback = false) {
   const raw = String(value || '').trim().toLowerCase();
@@ -50,6 +56,39 @@ const WEBHOOK_URL =
   process.env.SCUM_WEBHOOK_URL || 'http://127.0.0.1:3100/scum-event';
 const SECRET = process.env.SCUM_WEBHOOK_SECRET || '';
 const GUILD_ID = process.env.DISCORD_GUILD_ID || '';
+const SYNC_TRANSPORT = String(process.env.SCUM_SYNC_TRANSPORT || 'webhook')
+  .trim()
+  .toLowerCase() || 'webhook';
+const SYNC_TENANT_ID = String(
+  process.env.TENANT_ID
+    || process.env.PLATFORM_TENANT_ID
+    || process.env.SCUM_TENANT_ID
+    || '',
+).trim();
+const SYNC_SERVER_ID = String(
+  process.env.SCUM_SERVER_ID
+    || process.env.PLATFORM_SERVER_ID
+    || '',
+).trim();
+const SYNC_AGENT_ID = String(
+  process.env.SCUM_SYNC_AGENT_ID
+    || process.env.SCUM_AGENT_ID
+    || 'scum-sync-agent',
+).trim();
+const SYNC_RUNTIME_KEY = String(
+  process.env.SCUM_SYNC_RUNTIME_KEY
+    || process.env.SCUM_AGENT_RUNTIME_KEY
+    || 'scum-log-watcher',
+).trim();
+const SYNC_AGENT_VERSION = String(
+  process.env.SCUM_SYNC_AGENT_VERSION
+    || process.env.SCUM_AGENT_VERSION
+    || '0.0.0-local',
+).trim();
+const SYNC_AGENT_CHANNEL = String(
+  process.env.SCUM_AGENT_CHANNEL
+    || 'stable',
+).trim();
 
 function parseNumberEnv(name, fallback, minValue) {
   const raw = process.env[name];
@@ -131,12 +170,6 @@ const WATCHER_HEALTH_HOST = String(
   process.env.SCUM_WATCHER_HEALTH_HOST || '127.0.0.1',
 ).trim() || '127.0.0.1';
 const WATCHER_HEALTH_PORT = parseIntegerEnv('SCUM_WATCHER_HEALTH_PORT', 0, 0);
-
-const RESTART_PATTERNS = [
-  /Log file closed/i,
-  /LogSCUM:\s+Warning:\s+Server restart/i,
-  /LogSCUM:\s+Warning:\s+Server shutting down/i,
-];
 
 const MAX_DEDUPE_TRACK_SIZE = Math.max(
   5000,
@@ -437,192 +470,8 @@ function appendDeadLetter(reason, event, error) {
   }
 }
 
-function cleanName(value) {
-  return String(value || '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function parseDistance(value) {
-  if (value == null || value === '') return null;
-  const number = Number(value);
-  if (!Number.isFinite(number)) return null;
-  return number;
-}
-
-function parseHitZone(sourceText) {
-  const text = String(sourceText || '').toLowerCase();
-  if (!text) return null;
-  if (
-    /headshot/.test(text)
-    || /\bhead shot\b/.test(text)
-    || /\bin the head\b/.test(text)
-    || /\bto the head\b/.test(text)
-    || /\bhit\b[^.]*\bhead\b/.test(text)
-  ) {
-    return 'head';
-  }
-  if (
-    /\bbody shot\b/.test(text)
-    || /\bin the body\b/.test(text)
-    || /\bto the torso\b/.test(text)
-    || /\btorso\b/.test(text)
-    || /\bchest\b/.test(text)
-    || /\bstomach\b/.test(text)
-    || /\babdomen\b/.test(text)
-    || /\barm\b/.test(text)
-    || /\bleg\b/.test(text)
-  ) {
-    return 'body';
-  }
-  return null;
-}
-
-function parseSector(sourceText) {
-  const text = String(sourceText || '');
-  if (!text) return null;
-
-  const patterns = [
-    /\bsector\s*[:=]?\s*(?<sector>[A-Z]{1,2}\d{1,2})\b/i,
-    /\bgrid\s*[:=]?\s*(?<sector>[A-Z]{1,2}\d{1,2})\b/i,
-  ];
-  for (const pattern of patterns) {
-    const matched = text.match(pattern);
-    const value = String(matched?.groups?.sector || '')
-      .replace(/\s+/g, '')
-      .trim()
-      .toUpperCase();
-    if (/^[A-Z]{1,2}\d{1,2}$/.test(value)) {
-      return value;
-    }
-  }
-  return null;
-}
-
-function parseMapImageUrl(sourceText) {
-  const text = String(sourceText || '');
-  if (!text) return null;
-  const matched = text.match(
-    /(https?:\/\/[^\s"'<>]+?\.(?:png|jpe?g|webp|gif)(?:\?[^\s"'<>]*)?)/i,
-  );
-  return matched ? String(matched[1]) : null;
-}
-
-function toKillEvent(groups, weapon, distance, sourceText) {
-  return {
-    type: 'kill',
-    killer: cleanName(groups.killerName),
-    killerSteamId: String(groups.killerSteamId || ''),
-    victim: cleanName(groups.victimName),
-    victimSteamId: String(groups.victimSteamId || ''),
-    weapon: weapon ? cleanName(weapon) : null,
-    distance: parseDistance(distance),
-    hitZone: parseHitZone(sourceText),
-    sector: parseSector(sourceText),
-    mapImageUrl: parseMapImageUrl(sourceText),
-  };
-}
-
 function parseLine(line) {
-  const text = String(line || '').replace(/\u0000/g, '').trim();
-  if (!text) return null;
-
-  let match = text.match(/LogSCUM:\s+User\s+'(?<playerName>.+?)'\s+logged in/i);
-  if (match?.groups?.playerName) {
-    return {
-      type: 'join',
-      playerName: cleanName(match.groups.playerName),
-    };
-  }
-
-  match = text.match(
-    /LogSCUM:\s+'(?<remoteAddress>[^ ]+)\s+(?<steamId>\d{15,25}):(?<playerName>.+?)\(\d+\)'\s+logged in at:/i,
-  );
-  if (match?.groups?.playerName) {
-    return {
-      type: 'join',
-      playerName: cleanName(match.groups.playerName),
-      steamId: match.groups.steamId || null,
-      remoteAddress: cleanName(match.groups.remoteAddress),
-    };
-  }
-
-  match = text.match(
-    /LogSCUM:\s+Warning:\s+Prisoner logging out:\s+(?<playerName>.+?)(?:\s+\((?<steamId>\d{15,25})\))?$/i,
-  );
-  if (match?.groups?.playerName) {
-    return {
-      type: 'leave',
-      playerName: cleanName(match.groups.playerName),
-      steamId: match.groups.steamId || null,
-    };
-  }
-
-  match = text.match(
-    /LogBattlEye:\s+Display:\s+Player\s+#\d+\s+(?<playerName>.+?)\s+\([^)]+\)\s+disconnected/i,
-  );
-  if (match?.groups?.playerName) {
-    return {
-      type: 'leave',
-      playerName: cleanName(match.groups.playerName),
-      steamId: null,
-    };
-  }
-
-  match = text.match(
-    /LogSCUM:\s+'(?<steamId>\d{15,25}):(?<playerName>.+?)\(\d+\)'\s+Command:\s+'(?<command>.+?)'$/i,
-  );
-  if (match?.groups?.command) {
-    const commandText = cleanName(match.groups.command);
-    const commandName = String(commandText.split(/\s+/)[0] || '').trim() || null;
-    return {
-      type: 'admin-command',
-      playerName: cleanName(match.groups.playerName),
-      steamId: match.groups.steamId || null,
-      command: commandText,
-      commandName,
-    };
-  }
-
-  const killWithWeapon = text.match(
-    /LogSCUM:\s+'(?<victimSteamId>\d+):(?<victimName>.+?)\(\d+\)'\s+was killed by\s+'(?<killerSteamId>\d+):(?<killerName>.+?)\(\d+\)'\s+with\s+'(?<weapon>[^']+)'(?:\s+from\s+(?<distance>\d+(?:\.\d+)?)\s*m?)?/i,
-  );
-  if (killWithWeapon?.groups) {
-    return toKillEvent(
-      killWithWeapon.groups,
-      killWithWeapon.groups.weapon,
-      killWithWeapon.groups.distance,
-      text,
-    );
-  }
-
-  const killWithUsing = text.match(
-    /LogSCUM:\s+'(?<victimSteamId>\d+):(?<victimName>.+?)\(\d+\)'\s+was killed by\s+'(?<killerSteamId>\d+):(?<killerName>.+?)\(\d+\)'\s+using\s+'(?<weapon>[^']+)'(?:\s+from\s+(?<distance>\d+(?:\.\d+)?)\s*m?)?/i,
-  );
-  if (killWithUsing?.groups) {
-    return toKillEvent(
-      killWithUsing.groups,
-      killWithUsing.groups.weapon,
-      killWithUsing.groups.distance,
-      text,
-    );
-  }
-
-  const killNoWeapon = text.match(
-    /LogSCUM:\s+'(?<victimSteamId>\d+):(?<victimName>.+?)\(\d+\)'\s+was killed by\s+'(?<killerSteamId>\d+):(?<killerName>.+?)\(\d+\)'/i,
-  );
-  if (killNoWeapon?.groups) {
-    return toKillEvent(killNoWeapon.groups, null, null, text);
-  }
-
-  if (RESTART_PATTERNS.some((pattern) => pattern.test(text))) {
-    return {
-      type: 'restart',
-      message: 'Server is shutting down (or restarting)',
-    };
-  }
-
-  return null;
+  return parseScumLogLine(line);
 }
 
 function eventKey(event, sourceLine) {
@@ -678,15 +527,49 @@ async function postWebhook(payload) {
   }
 }
 
+async function postControlPlaneEvent(payload) {
+  const result = await postAgentSyncPayload({
+    tenantId: SYNC_TENANT_ID || undefined,
+    serverId: SYNC_SERVER_ID || undefined,
+    guildId: GUILD_ID || undefined,
+    agentId: SYNC_AGENT_ID || undefined,
+    runtimeKey: SYNC_RUNTIME_KEY || undefined,
+    role: 'sync',
+    scope: 'sync_only',
+    channel: SYNC_AGENT_CHANNEL || undefined,
+    version: SYNC_AGENT_VERSION || undefined,
+    sourceType: 'log',
+    sourcePath: LOG_PATH || undefined,
+    freshnessAt: new Date().toISOString(),
+    eventCount: 1,
+    events: [payload],
+  });
+  if (!result?.ok) {
+    throw new Error(`Control plane sync error: ${result?.reason || 'sync-failed'}`);
+  }
+}
+
 async function sendEvent(payload) {
   const body = { secret: SECRET, guildId: GUILD_ID, ...payload };
+  const transport = ['webhook', 'control-plane', 'dual'].includes(SYNC_TRANSPORT)
+    ? SYNC_TRANSPORT
+    : 'webhook';
   let attempt = 0;
 
   while (attempt <= WEBHOOK_MAX_RETRIES) {
+    let webhookDelivered = false;
+    let syncDelivered = false;
     try {
-      await postWebhook(body);
+      if (transport === 'webhook' || transport === 'dual') {
+        await postWebhook(body);
+        webhookDelivered = true;
+      }
+      if (transport === 'control-plane' || transport === 'dual') {
+        await postControlPlaneEvent(payload);
+        syncDelivered = true;
+      }
       recordWebhookAttempt(true);
-      return true;
+      return webhookDelivered || syncDelivered;
     } catch (error) {
       recordWebhookAttempt(false);
       const isLast = attempt >= WEBHOOK_MAX_RETRIES;

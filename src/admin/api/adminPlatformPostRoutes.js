@@ -15,12 +15,17 @@ function createAdminPlatformPostRoutes(deps) {
     getCurrentObservabilitySnapshot,
     publishAdminLiveUpdate,
     createTenant,
+    createServer,
+    createServerDiscordLink,
     createSubscription,
     issuePlatformLicense,
     listPlatformLicenses,
     acceptPlatformLicenseLegal,
     createPlatformApiKey,
     createPlatformWebhookEndpoint,
+    createPlatformAgentToken,
+    revokePlatformAgentToken,
+    rotatePlatformAgentToken,
     dispatchPlatformWebhookEvent,
     createMarketplaceOffer,
     reconcileDeliveryState,
@@ -150,6 +155,58 @@ function createAdminPlatformPostRoutes(deps) {
       return true;
     }
 
+    if (pathname === '/admin/api/platform/server') {
+      const tenantId = resolveScopedTenantId(
+        req,
+        res,
+        auth,
+        requiredString(body, 'tenantId'),
+        { required: true },
+      );
+      if (!tenantId) return true;
+      const result = await createServer({
+        id: requiredString(body, 'id'),
+        tenantId,
+        slug: requiredString(body, 'slug'),
+        name: requiredString(body, 'name'),
+        status: requiredString(body, 'status'),
+        locale: requiredString(body, 'locale'),
+        guildId: requiredString(body, 'guildId'),
+        metadata: body.metadata,
+      }, `admin-web:${auth?.user || 'unknown'}`);
+      if (!result.ok) {
+        sendJson(res, 400, { ok: false, error: result.reason || 'platform-server-failed' });
+        return true;
+      }
+      sendJson(res, 200, { ok: true, data: result.server });
+      return true;
+    }
+
+    if (pathname === '/admin/api/platform/server-discord-link') {
+      const tenantId = resolveScopedTenantId(
+        req,
+        res,
+        auth,
+        requiredString(body, 'tenantId'),
+        { required: true },
+      );
+      if (!tenantId) return true;
+      const result = await createServerDiscordLink({
+        id: requiredString(body, 'id'),
+        tenantId,
+        serverId: requiredString(body, 'serverId'),
+        guildId: requiredString(body, 'guildId'),
+        status: requiredString(body, 'status'),
+        metadata: body.metadata,
+      }, `admin-web:${auth?.user || 'unknown'}`);
+      if (!result.ok) {
+        sendJson(res, 400, { ok: false, error: result.reason || 'platform-server-discord-link-failed' });
+        return true;
+      }
+      sendJson(res, 200, { ok: true, data: result.link });
+      return true;
+    }
+
     if (pathname === '/admin/api/platform/subscription') {
       const tenantId = resolveScopedTenantId(
         req,
@@ -254,6 +311,61 @@ function createAdminPlatformPostRoutes(deps) {
       }, `admin-web:${auth?.user || 'unknown'}`);
       if (!result.ok) {
         sendJson(res, 400, { ok: false, error: result.reason || 'platform-apikey-failed' });
+        return true;
+      }
+      sendJson(res, 200, { ok: true, data: result });
+      return true;
+    }
+
+    if (pathname === '/admin/api/platform/agent-token') {
+      const tenantId = resolveScopedTenantId(
+        req,
+        res,
+        auth,
+        requiredString(body, 'tenantId'),
+        { required: true },
+      );
+      if (!tenantId) return true;
+      const result = await createPlatformAgentToken({
+        apiKeyId: requiredString(body, 'apiKeyId'),
+        tenantId,
+        serverId: requiredString(body, 'serverId'),
+        guildId: requiredString(body, 'guildId'),
+        agentId: requiredString(body, 'agentId'),
+        runtimeKey: requiredString(body, 'runtimeKey'),
+        role: requiredString(body, 'role'),
+        scope: requiredString(body, 'scope'),
+        name: requiredString(body, 'name'),
+        displayName: requiredString(body, 'displayName'),
+        minimumVersion: requiredString(body, 'minimumVersion'),
+      }, `admin-web:${auth?.user || 'unknown'}`);
+      if (!result?.ok) {
+        sendJson(res, 400, { ok: false, error: result?.reason || 'platform-agent-token-failed' });
+        return true;
+      }
+      sendJson(res, 200, { ok: true, data: result });
+      return true;
+    }
+
+    if (pathname === '/admin/api/platform/agent-token/revoke') {
+      const result = await revokePlatformAgentToken({
+        apiKeyId: requiredString(body, 'apiKeyId'),
+      }, `admin-web:${auth?.user || 'unknown'}`);
+      if (!result?.ok) {
+        sendJson(res, 400, { ok: false, error: result?.reason || 'platform-agent-token-revoke-failed' });
+        return true;
+      }
+      sendJson(res, 200, { ok: true, data: result });
+      return true;
+    }
+
+    if (pathname === '/admin/api/platform/agent-token/rotate') {
+      const result = await rotatePlatformAgentToken({
+        apiKeyId: requiredString(body, 'apiKeyId'),
+        name: requiredString(body, 'name'),
+      }, `admin-web:${auth?.user || 'unknown'}`);
+      if (!result?.ok) {
+        sendJson(res, 400, { ok: false, error: result?.reason || 'platform-agent-token-rotate-failed' });
         return true;
       }
       sendJson(res, 200, { ok: true, data: result });
