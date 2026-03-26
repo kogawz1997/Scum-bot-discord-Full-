@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Owner Tenants V4 Preview</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="../assets/owner-tenants-v4.css">
+</head>
+<body class="odv4-preview-body">
+  <div id="ownerTenantsV4PreviewRoot"></div>
+  <script src="../assets/owner-tenants-v4.js"></script>
+  <script>
+    window.__OWNER_TENANTS_V4_SAMPLE__ = {
+      tenants: [
+        { id: 'tenant-prod-001', name: 'SCUM TH Prime', ownerName: 'Ariya', ownerEmail: 'ariya@example.com', status: 'active', updatedAt: '2026-03-26T11:20:00+07:00' },
+        { id: 'tenant-prod-002', name: 'SCUM TH East', ownerName: 'Natt', ownerEmail: 'natt@example.com', status: 'active', updatedAt: '2026-03-26T10:10:00+07:00' },
+        { id: 'tenant-trial-003', name: 'Night Watch', ownerName: 'Mina', ownerEmail: 'mina@example.com', status: 'trial', updatedAt: '2026-03-26T09:20:00+07:00' }
+      ],
+      subscriptions: [
+        { tenantId: 'tenant-prod-001', packageName: 'FULL_OPTION', status: 'active', renewsAt: '2026-04-02T09:00:00+07:00' },
+        { tenantId: 'tenant-prod-002', packageName: 'BOT_LOG_DELIVERY', status: 'expiring', renewsAt: '2026-03-30T09:00:00+07:00' },
+        { tenantId: 'tenant-trial-003', packageName: 'PREVIEW', status: 'trial', renewsAt: '2026-03-29T09:00:00+07:00' }
+      ],
+      licenses: [
+        { tenantId: 'tenant-prod-001', status: 'licensed' },
+        { tenantId: 'tenant-prod-002', status: 'licensed' },
+        { tenantId: 'tenant-trial-003', status: 'preview' }
+      ],
+      tenantQuotaSnapshots: [
+        { tenantId: 'tenant-prod-001', quotas: { apiKeys: { used: 4, limit: 5 }, webhooks: { used: 7, limit: 8 } } },
+        { tenantId: 'tenant-prod-002', quotas: { apiKeys: { used: 1, limit: 5 }, webhooks: { used: 2, limit: 8 } } }
+      ],
+      supportCase: { tenantId: 'tenant-prod-001' }
+    };
+
+    window.OwnerTenantsV4.renderOwnerTenantsV4(
+      document.getElementById('ownerTenantsV4PreviewRoot'),
+      window.__OWNER_TENANTS_V4_SAMPLE__
+    );
+  </script>
+</body>
+</html>

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Dashboard control-panel UI helpers split out of the former dashboard monolith so runtime
  * configuration, env patching, and restart flows are easier to review.
  */    function getControlPanelEnvEntry(scope, key) {

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tenant Delivery Agents V4 Preview</title>
+  <link rel="stylesheet" href="../assets/tenant-delivery-agents-v4.css">
+</head>
+<body class="tdv4-preview-body">
+  <div id="tenantDeliveryAgentsV4PreviewRoot"></div>
+  <script src="../assets/tenant-delivery-agents-v4.js"></script>
+  <script>
+    window.__TENANT_DELIVERY_AGENTS_V4_SAMPLE__ = {
+      me: { tenantId: 'scum-th-renter', role: 'tenant_admin' },
+      tenantConfig: { name: 'SCUM TH Renter' },
+      agents: [
+        {
+          runtimeKey: 'delivery-agent-bkk-01',
+          channel: 'machine-a',
+          status: 'online',
+          version: '1.4.2',
+          lastSeenAt: '2026-03-26T12:10:00+07:00',
+          meta: {
+            agentRole: 'execute',
+            agentScope: 'execute_only',
+            serverId: 'server-alpha',
+            agentLabel: 'Delivery Alpha',
+            capabilities: ['delivery', 'announce'],
+            machineFingerprint: 'DEV-A-7842'
+          }
+        },
+        {
+          runtimeKey: 'delivery-agent-bkk-02',
+          channel: 'machine-b',
+          status: 'pending_activation',
+          version: '1.4.2',
+          meta: {
+            agentRole: 'execute',
+            agentScope: 'execute_only',
+            serverId: 'server-bravo',
+            agentLabel: 'Delivery Bravo',
+            capabilities: ['delivery']
+          }
+        },
+        {
+          runtimeKey: 'watcher-alpha',
+          channel: 'server-a',
+          status: 'online',
+          version: '1.3.9',
+          lastSeenAt: '2026-03-26T12:08:00+07:00',
+          meta: {
+            agentRole: 'sync',
+            agentScope: 'sync_only',
+            serverId: 'server-alpha',
+            agentLabel: 'Server Bot Alpha',
+            capabilities: ['sync', 'config', 'restart']
+          }
+        }
+      ],
+      queueItems: [{ id: 'q1' }, { id: 'q2' }, { id: 'q3' }],
+      deadLetters: [{ id: 'd1' }],
+      deliveryRuntime: { status: 'ready', mode: 'agent' }
+    };
+
+    window.TenantDeliveryAgentsV4.renderTenantDeliveryAgentsV4(
+      document.getElementById('tenantDeliveryAgentsV4PreviewRoot'),
+      window.__TENANT_DELIVERY_AGENTS_V4_SAMPLE__
+    );
+  </script>
+</body>
+</html>

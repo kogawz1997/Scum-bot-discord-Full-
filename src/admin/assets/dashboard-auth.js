@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Dashboard auth/security UI helpers split out of the former dashboard monolith so the admin
  * control panel is easier to review without changing browser behavior.
  */    function syncAuthFilterInputs() {

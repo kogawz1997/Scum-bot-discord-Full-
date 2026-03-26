@@ -1,0 +1,74 @@
+@import url("./tenant-dashboard-v4.css");
+
+.tdv4-config-shell {
+  grid-template-columns: 300px minmax(0, 1fr) 320px;
+}
+
+.tdv4-pagehead-actions-stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.tdv4-config-summary-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.tdv4-config-section-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.tdv4-config-key-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tdv4-editor-label {
+  display: inline-flex;
+  margin: 4px 0 8px;
+  font-size: 0.86rem;
+  color: var(--tdv4-text-soft);
+}
+
+.tdv4-editor {
+  width: 100%;
+  min-height: 240px;
+  padding: 16px;
+  border: 1px solid var(--tdv4-border-strong);
+  border-radius: 14px;
+  background: rgba(7, 10, 8, 0.92);
+  color: var(--tdv4-text);
+  font: 500 0.92rem/1.6 Consolas, "Courier New", monospace;
+  resize: vertical;
+}
+
+.tdv4-editor:focus {
+  outline: 2px solid rgba(207, 177, 100, 0.36);
+  outline-offset: 2px;
+}
+
+@media (max-width: 1440px) {
+  .tdv4-config-shell {
+    grid-template-columns: 280px minmax(0, 1fr);
+  }
+
+  .tdv4-config-summary-grid,
+  .tdv4-config-section-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 1100px) {
+  .tdv4-config-shell,
+  .tdv4-config-summary-grid,
+  .tdv4-config-section-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tdv4-pagehead-actions-stack {
+    width: 100%;
+  }
+}

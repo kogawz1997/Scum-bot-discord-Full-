@@ -687,7 +687,7 @@
       'common.more': 'その他',
       'common.username': 'ユーザー名',
       'common.password': 'パスワード',
-      'common.twoFactorOptional': '2FAコード（任意）',
+      'common.twoFactorOptional': '2FAコード(任意)',
       'common.tactical': 'タクティカル',
       'common.highContrast': '高コントラスト',
       'login.adminAccess': '管理者アクセス',

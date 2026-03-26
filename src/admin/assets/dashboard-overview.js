@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Dashboard overview/runtime/restore UI helpers split out of the former dashboard monolith
  * so the landing and runtime summary flows are easier to review.
  */    function buildFallbackSummaryCards() {

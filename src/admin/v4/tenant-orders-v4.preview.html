@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tenant Orders V4 Preview</title>
+  <link rel="stylesheet" href="../assets/tenant-orders-v4.css">
+</head>
+<body class="tdv4-preview-body">
+  <div id="tenantOrdersV4PreviewRoot"></div>
+  <script src="../assets/tenant-orders-v4.js"></script>
+  <script>
+    window.__TENANT_ORDERS_V4_SAMPLE__ = {
+      me: { tenantId: 'scum-th-renter', role: 'tenant_admin' },
+      tenantConfig: { name: 'SCUM TH Renter' },
+      overview: {
+        analytics: {
+          delivery: {
+            purchaseCount30d: 128,
+            successRate: 96
+          }
+        }
+      },
+      purchaseStatusCatalog: {
+        knownStatuses: ['queued', 'processing', 'delivered', 'failed']
+      },
+      purchaseLookup: {
+        userId: '1064421455230015488',
+        status: 'queued',
+        items: [
+          {
+            code: 'PUR-240326-001',
+            itemName: 'Starter Kit',
+            status: 'queued',
+            userId: '1064421455230015488',
+            totalPrice: 490,
+            createdAt: '2026-03-26T10:12:00+07:00'
+          },
+          {
+            code: 'PUR-240326-002',
+            itemName: 'VIP 30 Days',
+            status: 'processing',
+            userId: '1064421455230015488',
+            totalPrice: 1290,
+            createdAt: '2026-03-26T09:41:00+07:00'
+          },
+          {
+            code: 'PUR-240325-011',
+            itemName: 'Ammo Crate',
+            status: 'delivered',
+            userId: '5544221100',
+            totalPrice: 250,
+            createdAt: '2026-03-25T21:05:00+07:00'
+          }
+        ]
+      },
+      queueItems: new Array(7).fill(0).map(function (_, index) { return { id: 'queue-' + index }; }),
+      deadLetters: [{ id: 'dead-1' }],
+      deliveryCase: {
+        purchaseCode: 'PUR-240326-001',
+        purchase: { status: 'queued' },
+        queueJob: { status: 'queued' },
+        deadLetter: null,
+        latestCommandSummary: 'รอ Delivery Agent รอบถัดไป',
+        timeline: [{ step: 'queued' }, { step: 'pending-runtime' }],
+        auditRows: [{ id: 'a1' }, { id: 'a2' }]
+      }
+    };
+
+    window.TenantOrdersV4.renderTenantOrdersV4(
+      document.getElementById('tenantOrdersV4PreviewRoot'),
+      window.__TENANT_ORDERS_V4_SAMPLE__
+    );
+  </script>
+</body>
+</html>

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Player Stats Events Support V4 Preview</title>
+  <link rel="stylesheet" href="../assets/player-stats-events-support-v4.css">
+</head>
+<body class="plv4-preview-body">
+  <div id="playerStatsEventsSupportV4PreviewRoot"></div>
+  <script src="../assets/player-v4-shared.js"></script>
+  <script src="../assets/player-stats-events-support-v4.js"></script>
+  <script>
+    const __PLAYER_STATS_EVENTS_SUPPORT_V4_SAMPLE__ = {
+      me: { user: 'Mira' },
+      stats: { kills: 128, deaths: 54, kd: 2.37, playtimeMinutes: 4820 },
+      leaderboard: {
+        type: 'kills',
+        items: [
+          { rank: 1, name: 'Mira', kills: 128, kd: 2.37, isSelf: true },
+          { rank: 2, name: 'Ares', kills: 121, kd: 2.04 },
+          { rank: 3, name: 'BlueFox', kills: 117, kd: 1.98 }
+        ]
+      },
+      missions: {
+        missions: [
+          { title: 'รับรางวัลรายวัน', category: 'daily', claimable: true },
+          { title: 'ภารกิจรายสัปดาห์', category: 'weekly', claimable: false, remainingText: 'เหลืออีก 2 วัน' }
+        ]
+      },
+      bounties: { items: [{ id: 'b1' }, { id: 'b2' }] },
+      party: { title: 'ปาร์ตี้ RED', memberCount: 4 },
+      notifications: [
+        { severity: 'info', type: 'community', title: 'กิจกรรม PvP จะเริ่มคืนนี้', detail: 'เตรียมทีมและดูเวลาจากหน้ากิจกรรม', createdAt: '2026-03-26T12:00:00+07:00' },
+        { severity: 'warning', type: 'order', title: 'มีออเดอร์ที่ควรตรวจต่อ', detail: 'เตรียม purchase code หากต้องติดต่อแอดมิน', createdAt: '2026-03-26T11:30:00+07:00' }
+      ],
+      serverInfo: { serverInfo: { name: 'SCUM TH Frontier' } },
+      wheelState: { enabled: true },
+      orders: [{ purchaseCode: 'P-2026-0315', status: 'delivery_failed' }],
+      steamLink: { linked: true }
+    };
+    window.addEventListener('DOMContentLoaded', () => {
+      window.PlayerStatsEventsSupportV4.renderPlayerStatsEventsSupportV4(
+        document.getElementById('playerStatsEventsSupportV4PreviewRoot'),
+        __PLAYER_STATS_EVENTS_SUPPORT_V4_SAMPLE__
+      );
+    });
+  </script>
+</body>
+</html>

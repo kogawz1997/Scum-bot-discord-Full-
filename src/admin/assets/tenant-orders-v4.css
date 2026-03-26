@@ -1,0 +1,148 @@
+@import url("./tenant-dashboard-v4.css");
+
+.tdv4-orders-shell {
+  grid-template-columns: 290px minmax(0, 1fr) 300px;
+}
+
+.tdv4-orders-summary-strip {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.tdv4-orders-filter-grid,
+.tdv4-orders-main-grid {
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+}
+
+.tdv4-filter-grid,
+.tdv4-mini-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.tdv4-form-field {
+  display: grid;
+  gap: 8px;
+  font-size: 0.86rem;
+  color: var(--tdv4-text-soft);
+}
+
+.tdv4-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--tdv4-border-strong);
+  border-radius: 12px;
+  background: rgba(7, 10, 8, 0.92);
+  color: var(--tdv4-text);
+}
+
+.tdv4-data-header,
+.tdv4-data-row {
+  display: grid;
+  grid-template-columns: 1.5fr 0.9fr 1fr 0.8fr 1fr 0.7fr;
+  gap: 12px;
+  align-items: start;
+}
+
+.tdv4-data-header {
+  padding: 0 4px 12px;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--tdv4-text-muted);
+}
+
+.tdv4-data-table {
+  display: grid;
+  gap: 10px;
+}
+
+.tdv4-data-row {
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--tdv4-border);
+  background: var(--tdv4-surface-soft);
+}
+
+.tdv4-data-row-current {
+  border-color: var(--tdv4-border-strong);
+  background: rgba(207, 177, 100, 0.08);
+}
+
+.tdv4-data-main {
+  display: grid;
+  gap: 4px;
+}
+
+.tdv4-inline-link {
+  color: var(--tdv4-text);
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.tdv4-inline-link:hover {
+  text-decoration: underline;
+}
+
+.tdv4-selected-order {
+  display: grid;
+  gap: 10px;
+}
+
+.tdv4-mini-stat {
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--tdv4-border);
+  background: var(--tdv4-surface-soft);
+}
+
+.tdv4-mini-stat-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--tdv4-text-muted);
+}
+
+.tdv4-mini-stat-value {
+  margin-top: 8px;
+  font-size: 1.04rem;
+  font-weight: 700;
+}
+
+.tdv4-compact-list .tdv4-list-item {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.tdv4-empty-state {
+  padding: 20px;
+  border: 1px dashed var(--tdv4-border);
+  border-radius: 14px;
+  color: var(--tdv4-text-soft);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+@media (max-width: 1440px) {
+  .tdv4-orders-shell {
+    grid-template-columns: 270px minmax(0, 1fr);
+  }
+
+  .tdv4-orders-summary-strip,
+  .tdv4-orders-filter-grid,
+  .tdv4-orders-main-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1100px) {
+  .tdv4-orders-shell,
+  .tdv4-orders-summary-strip,
+  .tdv4-orders-filter-grid,
+  .tdv4-orders-main-grid,
+  .tdv4-filter-grid,
+  .tdv4-mini-stat-grid,
+  .tdv4-data-header,
+  .tdv4-data-row {
+    grid-template-columns: 1fr;
+  }
+}

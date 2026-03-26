@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Owner Dashboard V4 Preview</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="../assets/owner-dashboard-v4.css">
+</head>
+<body class="odv4-preview-body">
+  <div id="ownerDashboardV4PreviewRoot"></div>
+  <script src="../assets/owner-dashboard-v4.js"></script>
+  <script>
+    window.__OWNER_DASHBOARD_V4_SAMPLE__ = {
+      overview: {
+        analytics: {
+          tenants: { total: 14, active: 11, trialing: 2, reseller: 1 },
+          delivery: { successRate: 97, purchaseCount30d: 486 },
+          subscriptions: { mrr: 184500 }
+        }
+      },
+      tenants: [
+        { id: 'tenant-prod-001', name: 'SCUM TH Prime', ownerName: 'Ariya', ownerEmail: 'ariya@example.com', status: 'active', updatedAt: '2026-03-26T11:20:00+07:00' },
+        { id: 'tenant-prod-002', name: 'SCUM TH East', ownerName: 'Natt', ownerEmail: 'natt@example.com', status: 'active', updatedAt: '2026-03-26T10:10:00+07:00' },
+        { id: 'tenant-trial-003', name: 'Night Watch', ownerName: 'Mina', ownerEmail: 'mina@example.com', status: 'trial', updatedAt: '2026-03-26T09:20:00+07:00' }
+      ],
+      subscriptions: [
+        { tenantId: 'tenant-prod-001', packageName: 'FULL_OPTION', status: 'active', renewsAt: '2026-04-02T09:00:00+07:00' },
+        { tenantId: 'tenant-prod-002', packageName: 'BOT_LOG_DELIVERY', status: 'active', renewsAt: '2026-03-30T09:00:00+07:00' },
+        { tenantId: 'tenant-trial-003', packageName: 'PREVIEW', status: 'trial', renewsAt: '2026-03-29T09:00:00+07:00' }
+      ],
+      tenantQuotaSnapshots: [
+        { tenantId: 'tenant-prod-001', quotas: { apiKeys: { used: 4, limit: 5 }, webhooks: { used: 7, limit: 8 } } },
+        { tenantId: 'tenant-prod-002', quotas: { apiKeys: { used: 1, limit: 5 }, webhooks: { used: 2, limit: 8 } } }
+      ],
+      runtimeSupervisor: {
+        services: [
+          { name: 'scum-bot', label: 'Discord Bot', status: 'ready', checkedAt: '2026-03-26T11:30:00+07:00' },
+          { name: 'scum-worker', label: 'Worker', status: 'ready', checkedAt: '2026-03-26T11:30:00+07:00' },
+          { name: 'scum-watcher', label: 'Watcher', status: 'degraded', checkedAt: '2026-03-26T11:29:00+07:00', detail: 'last sync delay exceeded threshold' }
+        ]
+      },
+      agents: [
+        { runtimeKey: 'execute-alpha', name: 'Delivery Agent Alpha', status: 'online', version: '2.6.1' },
+        { runtimeKey: 'sync-alpha', name: 'Server Bot Alpha', status: 'degraded', version: '2.6.1' }
+      ],
+      notifications: [
+        { severity: 'warning', title: 'Watcher sync is behind', detail: 'The latest sync batch took longer than normal and needs inspection.', createdAt: '2026-03-26T11:18:00+07:00' },
+        { severity: 'info', title: 'Subscription review due', detail: 'Two tenants will renew within the next 7 days.', createdAt: '2026-03-26T10:55:00+07:00' }
+      ],
+      securityEvents: [
+        { severity: 'info', type: 'rotation.check', detail: 'Last rotation check completed with warnings.', createdAt: '2026-03-26T10:40:00+07:00' }
+      ],
+      requestLogs: {
+        items: [
+          { method: 'GET', path: '/admin/api/platform/overview', statusCode: 503, error: 'upstream timeout', at: '2026-03-26T11:12:00+07:00' }
+        ],
+        metrics: {
+          routeHotspots: [
+            { routeGroup: 'admin.platform', samplePath: '/admin/api/platform/overview', requests: 164, errors: 3, p95LatencyMs: 842 }
+          ]
+        }
+      },
+      supportCase: { tenantId: 'tenant-prod-001', signals: { total: 3 } }
+    };
+
+    window.OwnerDashboardV4.renderOwnerDashboardV4(
+      document.getElementById('ownerDashboardV4PreviewRoot'),
+      window.__OWNER_DASHBOARD_V4_SAMPLE__
+    );
+  </script>
+</body>
+</html>

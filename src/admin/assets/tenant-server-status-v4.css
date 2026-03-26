@@ -1,0 +1,51 @@
+@import url("./tenant-dashboard-v4.css");
+
+.tdv4-status-strip {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.tdv4-status-ready-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.tdv4-mini-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.tdv4-mini-stat {
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--tdv4-border);
+  background: var(--tdv4-surface-soft);
+}
+
+.tdv4-mini-stat-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--tdv4-text-muted);
+}
+
+.tdv4-mini-stat-value {
+  margin-top: 8px;
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+@media (max-width: 1440px) {
+  .tdv4-status-strip,
+  .tdv4-status-ready-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1100px) {
+  .tdv4-status-strip,
+  .tdv4-status-ready-grid,
+  .tdv4-mini-stat-grid {
+    grid-template-columns: 1fr;
+  }
+}

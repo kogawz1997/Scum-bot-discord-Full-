@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tenant Dashboard V4 Preview</title>
+  <link rel="stylesheet" href="../assets/tenant-dashboard-v4.css">
+</head>
+<body class="tdv4-preview-body">
+  <div id="tenantDashboardV4PreviewRoot"></div>
+  <script src="../assets/tenant-dashboard-v4.js"></script>
+  <script>
+    window.__TENANT_DASHBOARD_V4_SAMPLE__ = {
+      me: { tenantId: 'scum-th-renter', role: 'tenant_admin' },
+      tenantConfig: { name: 'SCUM TH Renter' },
+      overview: {
+        serverStatus: 'online',
+        analytics: {
+          delivery: {
+            purchaseCount30d: 128,
+            successRate: 96,
+            lastSyncAt: '2026-03-26T10:18:00+07:00'
+          }
+        }
+      },
+      dashboardCards: {
+        serverStatus: 'online',
+        packageName: 'FULL_OPTION',
+        metrics: { purchaseCount: 128 }
+      },
+      subscriptions: [{ packageName: 'FULL_OPTION', status: 'active' }],
+      agents: [
+        { name: 'Delivery Agent Alpha', role: 'execute', status: 'online' },
+        { name: 'Server Bot Alpha', role: 'sync', status: 'online' }
+      ],
+      queueItems: new Array(7).fill(0).map(function (_, index) { return { id: 'queue-' + index }; }),
+      deadLetters: [{ id: 'dead-1', error: 'reward-proof-timeout' }],
+      notifications: [
+        {
+          severity: 'warning',
+          title: 'Killfeed sync ช้ากว่าปกติ',
+          detail: 'รอบ sync ล่าสุดตอบกลับช้ากว่าค่าเฉลี่ย และควรเปิดดูสถานะ Server Bot',
+          createdAt: '2026-03-26T10:10:00+07:00'
+        },
+        {
+          severity: 'info',
+          title: 'มีคำสั่งซื้อใหม่เข้าคิว',
+          detail: 'ผู้เล่นส่งคำสั่งซื้อเพิ่มและกำลังรอ Delivery Agent ประมวลผล',
+          createdAt: '2026-03-26T09:52:00+07:00'
+        }
+      ],
+      reconcile: {
+        lastRunAt: '2026-03-26T09:48:00+07:00',
+        summary: { anomalies: 2, abuseFindings: 0 }
+      },
+      quota: {
+        quotas: {
+          apiKeys: { used: 1, limit: 5 },
+          webhooks: { used: 2, limit: 8 },
+          agentRuntimes: { used: 2, limit: 3 }
+        }
+      },
+      players: [
+        { id: '1', steamId: '76561198000000001' },
+        { id: '2', steamId: '76561198000000002' },
+        { id: '3' },
+        { id: '4' }
+      ],
+      shopItems: new Array(34).fill(0).map(function (_, index) { return { id: 'item-' + index }; }),
+      audit: {
+        items: [
+          {
+            action: 'config.saved',
+            detail: 'บันทึกค่าจำนวนผู้เล่นสูงสุดและเปิดใช้ killfeed relay',
+            createdAt: '2026-03-26T09:20:00+07:00'
+          },
+          {
+            action: 'restart.scheduled',
+            detail: 'ตั้งเวลารีสตาร์ตแบบ 5 นาทีพร้อมประกาศในเกม',
+            createdAt: '2026-03-26T08:55:00+07:00'
+          }
+        ]
+      },
+      deliveryRuntime: {
+        lastSyncAt: '2026-03-26T10:18:00+07:00',
+        serverStatus: 'online'
+      }
+    };
+
+    window.TenantDashboardV4.renderTenantDashboardV4(
+      document.getElementById('tenantDashboardV4PreviewRoot'),
+      window.__TENANT_DASHBOARD_V4_SAMPLE__
+    );
+  </script>
+</body>
+</html>

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Owner Runtime Health V4 Preview</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="../assets/owner-runtime-health-v4.css">
+</head>
+<body class="odv4-preview-body">
+  <div id="ownerRuntimeHealthV4PreviewRoot"></div>
+  <script src="../assets/owner-runtime-health-v4.js"></script>
+  <script>
+    window.__OWNER_RUNTIME_HEALTH_V4_SAMPLE__ = {
+      runtimeSupervisor: {
+        services: [
+          { name: 'scum-bot', label: 'Discord Bot', status: 'ready', checkedAt: '2026-03-26T11:30:00+07:00', detail: 'healthy' },
+          { name: 'scum-worker', label: 'Worker', status: 'ready', checkedAt: '2026-03-26T11:30:00+07:00', detail: 'healthy' },
+          { name: 'scum-watcher', label: 'Watcher', status: 'degraded', checkedAt: '2026-03-26T11:29:00+07:00', detail: 'sync freshness behind threshold' },
+          { name: 'admin-web', label: 'Admin Web', status: 'offline', checkedAt: '2026-03-26T11:28:00+07:00', detail: 'disabled in discord-only mode' }
+        ]
+      },
+      agents: [
+        { runtimeKey: 'execute-alpha', channel: 'tenant-prod-001', role: 'execute', status: 'online', version: '2.6.1', lastSeenAt: '2026-03-26T11:29:00+07:00' },
+        { runtimeKey: 'sync-alpha', channel: 'tenant-prod-001', role: 'sync', status: 'degraded', version: '2.6.1', lastSeenAt: '2026-03-26T11:21:00+07:00' }
+      ],
+      notifications: [
+        { severity: 'warning', title: 'Watcher sync is behind', detail: 'The latest sync batch exceeded the alert threshold.', createdAt: '2026-03-26T11:18:00+07:00' }
+      ],
+      securityEvents: [
+        { severity: 'info', type: 'rotation.check', detail: 'Rotation check found two keys approaching the policy window.', createdAt: '2026-03-26T10:40:00+07:00' }
+      ],
+      requestLogs: {
+        items: [
+          { method: 'GET', path: '/admin/api/platform/overview', statusCode: 503, error: 'upstream timeout', at: '2026-03-26T11:12:00+07:00' },
+          { method: 'POST', path: '/admin/api/platform/reconcile', statusCode: 500, error: 'batch lock contention', at: '2026-03-26T11:05:00+07:00' }
+        ],
+        metrics: {
+          slowRequests: 12,
+          routeHotspots: [
+            { routeGroup: 'admin.platform', samplePath: '/admin/api/platform/overview', requests: 164, errors: 3, p95LatencyMs: 842 },
+            { routeGroup: 'admin.reconcile', samplePath: '/admin/api/platform/reconcile', requests: 28, errors: 2, p95LatencyMs: 1290 }
+          ]
+        }
+      },
+      deliveryLifecycle: {
+        summary: { deadLetterCount: 3 }
+      }
+    };
+
+    window.OwnerRuntimeHealthV4.renderOwnerRuntimeHealthV4(
+      document.getElementById('ownerRuntimeHealthV4PreviewRoot'),
+      window.__OWNER_RUNTIME_HEALTH_V4_SAMPLE__
+    );
+  </script>
+</body>
+</html>

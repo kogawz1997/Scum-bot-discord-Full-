@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tenant Server Config V4 Preview</title>
+  <link rel="stylesheet" href="../assets/tenant-server-config-v4.css">
+</head>
+<body class="tdv4-preview-body">
+  <div id="tenantServerConfigV4PreviewRoot"></div>
+  <script src="../assets/tenant-server-config-v4.js"></script>
+  <script>
+    window.__TENANT_SERVER_CONFIG_V4_SAMPLE__ = {
+      me: { tenantId: 'scum-th-renter', role: 'tenant_admin' },
+      tenantConfig: {
+        name: 'SCUM TH Renter',
+        updatedAt: '2026-03-26T09:44:00+07:00',
+        featureFlags: {
+          bot_log: true,
+          bot_delivery: true,
+          shop_module: true,
+          player_module: true,
+          restart_announce_module: true
+        },
+        configPatch: {
+          maxPlayers: 60,
+          killfeedRelayEnabled: true,
+          deliveryQueueBatchSize: 10,
+          restartGraceMinutes: 5,
+          discordLogLanguage: 'th-TH'
+        },
+        portalEnvPatch: {
+          publicTheme: 'scum-dark',
+          communityFeedEnabled: true,
+          walletBadgeEnabled: true
+        }
+      },
+      draft: {
+        featureFlags: {
+          bot_log: true,
+          bot_delivery: true,
+          shop_module: true,
+          player_module: true,
+          restart_announce_module: true,
+          support_module: true
+        },
+        configPatch: {
+          maxPlayers: 64,
+          killfeedRelayEnabled: true,
+          deliveryQueueBatchSize: 10,
+          restartGraceMinutes: 10,
+          discordLogLanguage: 'th-TH'
+        },
+        portalEnvPatch: {
+          publicTheme: 'scum-dark',
+          communityFeedEnabled: true,
+          walletBadgeEnabled: false
+        }
+      }
+    };
+
+    window.TenantServerConfigV4.renderTenantServerConfigV4(
+      document.getElementById('tenantServerConfigV4PreviewRoot'),
+      window.__TENANT_SERVER_CONFIG_V4_SAMPLE__
+    );
+  </script>
+</body>
+</html>

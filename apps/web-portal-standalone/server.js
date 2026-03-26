@@ -4,6 +4,10 @@ const path = require('node:path');
 const http = require('node:http');
 
 const { loadMergedEnvFiles } = require('../../src/utils/loadEnvFiles');
+const {
+  createDiscordOnlySurfaceServer,
+  isDiscordOnlyMode,
+} = require('../../src/config/discordOnlyMode');
 loadMergedEnvFiles({
   basePath: path.resolve(process.cwd(), '.env'),
   overlayPath: path.join(__dirname, '.env'),
@@ -86,6 +90,18 @@ const {
   normalizeMode,
   normalizeSameSite,
 });
+
+if (isDiscordOnlyMode(process.env)) {
+  createDiscordOnlySurfaceServer({
+    surface: 'player-portal',
+    env: process.env,
+    hostEnvKey: 'WEB_PORTAL_HOST',
+    portEnvKey: 'WEB_PORTAL_PORT',
+    defaultHost: '127.0.0.1',
+    defaultPort: 3300,
+  });
+  return;
+}
 
 const {
   startupReady,

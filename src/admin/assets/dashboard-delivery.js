@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Dashboard delivery and notification UI helpers split out of the former dashboard monolith
  * so the admin control panel runtime is easier to review without changing behavior.
  */    async function refreshDeliveryCapabilities() {

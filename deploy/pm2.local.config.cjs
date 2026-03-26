@@ -11,9 +11,10 @@ module.exports = {
       restart_delay: 3000,
       env: {
         NODE_ENV: 'development',
+        PLATFORM_DISCORD_ONLY: 'true',
         BOT_ENABLE_SCUM_WEBHOOK: 'true',
         BOT_ENABLE_RESTART_SCHEDULER: 'true',
-        BOT_ENABLE_ADMIN_WEB: 'true',
+        BOT_ENABLE_ADMIN_WEB: 'false',
         BOT_ENABLE_RENTBIKE_SERVICE: 'false',
         BOT_ENABLE_DELIVERY_WORKER: 'false',
         BOT_ENABLE_OPS_ALERT_ROUTE: 'true',
@@ -80,6 +81,7 @@ module.exports = {
       restart_delay: 3000,
       env: {
         NODE_ENV: 'development',
+        PLATFORM_DISCORD_ONLY: 'true',
         WEB_PORTAL_SECURE_COOKIE: 'false',
         WEB_PORTAL_ENFORCE_ORIGIN_CHECK: 'true',
       },

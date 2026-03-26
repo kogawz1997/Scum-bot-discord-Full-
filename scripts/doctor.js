@@ -168,6 +168,7 @@ function addDatabaseDeploymentChecks() {
 }
 
 function addRuntimeOwnershipChecks() {
+  const discordOnly = isTruthy(process.env.PLATFORM_DISCORD_ONLY, false);
   const botDeliveryWorkerEnabled = isTruthy(
     process.env.BOT_ENABLE_DELIVERY_WORKER,
     true,
@@ -184,6 +185,12 @@ function addRuntimeOwnershipChecks() {
   if (botDeliveryWorkerEnabled && workerDeliveryEnabled) {
     throw new Error(
       'Do not enable delivery worker on both bot and worker (BOT_ENABLE_DELIVERY_WORKER + WORKER_ENABLE_DELIVERY)',
+    );
+  }
+
+  if (discordOnly && isTruthy(process.env.BOT_ENABLE_ADMIN_WEB, false)) {
+    warnings.push(
+      'PLATFORM_DISCORD_ONLY=true is active; BOT_ENABLE_ADMIN_WEB is ignored and admin web stays disabled',
     );
   }
 

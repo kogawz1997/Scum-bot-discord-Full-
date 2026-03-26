@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tenant Server Status V4 Preview</title>
+  <link rel="stylesheet" href="../assets/tenant-server-status-v4.css">
+</head>
+<body class="tdv4-preview-body">
+  <div id="tenantServerStatusV4PreviewRoot"></div>
+  <script src="../assets/tenant-server-status-v4.js"></script>
+  <script>
+    window.__TENANT_SERVER_STATUS_V4_SAMPLE__ = {
+      me: { tenantId: 'scum-th-renter', role: 'tenant_admin' },
+      tenantConfig: { name: 'SCUM TH Renter' },
+      overview: {
+        serverStatus: 'online',
+        analytics: {
+          delivery: {
+            purchaseCount30d: 128,
+            successRate: 96,
+            lastSyncAt: '2026-03-26T10:18:00+07:00'
+          }
+        }
+      },
+      dashboardCards: { serverStatus: 'online' },
+      agents: [
+        { role: 'execute', status: 'online' },
+        { role: 'sync', status: 'warning' }
+      ],
+      queueItems: new Array(9).fill(0).map(function (_, index) { return { id: 'queue-' + index }; }),
+      deadLetters: [{ id: 'dead-1' }, { id: 'dead-2' }],
+      reconcile: {
+        lastRunAt: '2026-03-26T10:05:00+07:00',
+        summary: { anomalies: 2, abuseFindings: 1 }
+      },
+      notifications: [
+        {
+          severity: 'warning',
+          title: 'Server Bot sync ช้ากว่าปกติ',
+          detail: 'รอบ sync ล่าสุดขยับช้ากว่าปกติและควรดูที่ diagnostics ต่อ',
+          createdAt: '2026-03-26T10:12:00+07:00'
+        },
+        {
+          severity: 'danger',
+          title: 'พบรายการส่งของตกค้าง',
+          detail: 'มีรายการใน dead-letter และควรยืนยันสาเหตุก่อน replay',
+          createdAt: '2026-03-26T09:40:00+07:00'
+        }
+      ],
+      audit: {
+        items: [
+          {
+            action: 'restart.scheduled',
+            detail: 'ตั้งเวลารีสตาร์ตแบบ 5 นาที',
+            createdAt: '2026-03-26T09:10:00+07:00'
+          }
+        ]
+      },
+      deliveryRuntime: {
+        status: 'degraded',
+        mode: 'managed',
+        updatedAt: '2026-03-26T10:15:00+07:00',
+        lastSyncAt: '2026-03-26T10:18:00+07:00'
+      }
+    };
+
+    window.TenantServerStatusV4.renderTenantServerStatusV4(
+      document.getElementById('tenantServerStatusV4PreviewRoot'),
+      window.__TENANT_SERVER_STATUS_V4_SAMPLE__
+    );
+  </script>
+</body>
+</html>

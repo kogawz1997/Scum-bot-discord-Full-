@@ -1,106 +1,28 @@
 <!doctype html>
-<html lang="en">
+<html lang="th">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title data-i18n="showcase.documentTitle">SCUM Platform Showcase</title>
-  <link rel="stylesheet" href="/player/assets/ui/platform-site-v2.css?v=20260325-shell-cutover-1">
+  <title>SCUM TH Platform | Showcase</title>
+  <link rel="stylesheet" href="/player/assets/ui/platform-site-v2.css">
 </head>
 <body class="public-v2">
   <div class="marketing-shell">
     <header class="marketing-topbar">
       <a class="marketing-brand" href="/landing">
         <span class="marketing-brand-mark">SCUM</span>
-        <span class="marketing-brand-copy">
-          <strong data-i18n="showcase.title">Role-based platform surfaces</strong>
-          <span data-i18n="showcase.subtitle">Owner, tenant, and player experiences with one shared runtime spine.</span>
-        </span>
+        <span class="marketing-brand-copy"><strong>SCUM TH Platform</strong><span>Showcase</span></span>
       </a>
-      <nav class="marketing-nav">
-        <a href="/landing" data-i18n="public.nav.landing">Landing</a>
-        <a href="/pricing" data-i18n="public.nav.pricing">Pricing</a>
-        <a class="is-active" href="/showcase" data-i18n="landing.openShowcase">Showcase</a>
-        <a href="/trial" data-i18n="landing.heroTrial">Review trial readiness</a>
-      </nav>
-      <div class="marketing-tools">
-        <label class="language-picker">
-          <span data-i18n="common.language">Language</span>
-          <select id="showcaseLanguageSelect" class="language-select"></select>
-        </label>
-      </div>
     </header>
-
     <main class="marketing-main">
-      <section class="marketing-hero">
-        <div class="marketing-copy">
-          <span class="marketing-kicker" data-i18n="showcase.badge">Feature Showcase</span>
-          <h1 data-i18n="showcase.title">Role-based platform surfaces</h1>
-          <p data-i18n="showcase.subtitle">Overview of how the platform is structured across owner, tenant, and player experiences while staying compatible with the current runtime.</p>
-          <div class="button-row">
-            <a class="button button-primary" href="/owner/login" data-i18n="public.login.owner">Owner Login</a>
-            <a class="button" href="/tenant/login" data-i18n="public.login.tenant">Tenant Admin Login</a>
-            <a class="button" href="/player/login" data-i18n="public.login.player">Player Login</a>
-          </div>
+      <article class="marketing-panel">
+        <div class="marketing-panel-head">
+          <span class="marketing-kicker">Showcase</span>
+          <h2>ตัวอย่างเส้นทางการใช้งาน</h2>
         </div>
-        <div class="marketing-visual">
-          <div class="marketing-visual-image" aria-hidden="true"></div>
-          <section class="marketing-visual-card">
-            <span class="marketing-kicker" data-i18n="showcase.surfaceTitle">Surface responsibilities</span>
-            <h2 data-i18n="showcase.surfaceTitle">Surface responsibilities</h2>
-            <p data-i18n="public.showcase.surfacesDetail">Each surface uses the same product language but serves a different user with different risk and information density.</p>
-          </section>
-        </div>
-      </section>
-
-      <section class="marketing-grid two-col">
-        <section class="marketing-panel">
-          <div class="marketing-panel-head">
-            <span class="marketing-kicker" data-i18n="showcase.designTitle">Shared but role-appropriate</span>
-            <h2 data-i18n="showcase.designTitle">Shared but role-appropriate</h2>
-          </div>
-          <div class="detail-grid">
-            <article class="marketing-panel">
-              <span class="marketing-kicker" data-i18n="showcase.design.typographyKicker">Typography</span>
-              <h3 data-i18n="showcase.design.typographyTitle">Condensed headline + readable body</h3>
-              <p data-i18n="showcase.design.typographyDetail">Barlow Condensed leads the hierarchy while IBM Plex Sans Thai keeps dense UI readable in both English and Thai.</p>
-            </article>
-            <article class="marketing-panel">
-              <span class="marketing-kicker" data-i18n="showcase.design.toneKicker">Tone</span>
-              <h3 data-i18n="showcase.design.toneTitle">Dark tactical premium</h3>
-              <p data-i18n="showcase.design.toneDetail">Charcoal, gunmetal, amber, muted green, and controlled red create a serious operational tone without neon overload.</p>
-            </article>
-            <article class="marketing-panel">
-              <span class="marketing-kicker" data-i18n="showcase.design.hierarchyKicker">Hierarchy</span>
-              <h3 data-i18n="showcase.design.hierarchyTitle">Panels first, ornament second</h3>
-              <p data-i18n="showcase.design.hierarchyDetail">Every surface prioritizes scanning, grouping, and controlled action placement over decorative density.</p>
-            </article>
-            <article class="marketing-panel">
-              <span class="marketing-kicker" data-i18n="showcase.design.securityKicker">Security</span>
-              <h3 data-i18n="showcase.design.securityTitle">Risk stays obvious</h3>
-              <p data-i18n="showcase.design.securityDetail">Owner-only actions, tenant-scoped tools, and player-facing flows remain clearly separated so misuse stays harder.</p>
-            </article>
-          </div>
-        </section>
-
-        <section class="marketing-panel">
-          <div class="marketing-panel-head">
-            <span class="marketing-kicker" data-i18n="showcase.compatTitle">Compatibility</span>
-            <h2 data-i18n="showcase.compatTitle">What stays intact</h2>
-          </div>
-          <ul class="detail-list">
-            <li data-i18n="showcase.compat.routesDetail">Owner, tenant, player, and fallback paths keep their route behavior and runtime boundaries.</li>
-            <li data-i18n="showcase.compat.apiDetail">Request and response contracts, sessions, Discord SSO, TOTP, and runtime boundaries stay intact.</li>
-            <li data-i18n="showcase.compat.domDetail">Critical ids, names, and JS bindings stay in place so the redesign changes structure without breaking behavior.</li>
-            <li data-i18n="showcase.compat.legacyDetail">High-density emergency workbenches remain reachable as fallback, but no longer define the main experience.</li>
-          </ul>
-        </section>
-      </section>
+        <p>ใช้หน้านี้สำหรับสาธิตโครงของ Owner, Tenant และ Player ให้ลูกค้าดูแบบไม่ต้องพาเข้า runtime จริง</p>
+      </article>
     </main>
   </div>
-
-  <script src="/player/assets/ui/portal-i18n.js?v=20260325-shell-cutover-1"></script>
-  <script>
-    window.PortalUiI18n?.init(['showcaseLanguageSelect']);
-  </script>
 </body>
 </html>

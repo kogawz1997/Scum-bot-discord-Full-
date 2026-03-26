@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Player Home V4 Preview</title>
+  <link rel="stylesheet" href="../assets/player-home-v4.css">
+</head>
+<body class="plv4-preview-body">
+  <div id="playerHomeV4PreviewRoot"></div>
+  <script src="../assets/player-v4-shared.js"></script>
+  <script src="../assets/player-home-v4.js"></script>
+  <script>
+    const __PLAYER_HOME_V4_SAMPLE__ = {
+      me: { user: 'Mira', authMethod: 'discord' },
+      profile: { displayName: 'Mira', accountStatus: 'active' },
+      dashboard: {
+        wallet: { balance: 5820 },
+        latestOrder: {
+          purchaseCode: 'P-2026-0315',
+          itemName: 'Supporter Bundle',
+          status: 'delivering',
+          createdAt: '2026-03-26T13:00:00+07:00'
+        },
+        missionsSummary: {
+          dailyClaimable: true,
+          weeklyClaimable: false
+        },
+        announcements: ['คืนนี้มีช่วง Raid Time เวลา 21:00 - 23:00', 'กิจกรรมล่ารางวัลจะเปิดอีกครั้งวันศุกร์นี้']
+      },
+      serverInfo: {
+        serverInfo: {
+          name: 'SCUM TH Frontier',
+          description: 'เซิร์ฟชุมชนหลักสำหรับสายเล่นจริงและสายกิจกรรม',
+          maxPlayers: 64
+        },
+        status: { onlinePlayers: 37 },
+        raidTimes: ['วันจันทร์-ศุกร์ 21:00 - 23:00']
+      },
+      walletLedger: { wallet: { balance: 5820 } },
+      orders: [
+        { purchaseCode: 'P-2026-0315', itemName: 'Supporter Bundle', status: 'delivering', createdAt: '2026-03-26T13:00:00+07:00' }
+      ],
+      steamLink: { linked: true, steamId: '76561190000000001', inGameName: 'MiraTH' },
+      notifications: [
+        { severity: 'warning', type: 'order', title: 'คำสั่งซื้อกำลังรอส่งของ', detail: 'ระบบกำลังเตรียมส่งไอเทมชุด Supporter Bundle', createdAt: '2026-03-26T13:10:00+07:00' },
+        { severity: 'info', type: 'wallet', title: 'รับรางวัลรายวันได้แล้ว', detail: 'เปิดหน้ากระเป๋าเงินเพื่อกดรับรางวัล', createdAt: '2026-03-26T12:15:00+07:00' }
+      ],
+      lastRefreshedAt: '2026-03-26T13:18:00+07:00'
+    };
+    window.addEventListener('DOMContentLoaded', () => {
+      window.PlayerHomeV4.renderPlayerHomeV4(
+        document.getElementById('playerHomeV4PreviewRoot'),
+        __PLAYER_HOME_V4_SAMPLE__
+      );
+    });
+  </script>
+</body>
+</html>

@@ -1,309 +1,78 @@
 <!doctype html>
-<html lang="en">
+<html lang="th">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title data-i18n="login.documentTitle">SCUM Admin Access</title>
-  <link rel="stylesheet" href="/admin/assets/console-surfaces.css?v=20260325-shell-cutover-1">
-  <link rel="stylesheet" href="/admin/assets/control-plane-shell-v2.css?v=20260325-shell-cutover-1">
-  <link rel="stylesheet" href="/admin/assets/admin-login-v2.css?v=20260325-shell-cutover-1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>SCUM TH Platform | Admin Login</title>
+  <link rel="stylesheet" href="/admin/assets/admin-login-v2.css">
 </head>
 <body class="console-auth-v2">
   <div class="auth-shell-v2">
-    <header class="console-topbar cp-shell-topbar auth-topbar">
-      <a class="console-brand" href="/admin">
-        <span class="brand-emblem">SCUM</span>
-        <span class="brand-copy">
-          <strong data-i18n="login.brandTitle">Admin Access</strong>
-          <span data-i18n="login.brandSubtitle">Owner and admin consoles</span>
-        </span>
+    <header class="auth-topbar auth-visual-panel">
+      <a class="console-brand" href="/owner/login">
+        <span class="auth-kicker">SCUM TH</span>
       </a>
-      <nav class="auth-surface-switch" aria-label="Admin surfaces">
-        <a id="ownerLoginRoute" class="surface-link surface-role-chip" href="/owner/login" data-i18n="common.roleOwner">Owner</a>
-        <a id="tenantLoginRoute" class="surface-link surface-role-chip" href="/tenant/login" data-i18n="common.roleAdmin">Admin</a>
-      </nav>
+      <div class="auth-surface-switch">
+        <span class="auth-kicker">Owner + Tenant Access</span>
+      </div>
     </header>
 
     <section class="auth-stage">
       <aside class="auth-visual-panel">
-        <span class="auth-kicker" data-i18n="login.adminAccess">Admin Access</span>
+        <span class="auth-kicker">Secure access</span>
         <div class="auth-visual-copy">
-          <h1 id="heroHeading" data-i18n="login.heroTitle">Owner and Admin Consoles</h1>
-          <p id="heroLead" data-i18n="login.heroSubtitle">Sign in to reach the role-appropriate admin surface. Platform owners land in the owner console. Tenant-scoped admins land in the admin console.</p>
+          <h1>เข้าสู่ระบบผู้ดูแล</h1>
+          <p>หน้าเดียวสำหรับเจ้าของระบบและผู้ดูแลผู้เช่า โดยระบบจะพาไปยังพื้นผิวที่ตรงกับสิทธิ์ของคุณอัตโนมัติหลังเข้าสู่ระบบ</p>
         </div>
         <div class="auth-visual-grid">
           <article class="auth-visual-card">
-            <span class="auth-kicker" data-i18n="login.authStackKicker">Auth Stack</span>
-            <strong data-i18n="login.enterTitle">ADMIN WEB</strong>
-            <p data-i18n="login.authStackValue">Database login, Session, 2FA, Rate Limit</p>
+            <strong>Owner</strong>
+            <p>ดูแลทั้งแพลตฟอร์ม ผู้เช่า การเงิน ความปลอดภัย และเหตุการณ์ระดับระบบ</p>
           </article>
           <article class="auth-visual-card">
-            <span class="auth-kicker" data-i18n="login.ownerKicker">Owner Console</span>
-            <strong data-i18n="login.ownerRoutePill">Owner Console</strong>
-            <p data-i18n="login.ownerValue">Global health, tenant fleet, security, runtime, recovery</p>
-          </article>
-          <article class="auth-visual-card">
-            <span class="auth-kicker" data-i18n="login.tenantKicker">Admin Console</span>
-            <strong data-i18n="login.tenantRoutePill">Admin Console</strong>
-            <p data-i18n="login.tenantValue">Scoped config, delivery, wallet, player support, and tenant-only operations</p>
+            <strong>Tenant Admin</strong>
+            <p>ดูแลเซิร์ฟเวอร์ของตัวเอง คำสั่งซื้อ ผู้เล่น การส่งของ และบอตที่ผูกกับ tenant</p>
           </article>
         </div>
       </aside>
 
-      <section class="auth-workspace">
+      <div class="auth-workspace">
         <section class="auth-workspace-panel">
-          <div class="auth-headbar">
-            <span id="routePill" class="auth-kicker" data-i18n="login.enterTitle">ADMIN WEB</span>
-            <label class="language-picker auth-language">
-              <span data-i18n="common.language">Language</span>
-              <select id="adminLanguageSelect" class="language-select"></select>
-            </label>
-          </div>
-
           <div class="auth-workspace-head">
-            <h1 id="loginHeading" data-i18n="login.enterTitle">ADMIN WEB</h1>
-            <p id="loginSubtitle" data-i18n="login.enterSubtitle">Use your admin account to open the correct console automatically after authentication.</p>
-            <p id="switchNotice" class="auth-note" hidden></p>
+            <div class="auth-headbar">
+              <div>
+                <span class="auth-kicker">Sign in</span>
+                <h2>ล็อกอินเข้าสู่ระบบ</h2>
+              </div>
+            </div>
+            <p>เราใช้ auth, session และ 2FA เดิมของระบบ ไม่มีการลดขั้นตอนด้านความปลอดภัย</p>
           </div>
 
-          <form id="loginForm" autocomplete="on">
+          <form id="loginForm" novalidate>
             <label class="auth-field">
-              <span data-i18n="common.username">Username</span>
-              <input id="usernameInput" class="auth-input" name="username" autocomplete="username" data-i18n-placeholder="login.adminUsernamePlaceholder" required>
+              <span>ชื่อผู้ใช้</span>
+              <input id="usernameInput" class="auth-input" name="username" autocomplete="username" placeholder="admin" required>
             </label>
             <label class="auth-field">
-              <span data-i18n="common.password">Password</span>
-              <input id="passwordInput" class="auth-input" name="password" type="password" autocomplete="current-password" required>
+              <span>รหัสผ่าน</span>
+              <input id="passwordInput" class="auth-input" name="password" type="password" autocomplete="current-password" placeholder="กรอกรหัสผ่าน" required>
             </label>
-            <label class="auth-field">
-              <span data-i18n="common.twoFactorOptional">2FA Code (optional)</span>
-              <input id="otpInput" class="auth-input" name="otp" inputmode="numeric" pattern="\d{6}" maxlength="6" placeholder="123456">
+            <label id="otpWrap" class="auth-field" hidden>
+              <span>รหัส 2FA</span>
+              <input id="otpInput" class="auth-input" name="otp" inputmode="numeric" autocomplete="one-time-code" placeholder="123456">
             </label>
-            <button id="loginBtn" class="button button-primary" type="submit" data-i18n="login.signIn">Sign In</button>
+            <p class="auth-note">ถ้าเปิด 2FA อยู่ ระบบจะขอรหัสยืนยันในขั้นตอนถัดไปโดยอัตโนมัติ</p>
+            <div id="errorBox" class="auth-error" aria-live="polite"></div>
+            <div class="auth-action-stack">
+              <button id="loginSubmit" class="button button-primary" type="submit">เข้าสู่ระบบ</button>
+            </div>
           </form>
-
-          <div class="auth-action-stack">
-            <button id="discordSsoBtn" class="button" type="button" data-i18n="login.discordSso">Continue with Discord SSO</button>
-            <div id="errorText" class="auth-error"></div>
-            <p id="sourceHint" class="auth-note" data-i18n="login.sourceHint">Database-backed admin accounts remain the primary login source. Session, 2FA, and rate limiting remain enforced after the redesign.</p>
-          </div>
         </section>
-
-        <section class="auth-facts-panel">
-          <h3 data-i18n="login.heroTitle">Owner and Admin Consoles</h3>
-          <div class="auth-facts-grid">
-            <article class="auth-fact">
-              <span class="auth-kicker" data-i18n="login.ownerKicker">Owner Console</span>
-              <strong data-i18n="owner.surfaceId">Platform Owner Console</strong>
-              <p data-i18n="login.ownerValue">Global health, tenant fleet, security, runtime, recovery</p>
-            </article>
-            <article class="auth-fact">
-              <span class="auth-kicker" data-i18n="login.tenantKicker">Admin Console</span>
-              <strong data-i18n="tenant.surfaceId">Server Admin Console</strong>
-              <p data-i18n="login.tenantValue">Scoped config, delivery, wallet, player support, and tenant-only operations</p>
-            </article>
-            <article class="auth-fact">
-              <span class="auth-kicker" data-i18n="login.authStackKicker">Auth Stack</span>
-              <strong data-i18n="common.security">Security</strong>
-              <p data-i18n="login.authStackValue">Database login, Session, 2FA, Rate Limit</p>
-            </article>
-          </div>
-        </section>
-      </section>
+      </div>
     </section>
   </div>
 
-  <script src="/admin/assets/admin-i18n.js?v=20260325-shell-cutover-1"></script>
-  <script>
-    const form = document.getElementById('loginForm');
-    const usernameInput = document.getElementById('usernameInput');
-    const passwordInput = document.getElementById('passwordInput');
-    const otpInput = document.getElementById('otpInput');
-    const loginBtn = document.getElementById('loginBtn');
-    const discordSsoBtn = document.getElementById('discordSsoBtn');
-    const errorText = document.getElementById('errorText');
-    const sourceHint = document.getElementById('sourceHint');
-    const loginHeading = document.getElementById('loginHeading');
-    const loginSubtitle = document.getElementById('loginSubtitle');
-    const heroHeading = document.getElementById('heroHeading');
-    const heroLead = document.getElementById('heroLead');
-    const routePill = document.getElementById('routePill');
-    const switchNotice = document.getElementById('switchNotice');
-    const ownerLoginRoute = document.getElementById('ownerLoginRoute');
-    const tenantLoginRoute = document.getElementById('tenantLoginRoute');
-
-    async function api(path, method = 'GET', body = null) {
-      const headers = {};
-      let payload;
-      if (body != null) {
-        headers['content-type'] = 'application/json';
-        payload = JSON.stringify(body);
-      }
-      const res = await fetch(path, {
-        method,
-        headers,
-        body: payload,
-        credentials: 'same-origin',
-      });
-      const data = await res.json().catch(() => ({ ok: false, error: 'Invalid response format' }));
-      if (!res.ok || data.ok === false) {
-        throw new Error(data.error || `Request failed (${res.status})`);
-      }
-      return data;
-    }
-
-    async function ensureNotLoggedIn() {
-      if (!document.cookie.split(';').some((entry) => entry.trim().startsWith('scum_admin_session='))) {
-        return;
-      }
-      try {
-        const me = await api('/admin/api/me');
-        const params = new URLSearchParams(window.location.search);
-        const switchMode = String(params.get('switch') || '').trim() === '1';
-        const requestedSurface = getRequestedLoginSurface();
-        const sessionSurface = me?.data?.tenantId ? 'tenant' : 'owner';
-        if (switchMode && requestedSurface !== 'admin' && requestedSurface !== sessionSurface) {
-          return;
-        }
-        window.location.replace(getPostLoginTarget());
-      } catch {
-        // not logged in
-      }
-    }
-
-    function getRequestedLoginSurface() {
-      const path = String(window.location.pathname || '').trim().toLowerCase();
-      if (path === '/owner/login' || path === '/owner/login/') return 'owner';
-      if (path === '/tenant/login' || path === '/tenant/login/') return 'tenant';
-      return 'admin';
-    }
-
-    function getPostLoginTarget() {
-      const params = new URLSearchParams(window.location.search);
-      const next = String(params.get('next') || '').trim();
-      if (next.startsWith('/owner')) return '/owner';
-      if (next.startsWith('/tenant')) return '/tenant';
-      const path = String(window.location.pathname || '').trim().toLowerCase();
-      if (path === '/owner/login' || path === '/owner/login/') return '/owner';
-      if (path === '/tenant/login' || path === '/tenant/login/') return '/tenant';
-      return '/admin';
-    }
-
-    function getSurfaceTargetFromSession(result) {
-      const tenantId = result?.data?.tenantId || null;
-      return tenantId ? '/tenant' : '/owner';
-    }
-
-    function applySurfacePresentation() {
-      const requestedSurface = getRequestedLoginSurface();
-      const params = new URLSearchParams(window.location.search);
-      const switchMode = String(params.get('switch') || '').trim() === '1';
-      const t = window.AdminUiI18n?.t || ((key, fallback) => fallback);
-      const surfaceContent = {
-        owner: {
-          pill: t('login.ownerRoutePill', 'Owner Console'),
-          heading: t('login.ownerHeading', 'Owner access'),
-          subtitle: t('login.ownerSubtitle', 'Use an owner-level admin account for platform health, security, audit, and guarded global changes.'),
-          hint: t('login.ownerSourceHint', 'Owner accounts open the platform-wide control surface. Tenant-scoped accounts are redirected to the tenant console after sign-in.'),
-          placeholder: t('login.ownerUsernamePlaceholder', 'owner-admin'),
-          title: t('login.ownerDocumentTitle', 'SCUM Owner Login'),
-        },
-        tenant: {
-          pill: t('login.tenantRoutePill', 'Tenant Console'),
-          heading: t('login.tenantHeading', 'Tenant access'),
-          subtitle: t('login.tenantSubtitle', 'Use a tenant-scoped admin account for delivery, wallet support, scoped config, and player operations.'),
-          hint: t('login.tenantSourceHint', 'Tenant accounts open the scoped admin surface. Owner accounts are redirected to the owner console after sign-in.'),
-          placeholder: t('login.tenantUsernamePlaceholder', 'tenant-admin'),
-          title: t('login.tenantDocumentTitle', 'SCUM Tenant Login'),
-        },
-        admin: {
-          pill: t('login.enterTitle', 'ADMIN WEB'),
-          heading: t('login.enterTitle', 'ADMIN WEB'),
-          subtitle: t('login.enterSubtitle', 'Use your admin account to open the correct console automatically after authentication.'),
-          hint: t('login.sourceHint', 'Database-backed admin accounts remain the primary login source. Session, 2FA, and rate limit policy are unchanged.'),
-          placeholder: t('login.adminUsernamePlaceholder', 'admin-owner'),
-          title: t('login.documentTitle', 'SCUM Admin Access'),
-        },
-      };
-      const current = surfaceContent[requestedSurface] || surfaceContent.admin;
-      document.title = current.title;
-      routePill.textContent = current.pill;
-      heroHeading.textContent = current.heading;
-      heroLead.textContent = current.subtitle;
-      loginHeading.textContent = current.heading;
-      loginSubtitle.textContent = current.subtitle;
-      sourceHint.textContent = current.hint;
-      usernameInput.placeholder = current.placeholder;
-      ownerLoginRoute.classList.toggle('is-active', requestedSurface === 'owner');
-      tenantLoginRoute.classList.toggle('is-active', requestedSurface === 'tenant');
-      if (switchMode && requestedSurface === 'tenant') {
-        switchNotice.hidden = false;
-        switchNotice.textContent = t('login.switchTenant', 'You are switching from an owner session. Sign in with a tenant-scoped account to continue into the tenant console.');
-      } else if (switchMode && requestedSurface === 'owner') {
-        switchNotice.hidden = false;
-        switchNotice.textContent = t('login.switchOwner', 'You are switching from a tenant session. Sign in with an owner-level account to continue into the owner console.');
-      } else {
-        switchNotice.hidden = true;
-        switchNotice.textContent = '';
-      }
-    }
-
-    async function loadAuthProviders() {
-      try {
-        const providers = await api('/admin/api/auth/providers', 'GET');
-        if (providers?.data?.discordSso) {
-          discordSsoBtn.style.display = 'block';
-        }
-      } catch {
-        // ignore
-      }
-    }
-
-    function showErrorFromQuery() {
-      const params = new URLSearchParams(window.location.search);
-      const message = String(params.get('error') || '').trim();
-      if (message) {
-        errorText.textContent = message;
-      }
-    }
-
-    form.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      errorText.textContent = '';
-      loginBtn.disabled = true;
-      const originalText = loginBtn.textContent;
-      loginBtn.textContent = window.AdminUiI18n?.t('login.signingIn', 'Signing in...') || 'Signing in...';
-      try {
-        const result = await api('/admin/api/login', 'POST', {
-          username: usernameInput.value.trim(),
-          password: passwordInput.value,
-          otp: otpInput.value.trim() || undefined,
-        });
-        const sessionTarget = getSurfaceTargetFromSession(result);
-        window.location.replace(sessionTarget);
-      } catch (error) {
-        errorText.textContent = error.message || (window.AdminUiI18n?.t('login.signInFailed', 'Sign in failed') || 'Sign in failed');
-        if (/2FA|OTP/i.test(errorText.textContent)) {
-          otpInput.focus();
-        } else {
-          passwordInput.focus();
-        }
-      } finally {
-        loginBtn.disabled = false;
-        loginBtn.textContent = originalText;
-      }
-    });
-
-    discordSsoBtn?.addEventListener('click', () => {
-      window.location.href = '/admin/auth/discord/start';
-    });
-
-    window.AdminUiI18n?.init(['adminLanguageSelect']);
-    applySurfacePresentation();
-    window.addEventListener('ui-language-change', applySurfacePresentation);
-    showErrorFromQuery();
-    loadAuthProviders();
-    ensureNotLoggedIn();
-  </script>
+  <script src="/admin/assets/admin-login-v4.js"></script>
 </body>
 </html>

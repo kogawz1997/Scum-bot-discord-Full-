@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tenant Restart Control V4 Preview</title>
+  <link rel="stylesheet" href="../assets/tenant-restart-control-v4.css">
+</head>
+<body class="tdv4-preview-body">
+  <div id="tenantRestartControlV4PreviewRoot"></div>
+  <script src="../assets/tenant-restart-control-v4.js"></script>
+  <script>
+    window.__TENANT_RESTART_CONTROL_V4_SAMPLE__ = {
+      me: { tenantId: 'scum-th-renter', role: 'tenant_admin' },
+      tenantConfig: { name: 'SCUM TH Renter' },
+      serverStatus: 'ready',
+      deliveryRuntime: { status: 'ready', mode: 'agent' },
+      queueItems: [{ id: 'q1' }, { id: 'q2' }],
+      deadLetters: [{ id: 'd1' }],
+      maintenance: { status: 'scheduled' },
+      serverBotReady: true,
+      restartHistory: [
+        { at: '2026-03-26T11:40:00+07:00', mode: 'safe-restart', result: 'success', actor: 'tenant_owner' },
+        { at: '2026-03-25T23:05:00+07:00', mode: 'restart-5m', result: 'success', actor: 'moderator' }
+      ]
+    };
+
+    window.TenantRestartControlV4.renderTenantRestartControlV4(
+      document.getElementById('tenantRestartControlV4PreviewRoot'),
+      window.__TENANT_RESTART_CONTROL_V4_SAMPLE__
+    );
+  </script>
+</body>
+</html>

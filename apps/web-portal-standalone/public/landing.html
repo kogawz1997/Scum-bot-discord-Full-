@@ -1,194 +1,71 @@
 <!doctype html>
-<html lang="en">
+<html lang="th">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title data-i18n="public.site.documentTitle">SCUM TH Platform</title>
-  <link rel="stylesheet" href="/player/assets/ui/platform-site-v2.css?v=20260325-shell-cutover-1">
+  <title>SCUM TH Platform | Landing</title>
+  <link rel="stylesheet" href="/player/assets/ui/platform-site-v2.css">
 </head>
 <body class="public-v2">
   <div class="marketing-shell">
     <header class="marketing-topbar">
       <a class="marketing-brand" href="/landing">
         <span class="marketing-brand-mark">SCUM</span>
-        <span class="marketing-brand-copy">
-          <strong data-i18n="public.site.brandTitle">SCUM TH Platform</strong>
-          <span data-i18n="public.site.brandSubtitle">Managed control plane for SCUM communities</span>
-        </span>
+        <span class="marketing-brand-copy"><strong>SCUM TH Platform</strong><span>Owner, Tenant, Player surfaces</span></span>
       </a>
       <nav class="marketing-nav">
-        <a class="is-active" href="/landing" data-i18n="public.nav.landing">Landing</a>
-        <a href="/pricing" data-i18n="public.nav.pricing">Pricing</a>
-        <a href="/signup" data-i18n="public.nav.signup">Sign Up</a>
-        <a href="/login" data-i18n="public.nav.login">Login</a>
+        <a class="is-active" href="/landing">ภาพรวม</a>
+        <a href="/pricing">แพ็กเกจ</a>
+        <a href="/signup">สมัครใช้งาน</a>
+        <a href="/login">เข้าสู่ระบบ</a>
       </nav>
       <div class="marketing-tools">
-        <label class="language-picker">
-          <span data-i18n="common.language">Language</span>
-          <select id="publicLanguageSelect" class="language-select"></select>
-        </label>
+        <a class="button" href="/login">Preview</a>
+        <a class="button button-primary" href="/signup">เริ่มต้นใช้งาน</a>
       </div>
     </header>
-
     <main class="marketing-main">
       <section class="marketing-hero">
         <div class="marketing-copy">
-          <span class="marketing-kicker" data-i18n="public.hero.kicker">Managed SCUM Operations</span>
-          <h1 data-i18n="public.hero.title">A clean control plane for SCUM servers, agents, and players.</h1>
-          <p data-i18n="public.hero.detail">Owner operations, tenant administration, and player self-service stay separate, readable, and easier to support. Preview the product before you buy, then scale with feature-gated packages.</p>
+          <span class="marketing-kicker">Provider-ready control plane</span>
+          <h1>แพลตฟอร์มดูแลเซิร์ฟเวอร์ SCUM แบบหลายผู้เช่า</h1>
+          <p>แยก Owner, Tenant Admin, และ Player อย่างชัดเจน พร้อม Delivery Agent, Server Bot, การส่งของ, การซิงก์ log, การจัดการคำสั่งซื้อ และพอร์ทัลผู้เล่นในโครงแบบ SaaS ที่ใช้งานได้จริง</p>
           <div class="marketing-actions">
-            <a class="button button-primary" href="/signup" data-i18n="public.hero.start">Start Preview</a>
-            <a class="button" href="/pricing" data-i18n="public.hero.compare">Compare Packages</a>
-            <a class="button" href="/player/login" data-i18n="public.hero.player">Player Portal</a>
+            <a class="button button-primary" href="/signup?package=BOT_LOG_DELIVERY">ลองใช้ก่อนซื้อ</a>
+            <a class="button" href="/pricing">ดูแพ็กเกจ</a>
           </div>
           <div class="marketing-chip-row">
-            <span class="marketing-chip" data-i18n="public.hero.chipPreview">Preview before purchase</span>
-            <span class="marketing-chip" data-i18n="public.hero.chipAgents">Separate Delivery Agent and Server Bot</span>
-            <span class="marketing-chip" data-i18n="public.hero.chipI18n">English + Thai from the start</span>
+            <span class="marketing-chip">Multi-tenant</span>
+            <span class="marketing-chip">Delivery Agent + Server Bot</span>
+            <span class="marketing-chip">Preview mode ก่อนซื้อ</span>
           </div>
         </div>
         <div class="marketing-visual">
-          <div class="marketing-visual-image" aria-hidden="true"></div>
-          <section class="marketing-visual-card">
-            <span class="marketing-kicker" data-i18n="public.hero.snapshotKicker">Platform Snapshot</span>
-            <h2 data-i18n="public.hero.snapshotTitle">Three web surfaces, two remote runtimes, one control plane.</h2>
-            <p data-i18n="public.hero.snapshotDetail">The Owner Panel governs tenants and packages. The Tenant Panel runs daily server work. The Player Portal handles trust, wallet, orders, and community features.</p>
-          </section>
+          <div class="marketing-visual-image"></div>
+          <div class="marketing-visual-card">
+            <strong>เส้นทางใช้งาน</strong>
+            <p>Owner ดูภาพรวมทั้งระบบ, Tenant ดูแลงานประจำวันของเซิร์ฟเวอร์, Player ติดตามคำสั่งซื้อ กระเป๋าเงิน และกิจกรรมของชุมชน</p>
+          </div>
         </div>
       </section>
 
       <section class="marketing-grid two-col">
-        <section class="marketing-panel">
+        <article class="marketing-panel">
           <div class="marketing-panel-head">
-            <span class="marketing-kicker" data-i18n="public.roles.kicker">Role Separation</span>
-            <h2 data-i18n="public.roles.title">Each surface has one job.</h2>
-            <p data-i18n="public.roles.detail">The product is structured so non-technical operators can understand where to work without reading technical docs first.</p>
+            <span class="marketing-kicker">Owner</span>
+            <h2>ควบคุมทั้งแพลตฟอร์ม</h2>
           </div>
-          <div class="surface-grid-v2">
-            <article class="marketing-panel">
-              <span class="marketing-kicker">OWNER</span>
-              <h3 data-i18n="public.roles.ownerTitle">Provider-wide control</h3>
-              <p data-i18n="public.roles.ownerDetail">Tenants, packages, subscriptions, security, billing, diagnostics, and system-level jobs.</p>
-            </article>
-            <article class="marketing-panel">
-              <span class="marketing-kicker">TENANT</span>
-              <h3 data-i18n="public.roles.tenantTitle">Daily server operations</h3>
-              <p data-i18n="public.roles.tenantDetail">Servers, config, restart control, orders, delivery, events, donations, staff, and module toggles.</p>
-            </article>
-            <article class="marketing-panel">
-              <span class="marketing-kicker">PLAYER</span>
-              <h3 data-i18n="public.roles.playerTitle">Community portal</h3>
-              <p data-i18n="public.roles.playerDetail">Wallet, shop, delivery status, leaderboards, activity, events, profile, and support.</p>
-            </article>
-          </div>
-        </section>
-
-        <section class="marketing-panel">
+          <p>เหมาะกับผู้ให้บริการที่ต้องดูผู้เช่า แพ็กเกจ สิทธิ์ใช้งาน สุขภาพรันไทม์ และเหตุการณ์ระดับระบบ</p>
+        </article>
+        <article class="marketing-panel">
           <div class="marketing-panel-head">
-            <span class="marketing-kicker" data-i18n="public.runtime.kicker">Remote Runtime Model</span>
-            <h2 data-i18n="public.runtime.title">Delivery Agent and Server Bot are separate.</h2>
-            <p data-i18n="public.runtime.detail">The system keeps item delivery apart from server file/config control so permissions, provisioning, and troubleshooting stay clearer.</p>
+            <span class="marketing-kicker">Tenant</span>
+            <h2>จัดการเซิร์ฟเวอร์ประจำวัน</h2>
           </div>
-          <div class="support-grid">
-            <article class="marketing-panel">
-              <span class="marketing-kicker" data-i18n="public.runtime.deliveryKicker">Delivery Agent</span>
-              <h3 data-i18n="public.runtime.deliveryTitle">Game-client execution</h3>
-              <p data-i18n="public.runtime.deliveryDetail">Receives delivery jobs, reports proof/results, sends heartbeat, and may broadcast in-game announcements when deployment allows it.</p>
-            </article>
-            <article class="marketing-panel">
-              <span class="marketing-kicker" data-i18n="public.runtime.serverKicker">Server Bot</span>
-              <h3 data-i18n="public.runtime.serverTitle">Server-side control</h3>
-              <p data-i18n="public.runtime.serverDetail">Reads SCUM logs, edits .ini safely, applies config changes, and executes restart/start/stop jobs.</p>
-            </article>
-          </div>
-        </section>
-      </section>
-
-      <section class="marketing-panel">
-        <div class="marketing-panel-head">
-          <span class="marketing-kicker" data-i18n="public.packages.kicker">Packages</span>
-          <h2 data-i18n="public.packages.title">Feature-gated bundles for different server needs.</h2>
-          <p data-i18n="public.packages.detail">Packages expose features through entitlement checks, not through brittle package-name branching inside the UI.</p>
-        </div>
-        <div class="package-grid four-col">
-          <article class="pricing-card">
-            <span class="pricing-badge">BOT_LOG</span>
-            <h3>BOT_LOG</h3>
-            <ul>
-              <li>bot_log</li>
-              <li>discord_integration</li>
-              <li>log_dashboard</li>
-              <li>sync_agent</li>
-            </ul>
-          </article>
-          <article class="pricing-card is-featured">
-            <span class="pricing-badge featured">BOT_LOG_DELIVERY</span>
-            <h3>BOT_LOG_DELIVERY</h3>
-            <ul>
-              <li>bot_delivery</li>
-              <li>shop_module</li>
-              <li>orders_module</li>
-              <li>execute_agent</li>
-            </ul>
-          </article>
-          <article class="pricing-card">
-            <span class="pricing-badge">FULL_OPTION</span>
-            <h3>FULL_OPTION</h3>
-            <ul>
-              <li>server_hosting</li>
-              <li>server_settings</li>
-              <li>server_status</li>
-              <li>all core modules</li>
-            </ul>
-          </article>
-          <article class="pricing-card">
-            <span class="pricing-badge">SERVER_ONLY</span>
-            <h3>SERVER_ONLY</h3>
-            <ul>
-              <li>server_hosting</li>
-              <li>server_settings</li>
-              <li>server_status</li>
-              <li>no delivery features</li>
-            </ul>
-          </article>
-        </div>
-        <div class="button-row">
-          <a class="button button-primary" href="/pricing" data-i18n="public.packages.compare">Open Package Comparison</a>
-        </div>
-      </section>
-
-      <section class="marketing-grid two-col">
-        <section class="marketing-panel">
-          <div class="marketing-panel-head">
-            <span class="marketing-kicker" data-i18n="public.preview.kicker">Preview Mode</span>
-            <h2 data-i18n="public.preview.title">Inspect the product before purchase.</h2>
-            <p data-i18n="public.preview.detail">Preview mode exposes the real product structure with locked actions, so customers can evaluate the platform before a subscription is active.</p>
-          </div>
-          <div class="preview-state">
-            <strong data-i18n="public.preview.stateTitle">Preview users can browse safely.</strong>
-            <p data-i18n="public.preview.stateDetail">Menus, layouts, and module structure remain visible while actions such as provisioning, checkout, or destructive operations stay gated.</p>
-          </div>
-        </section>
-
-        <section class="marketing-panel">
-          <div class="marketing-panel-head">
-            <span class="marketing-kicker" data-i18n="public.cta.kicker">Get Started</span>
-            <h2 data-i18n="public.cta.title">Choose the path that fits your role.</h2>
-            <p data-i18n="public.cta.detail">Start with preview mode, compare packages, or jump directly into the player-facing portal if you already run the service.</p>
-          </div>
-          <div class="button-row">
-            <a class="button button-primary" href="/signup" data-i18n="public.cta.preview">Start Preview</a>
-            <a class="button" href="/login" data-i18n="public.cta.login">Open Login Hub</a>
-            <a class="button" href="/pricing" data-i18n="public.cta.pricing">Review Pricing</a>
-          </div>
-        </section>
+          <p>รวมสถานะเซิร์ฟเวอร์ การตั้งค่า รีสตาร์ต คำสั่งซื้อ ผู้เล่น บอต และการส่งของไว้ใน workflow ที่เข้าใจง่าย</p>
+        </article>
       </section>
     </main>
   </div>
-
-  <script src="/player/assets/ui/portal-i18n.js?v=20260325-shell-cutover-1"></script>
-  <script>
-    window.PortalUiI18n?.init(['publicLanguageSelect']);
-  </script>
 </body>
 </html>

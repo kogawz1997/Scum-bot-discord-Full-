@@ -3,12 +3,16 @@
 /** Runtime feature flag readers for bot and worker entrypoints. */
 
 const { parseBooleanEnv } = require('./schema');
+const { isDiscordOnlyMode } = require('./discordOnlyMode');
 
 function getBotFeatureFlags(env = process.env, options = {}) {
   const isTestRuntime = options.isTestRuntime === true;
   const defaultEnabled = !isTestRuntime;
+  const discordOnly = isDiscordOnlyMode(env);
   return Object.freeze({
-    adminWeb: parseBooleanEnv(env.BOT_ENABLE_ADMIN_WEB, defaultEnabled),
+    adminWeb: discordOnly
+      ? false
+      : parseBooleanEnv(env.BOT_ENABLE_ADMIN_WEB, defaultEnabled),
     scumWebhook: parseBooleanEnv(env.BOT_ENABLE_SCUM_WEBHOOK, defaultEnabled),
     restartScheduler: parseBooleanEnv(
       env.BOT_ENABLE_RESTART_SCHEDULER,

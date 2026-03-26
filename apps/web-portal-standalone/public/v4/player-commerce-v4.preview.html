@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Player Commerce V4 Preview</title>
+  <link rel="stylesheet" href="../assets/player-commerce-v4.css">
+</head>
+<body class="plv4-preview-body">
+  <div id="playerCommerceV4PreviewRoot"></div>
+  <script src="../assets/player-v4-shared.js"></script>
+  <script src="../assets/player-commerce-v4.js"></script>
+  <script>
+    const __PLAYER_COMMERCE_V4_SAMPLE__ = {
+      me: { user: 'Mira' },
+      walletLedger: {
+        wallet: { balance: 5820 },
+        items: [
+          { createdAt: '2026-03-26T13:00:00+07:00', delta: -1200, balanceAfter: 5820, reasonLabel: 'ซื้อแพ็กเกจ', reference: 'P-2026-0315' },
+          { createdAt: '2026-03-26T08:00:00+07:00', delta: 500, balanceAfter: 7020, reasonLabel: 'รางวัลรายวัน', reference: 'daily-claim' }
+        ]
+      },
+      cart: {
+        totalUnits: 3,
+        totalPrice: 1800,
+        missingItemIds: [],
+        rows: [
+          { itemId: 'supporter-bundle', quantity: 1 },
+          { itemId: 'ammo-pack', quantity: 2 }
+        ]
+      },
+      orders: [
+        { purchaseCode: 'P-2026-0315', itemName: 'Supporter Bundle', status: 'delivering', totalPrice: 1200, createdAt: '2026-03-26T13:00:00+07:00' },
+        { purchaseCode: 'P-2026-0308', itemName: 'Ammo Pack', status: 'delivered', totalPrice: 600, createdAt: '2026-03-25T10:00:00+07:00' }
+      ],
+      redeemHistory: [{ code: 'WELCOME2026' }],
+      shopItems: [
+        { id: 'supporter-bundle', name: 'Supporter Bundle', description: 'แพ็กเกจสนับสนุนรายเดือนพร้อมของรางวัล', price: 1200, kind: 'vip' },
+        { id: 'ammo-pack', name: 'Ammo Pack', description: 'ชุดกระสุนสำหรับเตรียมออกปฏิบัติการ', price: 300, kind: 'item', requiresSteamLink: true },
+        { id: 'repair-kit', name: 'Repair Kit', description: 'ชุดซ่อมอุปกรณ์ในเกม', price: 450, kind: 'item', requiresSteamLink: true }
+      ],
+      steamLink: { linked: true, steamId: '76561190000000001', inGameName: 'MiraTH' }
+    };
+    window.addEventListener('DOMContentLoaded', () => {
+      window.PlayerCommerceV4.renderPlayerCommerceV4(
+        document.getElementById('playerCommerceV4PreviewRoot'),
+        __PLAYER_COMMERCE_V4_SAMPLE__
+      );
+    });
+  </script>
+</body>
+</html>

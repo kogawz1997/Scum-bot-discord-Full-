@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tenant Players V4 Preview</title>
+  <link rel="stylesheet" href="../assets/tenant-players-v4.css">
+</head>
+<body class="tdv4-preview-body">
+  <div id="tenantPlayersV4PreviewRoot"></div>
+  <script src="../assets/tenant-players-v4.js"></script>
+  <script>
+    window.__TENANT_PLAYERS_V4_SAMPLE__ = {
+      me: { tenantId: 'scum-th-renter', role: 'tenant_admin' },
+      tenantConfig: { name: 'SCUM TH Renter' },
+      players: [
+        {
+          displayName: 'John Walker',
+          discordId: '1064421455230015488',
+          steamId: '76561198000000001',
+          inGameName: 'RW-John',
+          isActive: true,
+          updatedAt: '2026-03-26T11:20:00+07:00'
+        },
+        {
+          displayName: 'Mina Frost',
+          discordId: '5544221100',
+          steamId: '',
+          inGameName: 'FR-Mina',
+          isActive: true,
+          updatedAt: '2026-03-26T10:52:00+07:00'
+        },
+        {
+          displayName: 'Blue Fox',
+          discordId: '3344556677',
+          steamId: '76561198000000003',
+          inGameName: 'BF-Blue',
+          isActive: false,
+          updatedAt: '2026-03-25T19:15:00+07:00'
+        }
+      ],
+      purchaseLookup: {
+        items: [
+          {
+            code: 'PUR-240326-001',
+            itemName: 'Starter Kit',
+            status: 'queued',
+            userId: '1064421455230015488',
+            totalPrice: 490,
+            createdAt: '2026-03-26T10:12:00+07:00'
+          },
+          {
+            code: 'PUR-240325-011',
+            itemName: 'Ammo Crate',
+            status: 'delivered',
+            userId: '3344556677',
+            totalPrice: 250,
+            createdAt: '2026-03-25T21:05:00+07:00'
+          }
+        ]
+      },
+      deliveryCase: {
+        purchase: { userId: '1064421455230015488' },
+        deadLetter: { reason: 'รอ Delivery Agent ยืนยันรอบใหม่' },
+        latestCommandSummary: 'มีเคสส่งของที่กำลังติดตามอยู่'
+      }
+    };
+
+    window.TenantPlayersV4.renderTenantPlayersV4(
+      document.getElementById('tenantPlayersV4PreviewRoot'),
+      window.__TENANT_PLAYERS_V4_SAMPLE__
+    );
+  </script>
+</body>
+</html>

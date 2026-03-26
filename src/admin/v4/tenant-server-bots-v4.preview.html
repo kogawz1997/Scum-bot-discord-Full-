@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tenant Server Bots V4 Preview</title>
+  <link rel="stylesheet" href="../assets/tenant-server-bots-v4.css">
+</head>
+<body class="tdv4-preview-body">
+  <div id="tenantServerBotsV4PreviewRoot"></div>
+  <script src="../assets/tenant-server-bots-v4.js"></script>
+  <script>
+    window.__TENANT_SERVER_BOTS_V4_SAMPLE__ = {
+      me: { tenantId: 'scum-th-renter', role: 'tenant_admin' },
+      tenantConfig: { name: 'SCUM TH Renter' },
+      overview: { serverCount: 3 },
+      agents: [
+        {
+          runtimeKey: 'watcher-alpha',
+          channel: 'server-a',
+          status: 'online',
+          version: '1.3.9',
+          lastSeenAt: '2026-03-26T12:08:00+07:00',
+          meta: {
+            agentRole: 'sync',
+            agentScope: 'sync_only',
+            serverId: 'server-alpha',
+            agentLabel: 'Server Bot Alpha',
+            capabilities: ['sync', 'config', 'restart']
+          }
+        },
+        {
+          runtimeKey: 'watcher-bravo',
+          channel: 'server-b',
+          status: 'offline',
+          version: '1.3.1',
+          lastSeenAt: '2026-03-26T10:01:00+07:00',
+          meta: {
+            agentRole: 'sync',
+            agentScope: 'sync_only',
+            serverId: 'server-bravo',
+            agentLabel: 'Server Bot Bravo',
+            capabilities: ['sync', 'config']
+          }
+        }
+      ],
+      queueItems: [{ id: 'q1' }, { id: 'q2' }],
+      deadLetters: [{ id: 'd1' }],
+      notifications: [{ id: 'n1' }, { id: 'n2' }, { id: 'n3' }],
+      reconcile: { summary: { alerts: 2 } },
+      runtimeSupervisor: { items: [{ key: 'watcher' }, { key: 'console-agent' }] }
+    };
+
+    window.TenantServerBotsV4.renderTenantServerBotsV4(
+      document.getElementById('tenantServerBotsV4PreviewRoot'),
+      window.__TENANT_SERVER_BOTS_V4_SAMPLE__
+    );
+  </script>
+</body>
+</html>

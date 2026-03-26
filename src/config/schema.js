@@ -6,6 +6,7 @@ const RUNTIME_ENV_SCHEMA = Object.freeze({
   bot: Object.freeze({
     required: Object.freeze(['DISCORD_TOKEN']),
     optional: Object.freeze([
+      'PLATFORM_DISCORD_ONLY',
       'DISCORD_GUILD_ID',
       'BOT_ENABLE_ADMIN_WEB',
       'BOT_ENABLE_SCUM_WEBHOOK',
@@ -40,6 +41,7 @@ const RUNTIME_ENV_SCHEMA = Object.freeze({
   adminWeb: Object.freeze({
     required: Object.freeze(['ADMIN_WEB_PASSWORD', 'ADMIN_WEB_TOKEN']),
     optional: Object.freeze([
+      'PLATFORM_DISCORD_ONLY',
       'ADMIN_WEB_PORT',
       'ADMIN_WEB_HOST',
       'ADMIN_WEB_SECURE_COOKIE',
@@ -51,6 +53,7 @@ const RUNTIME_ENV_SCHEMA = Object.freeze({
   portal: Object.freeze({
     required: Object.freeze(['WEB_PORTAL_BASE_URL']),
     optional: Object.freeze([
+      'PLATFORM_DISCORD_ONLY',
       'WEB_PORTAL_PORT',
       'WEB_PORTAL_PLAYER_OPEN_ACCESS',
       'WEB_PORTAL_REQUIRE_GUILD_MEMBER',
