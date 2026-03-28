@@ -62,11 +62,14 @@ test('owner dashboard v4 model maps current owner state into command-center cont
 });
 
 test('owner dashboard v4 html includes shell, decision panel, and activity regions', () => {
-  const html = buildOwnerDashboardV4Html(createOwnerDashboardV4Model({}));
+  const html = buildOwnerDashboardV4Html(createOwnerDashboardV4Model({}, { currentRoute: 'settings' }));
   assert.match(html, /odv4-topbar/);
   assert.match(html, /odv4-priority-panel/);
   assert.match(html, /odv4-task-grid/);
   assert.match(html, /odv4-feed/);
+  assert.match(html, /id="overview"/);
+  assert.match(html, /id="settings"/);
+  assert.match(html, /odv4-nav-link odv4-nav-link-current" href="#settings"/);
 });
 
 test('owner dashboard preview references parallel assets', () => {

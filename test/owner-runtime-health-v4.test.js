@@ -33,7 +33,7 @@ test('owner runtime health v4 model maps runtime, incident, and hotspot state', 
     deliveryLifecycle: { summary: { deadLetterCount: 3 } },
   });
 
-  assert.equal(model.header.title, 'สุขภาพรันไทม์และเหตุการณ์');
+  assert.equal(model.header.title, 'สถานะระบบและเหตุการณ์');
   assert.equal(model.summaryStrip.length, 4);
   assert.equal(model.runtimeRows.length, 2);
   assert.equal(model.agentRows.length, 2);
@@ -45,6 +45,15 @@ test('owner runtime health v4 html includes runtime matrix and hotspot table', (
   assert.match(html, /บริการที่ต้องเฝ้าดู/);
   assert.match(html, /สัญญาณที่เจ้าของระบบควรรู้ตอนนี้/);
   assert.match(html, /จุดร้อนของคำขอ/);
+});
+
+test('owner runtime health v4 highlights the selected owner sidebar route and exposes focus targets', () => {
+  const html = buildOwnerRuntimeHealthV4Html(createOwnerRuntimeHealthV4Model({}, { currentRoute: 'security' }));
+  assert.match(html, /id="runtime-health"/);
+  assert.match(html, /id="jobs"/);
+  assert.match(html, /id="incidents"/);
+  assert.match(html, /id="observability"/);
+  assert.match(html, /odv4-nav-link odv4-nav-link-current" href="#security"/);
 });
 
 test('owner runtime preview references parallel assets', () => {

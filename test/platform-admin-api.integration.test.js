@@ -3,9 +3,10 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const { once } = require('node:events');
 
-const { prisma } = require('../src/prisma');
+const { cleanupPlatformTenantFixtures } = require('./helpers/platformTestCleanup');
 
 const adminWebServerPath = path.resolve(__dirname, '../src/adminWebServer.js');
+const TEST_TENANT_IDS = Object.freeze(['tenant-admin-api', 'tenant-admin-api-b']);
 
 function freshAdminWebServerModule() {
   delete require.cache[adminWebServerPath];
@@ -34,15 +35,9 @@ function setScopedEnv(overrides) {
 }
 
 async function cleanupPlatformTables() {
-  await prisma.$transaction([
-    prisma.platformMarketplaceOffer.deleteMany({}),
-    prisma.platformAgentRuntime.deleteMany({}),
-    prisma.platformWebhookEndpoint.deleteMany({}),
-    prisma.platformApiKey.deleteMany({}),
-    prisma.platformLicense.deleteMany({}),
-    prisma.platformSubscription.deleteMany({}),
-    prisma.platformTenant.deleteMany({}),
-  ]);
+  await cleanupPlatformTenantFixtures({
+    tenantIds: TEST_TENANT_IDS,
+  });
 }
 
 test('admin platform routes and tenant public API flow work end-to-end', async (t) => {

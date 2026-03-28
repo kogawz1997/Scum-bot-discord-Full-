@@ -1,5 +1,5 @@
 const path = require('node:path');
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient } = require('./prismaClientLoader');
 const { resolveTenantDatabaseTarget } = require('./utils/tenantDatabaseTopology');
 const {
   clearProvisionedTenantDatabaseTargets,

@@ -412,12 +412,48 @@ function createPortalAuthRuntime(options = {}) {
         isActive: true,
       });
 
+      let platformIdentity = null;
+      if (typeof options.ensurePlatformPlayerIdentity === 'function') {
+        try {
+          platformIdentity = await options.ensurePlatformPlayerIdentity({
+            provider: 'discord',
+            providerUserId: discordId,
+            providerEmail: options.normalizeText(profile.email),
+            displayName: options.normalizeText(profile.global_name) || user,
+            locale: options.identityLocale || 'en',
+            tenantId: options.identityTenantId || null,
+            role: 'player',
+            membershipType: options.identityTenantId ? 'tenant' : 'player',
+            avatarUrl,
+            discordUserId: discordId,
+            verificationState: 'discord_verified',
+            lastSeenAt: new Date().toISOString(),
+            identityMetadata: {
+              source: 'portal-discord-oauth',
+              username: options.normalizeText(profile.username) || null,
+              guildId: options.discordGuildId || null,
+            },
+            profileMetadata: {
+              source: 'portal-discord-oauth',
+              authMethod: 'discord-oauth',
+            },
+          });
+        } catch (error) {
+          options.logger.warn(
+            '[web-portal-standalone] platform identity sync failed:',
+            error?.message || error,
+          );
+        }
+      }
+
       const sessionId = createSession({
         user,
         role: 'player',
         discordId,
         authMethod: 'discord-oauth',
         avatarUrl,
+        platformUserId: platformIdentity?.user?.id || null,
+        platformProfileId: platformIdentity?.profile?.id || null,
       });
 
       res.writeHead(302, {

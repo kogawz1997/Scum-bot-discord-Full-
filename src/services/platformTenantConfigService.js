@@ -25,6 +25,17 @@ function parseJsonObject(value) {
   }
 }
 
+function toIsoText(value) {
+  if (!value) return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  }
+  const text = String(value).trim();
+  if (!text) return null;
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? text : parsed.toISOString();
+}
+
 function normalizeRow(row) {
   if (!row) return null;
   return {
@@ -33,8 +44,8 @@ function normalizeRow(row) {
     portalEnvPatch: parseJsonObject(row.portalEnvPatchJson),
     featureFlags: parseJsonObject(row.featureFlagsJson),
     updatedBy: String(row.updatedBy || '').trim() || null,
-    createdAt: row.createdAt ? new Date(row.createdAt).toISOString() : null,
-    updatedAt: row.updatedAt ? new Date(row.updatedAt).toISOString() : null,
+    createdAt: toIsoText(row.createdAt),
+    updatedAt: toIsoText(row.updatedAt),
   };
 }
 
@@ -74,6 +85,25 @@ function dedupeTenantConfigRows(rows = []) {
   return deduped;
 }
 
+function getTenantConfigDelegate(client = null) {
+  if (String(process.env.PLATFORM_TENANT_CONFIG_PRISMA_ENABLED || '').trim().toLowerCase() !== 'true') {
+    return null;
+  }
+  const delegate = client && typeof client === 'object' ? client.platformTenantConfig : null;
+  if (!delegate || typeof delegate.findUnique !== 'function') return null;
+  return delegate;
+}
+
+function shouldFallbackToLegacy(error) {
+  const code = String(error?.code || '').trim().toUpperCase();
+  if (['P2021', 'P2022'].includes(code)) return true;
+  const message = String(error?.message || '').toLowerCase();
+  return message.includes('could not convert value')
+    || message.includes('platformtenantconfig')
+    || message.includes('no such table')
+    || message.includes('does not exist');
+}
+
 async function ensurePlatformTenantConfigTable(client = prisma) {
   const engine = getDatabaseEngine();
   if (engine === 'postgresql') {
@@ -104,6 +134,18 @@ async function ensurePlatformTenantConfigTable(client = prisma) {
 }
 
 async function listTenantConfigRows(db, limit) {
+  const delegate = getTenantConfigDelegate(db);
+  if (delegate) {
+    try {
+      const rows = await delegate.findMany({
+        orderBy: { tenantId: 'asc' },
+        take: limit,
+      });
+      return Array.isArray(rows) ? rows.map(normalizeRow).filter(Boolean) : [];
+    } catch (error) {
+      if (!shouldFallbackToLegacy(error)) throw error;
+    }
+  }
   await ensurePlatformTenantConfigTable(db);
   const rows = await db.$queryRaw`
     SELECT
@@ -212,6 +254,30 @@ async function upsertPlatformTenantConfig(input = {}) {
     tenantPrisma,
     { tenantId, enforce: true },
     async (db) => {
+      const delegate = getTenantConfigDelegate(db);
+      if (delegate) {
+        try {
+          await delegate.upsert({
+            where: { tenantId },
+            create: {
+              tenantId,
+              configPatchJson: JSON.stringify(configPatch),
+              portalEnvPatchJson: JSON.stringify(portalEnvPatch),
+              featureFlagsJson: JSON.stringify(featureFlags),
+              updatedBy,
+            },
+            update: {
+              configPatchJson: JSON.stringify(configPatch),
+              portalEnvPatchJson: JSON.stringify(portalEnvPatch),
+              featureFlagsJson: JSON.stringify(featureFlags),
+              updatedBy,
+            },
+          });
+          return;
+        } catch (error) {
+          if (!shouldFallbackToLegacy(error)) throw error;
+        }
+      }
       await ensurePlatformTenantConfigTable(db);
       await db.$executeRaw`
         INSERT INTO platform_tenant_configs (

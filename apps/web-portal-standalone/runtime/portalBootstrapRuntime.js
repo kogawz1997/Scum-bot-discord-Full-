@@ -85,8 +85,18 @@ const {
   getPlatformPublicOverview,
   getTenantFeatureAccess,
 } = require('../../../src/services/platformService');
+const {
+  createCheckoutSession,
+  finalizeCheckoutSession,
+  getCheckoutSessionByToken,
+  processBillingWebhookEvent,
+} = require('../../../src/services/platformBillingLifecycleService');
+const {
+  ensurePlatformPlayerIdentity,
+} = require('../../../src/services/platformIdentityService');
 const { publicPreviewService } = require('../../../src/services/publicPreviewService');
 const config = require('../../../src/config');
+const { resolveDefaultTenantId } = require('../../../src/prisma');
 
 const { createPortalAuthRuntime } = require('../auth/portalAuthRuntime');
 const { createPublicPreviewAuthRuntime } = require('../auth/publicPreviewAuthRuntime');
@@ -320,6 +330,9 @@ function createPortalBootstrapRuntime({
     discordRedirectPath,
     sendJson,
     upsertPlayerAccount,
+    ensurePlatformPlayerIdentity,
+    identityTenantId: resolveDefaultTenantId() || null,
+    identityLocale: String(config.platform?.localization?.defaultLocale || 'en').trim().toLowerCase() || 'en',
     buildDiscordAvatarUrl,
     normalizeText,
     isDiscordId,
@@ -510,11 +523,20 @@ function createPortalBootstrapRuntime({
     publicRouteDeps: {
       sendJson,
       readJsonBody,
+      readRawBody,
       getPlatformPublicOverview,
       registerPreviewAccount: publicPreviewService.registerPreviewAccount,
       authenticatePreviewAccount: publicPreviewService.authenticatePreviewAccount,
       getPreviewState: publicPreviewService.getPreviewState,
+      requestEmailVerification: publicPreviewService.requestEmailVerification,
+      completeEmailVerification: publicPreviewService.completeEmailVerification,
       requestPasswordReset: publicPreviewService.requestPasswordReset,
+      completePasswordReset: publicPreviewService.completePasswordReset,
+      createCheckoutSession,
+      getCheckoutSessionByToken,
+      finalizeCheckoutSession,
+      processBillingWebhookEvent,
+      billingWebhookSecret: String(process.env.PLATFORM_BILLING_WEBHOOK_SECRET || '').trim(),
       createPreviewSession,
       getPreviewSession,
       buildPreviewSessionCookie,

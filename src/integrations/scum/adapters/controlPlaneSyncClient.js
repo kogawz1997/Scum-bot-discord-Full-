@@ -2,7 +2,7 @@
 
 const fs = require('node:fs');
 
-const { getFilePath } = require('../../store/_persist');
+const { getFilePath } = require('../../../store/_persist');
 
 function trimText(value, maxLen = 240) {
   const text = String(value || '').trim();

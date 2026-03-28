@@ -8,9 +8,9 @@ const {
   createTenantPlayersV4Model,
 } = require('../src/admin/assets/tenant-players-v4.js');
 
-test('tenant players v4 model builds support-first player workspace', () => {
+test('tenant players v4 model builds support and staff workspace', () => {
   const model = createTenantPlayersV4Model({
-    me: { tenantId: 'tenant-prod-001' },
+    me: { tenantId: 'tenant-prod-001', role: 'admin' },
     tenantConfig: { name: 'SCUM TH Production' },
     players: [
       {
@@ -27,23 +27,55 @@ test('tenant players v4 model builds support-first player workspace', () => {
     },
     deliveryCase: {
       purchase: { userId: '123' },
-      deadLetter: { reason: 'รอ agent' },
+      deadLetter: { reason: 'waiting for agent' },
     },
+    staffMemberships: [
+      {
+        membershipId: 'mem-1',
+        userId: 'user-1',
+        role: 'support',
+        status: 'active',
+        invitedAt: '2026-03-25T10:00:00+07:00',
+        updatedAt: '2026-03-26T09:00:00+07:00',
+        user: {
+          email: 'ops@example.com',
+          displayName: 'Ops Team',
+          locale: 'th',
+        },
+      },
+    ],
   });
 
-  assert.equal(model.header.title, 'ผู้เล่น');
+  assert.equal(model.header.title, 'Players');
   assert.equal(model.summaryStrip.length, 4);
   assert.equal(model.players.length, 1);
   assert.equal(model.selected.discordId, '123');
+  assert.equal(model.staff.memberships.length, 1);
+  assert.equal(model.staff.summary.active, 1);
+  assert.equal(model.staff.canManage, true);
   assert.ok(model.railCards.length >= 2);
 });
 
-test('tenant players v4 html includes player table and support workspace', () => {
-  const html = buildTenantPlayersV4Html(createTenantPlayersV4Model({ tenantConfig: { name: 'Tenant Demo' }, players: [] }));
+test('tenant players v4 html includes player table and tenant staff panel', () => {
+  const html = buildTenantPlayersV4Html(createTenantPlayersV4Model({
+    me: { role: 'owner' },
+    tenantConfig: { name: 'Tenant Demo' },
+    players: [],
+    staffMemberships: [
+      {
+        membershipId: 'mem-1',
+        userId: 'user-1',
+        role: 'manager',
+        status: 'invited',
+        user: { email: 'staff@example.com', displayName: 'Staff Example', locale: 'en' },
+      },
+    ],
+  }));
 
   assert.match(html, /Steam \/ In-game/);
-  assert.match(html, /tdv4-selected-player|เลือกผู้เล่นจากตารางก่อน/);
-  assert.match(html, /งานซัพพอร์ต/);
+  assert.match(html, /Tenant staff and permissions/);
+  assert.match(html, /Invite teammate/);
+  assert.match(html, /data-tenant-staff-card/);
   assert.match(html, /tdv4-players-main-grid/);
 });
 

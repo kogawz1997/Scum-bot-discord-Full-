@@ -8,6 +8,10 @@ const { getAdminSsoRoleMappingSummary } = require('../src/utils/adminSsoRoleMapp
 const { resolveDatabaseRuntime } = require('../src/utils/dbEngine');
 const { listTrackedMutableArtifacts } = require('../src/utils/trackedMutableArtifacts');
 const {
+  CONTROL_PLANE_REGISTRY_HIGH_CHURN_FILE_MIRROR_SLICES,
+  resolveControlPlaneRegistryFileMirrorSlices,
+} = require('../src/utils/controlPlaneRegistryFileMirror');
+const {
   createValidationCheck,
   createValidationReport,
 } = require('../src/utils/runtimeStatus');
@@ -708,12 +712,59 @@ function addAgentSyncControlPlaneChecks() {
   }
 }
 
+function addPlatformPersistenceChecks() {
+  const requireDb = isTruthy(process.env.PERSIST_REQUIRE_DB, isProduction);
+  if (!requireDb) {
+    return;
+  }
+
+  const requiredDbModeKeys = [
+    'ADMIN_SECURITY_EVENT_STORE_MODE',
+    'PLATFORM_AUTOMATION_STATE_STORE_MODE',
+    'PLATFORM_OPS_STATE_STORE_MODE',
+    'CONTROL_PLANE_REGISTRY_STORE_MODE',
+  ];
+
+  for (const envKey of requiredDbModeKeys) {
+    const value = String(process.env[envKey] || '').trim().toLowerCase();
+    if (value !== 'db') {
+      throw new Error(`${envKey}=db is required when PERSIST_REQUIRE_DB=true`);
+    }
+  }
+
+  const rawMirrorSlices = String(process.env.CONTROL_PLANE_REGISTRY_FILE_MIRROR_SLICES || '').trim();
+  if (!rawMirrorSlices) {
+    throw new Error(
+      'CONTROL_PLANE_REGISTRY_FILE_MIRROR_SLICES must be set explicitly when CONTROL_PLANE_REGISTRY_STORE_MODE=db',
+    );
+  }
+
+  const resolved = resolveControlPlaneRegistryFileMirrorSlices({
+    env: process.env,
+    persistenceMode: 'db',
+  });
+  if (resolved.invalid.length > 0) {
+    throw new Error(
+      `CONTROL_PLANE_REGISTRY_FILE_MIRROR_SLICES contains unknown slices: ${resolved.invalid.join(', ')}`,
+    );
+  }
+
+  const highChurnSlices = resolved.slices.filter((sliceKey) => (
+    CONTROL_PLANE_REGISTRY_HIGH_CHURN_FILE_MIRROR_SLICES.includes(sliceKey)
+  ));
+  if (highChurnSlices.length > 0) {
+    warnings.push(
+      `CONTROL_PLANE_REGISTRY_FILE_MIRROR_SLICES still includes high-churn slices: ${highChurnSlices.join(', ')}`,
+    );
+  }
+}
+
 runCheck('load dotenv', () => {
   require('dotenv');
 });
 
-runCheck('load @prisma/client', () => {
-  require('@prisma/client');
+runCheck('load prisma client module', () => {
+  require('../src/prismaClientLoader');
 });
 
 runCheck('load discord.js', () => {
@@ -797,6 +848,10 @@ runCheck('RCON runtime consistency', () => {
 
 runCheck('sync control-plane routing consistency', () => {
   addAgentSyncControlPlaneChecks();
+});
+
+runCheck('platform persistence posture', () => {
+  addPlatformPersistenceChecks();
 });
 
 runCheck('port matrix has no conflicts', () => {

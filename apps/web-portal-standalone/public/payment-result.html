@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SCUM TH Platform | ผลการยืนยันแพ็กเกจ</title>
+  <title>SCUM TH Platform | Payment Result</title>
   <link rel="stylesheet" href="/player/assets/ui/platform-site-v3.css?v=20260327-live-1">
 </head>
 <body class="public-v3">
@@ -14,7 +14,7 @@
           <span class="site-brand-mark">SCUM</span>
           <span class="site-brand-copy">
             <strong class="site-brand-title">SCUM TH Platform</strong>
-            <span class="site-brand-detail">สรุปผลหลังยืนยันแพ็กเกจและเตรียมกลับเข้าสู่พื้นที่ทำงาน</span>
+            <span class="site-brand-detail">Checkout result and workspace activation status</span>
           </span>
         </a>
       </div>
@@ -22,14 +22,16 @@
     <main class="site-main">
       <section class="site-panel">
         <span class="site-kicker">Result</span>
-        <h1 class="site-page-title">สรุปผลการเปิดใช้งานแพ็กเกจ</h1>
-        <p class="site-page-copy">ใช้หน้านี้สรุปว่าการยืนยันแพ็กเกจสำเร็จหรือยังต้องกลับไปตรวจข้อมูลเพิ่มเติม พร้อมลิงก์กลับไปยังพื้นที่ทำงานหรือหน้าเข้าสู่ระบบตามสถานะล่าสุด</p>
+        <h1 id="paymentResultTitle" class="site-page-title">Payment result</h1>
+        <p id="paymentResultCopy" class="site-page-copy">This page confirms whether your package activation completed and where to go next.</p>
         <div class="site-tool-cluster">
-          <a class="site-button site-button-primary" href="/preview">กลับไปพื้นที่ของคุณ</a>
-          <a class="site-button" href="/login">เข้าสู่ระบบอีกครั้ง</a>
+          <a id="paymentResultPrimary" class="site-button site-button-primary" href="/preview">Open your workspace</a>
+          <a id="paymentResultSecondary" class="site-button" href="/login">Back to login</a>
         </div>
       </section>
     </main>
   </div>
+  <script src="/player/assets/ui/portal-i18n.js?v=20260327-live-1"></script>
+  <script src="/player/assets/ui/public-auth-v2.js?v=20260327-live-1"></script>
 </body>
 </html>

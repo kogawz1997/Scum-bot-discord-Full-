@@ -5,7 +5,7 @@ const path = require('node:path');
 
 require('dotenv').config();
 
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient } = require('../src/prismaClientLoader');
 const { ensurePlatformTenantConfigTable } = require('../src/services/platformTenantConfigService');
 const { resolveTenantDatabaseTarget } = require('../src/utils/tenantDatabaseTopology');
 

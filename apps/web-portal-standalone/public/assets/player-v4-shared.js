@@ -16,7 +16,7 @@
       ],
     },
     {
-      label: 'การซื้อและกระเป๋าเงิน',
+      label: 'ร้านค้าและกระเป๋าเงิน',
       items: [
         { key: 'shop', label: 'ร้านค้า', href: '#shop' },
         { key: 'wallet', label: 'กระเป๋าเงิน', href: '#wallet' },
@@ -24,7 +24,7 @@
       ],
     },
     {
-      label: 'ชุมชน',
+      label: 'ชุมชนและอันดับ',
       items: [
         { key: 'stats', label: 'สถิติและอันดับ', href: '#stats' },
         { key: 'events', label: 'กิจกรรมและประกาศ', href: '#events' },

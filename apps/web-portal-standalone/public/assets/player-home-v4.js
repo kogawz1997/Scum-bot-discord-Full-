@@ -77,7 +77,7 @@
     const status = source?.serverInfo?.status || {};
     const missions = source?.dashboard?.missionsSummary || {};
     return [
-      { label: 'เซิร์ฟเวอร์', value: firstNonEmpty([serverInfo.name], 'SCUM Community Server') },
+      { label: 'เซิร์ฟเวอร์', value: firstNonEmpty([serverInfo.name], 'เซิร์ฟเวอร์ชุมชน SCUM') },
       { label: 'ผู้เล่นออนไลน์', value: formatNumber(status.onlinePlayers, '0') },
       { label: 'ช่องสูงสุด', value: formatNumber(serverInfo.maxPlayers, '0') },
       { label: 'รางวัลรายวัน', value: missions.dailyClaimable ? 'พร้อมรับ' : 'รอคูลดาวน์' },
@@ -181,7 +181,7 @@
           tag: 'ติดตามคำสั่งซื้อ',
           title: 'ดูว่าออเดอร์ของคุณไปถึงไหนแล้ว',
           detail: latestOrder
-            ? `ตอนนี้ ${latestOrder.itemName} อยู่ในสถานะ ${latestOrder.status} ให้เปิดดู timeline ก่อนติดต่อทีมงาน`
+            ? `ตอนนี้ ${latestOrder.itemName} อยู่ในสถานะ ${latestOrder.status} ให้เปิดดูรายละเอียดก่อนติดต่อทีมงาน`
             : 'เมื่อสั่งซื้อแล้วให้กลับมาที่หน้าคำสั่งซื้อเพื่อติดตามผลและดูสิ่งที่ต้องทำต่อ',
           actions: [
             { label: latestOrder ? 'ดูคำสั่งซื้อล่าสุด' : 'ดูคำสั่งซื้อทั้งหมด', href: '#orders', primary: true },
@@ -217,7 +217,7 @@
         },
         {
           label: 'สรุปเซิร์ฟเวอร์',
-          title: firstNonEmpty([state?.serverInfo?.serverInfo?.name], 'SCUM Community Server'),
+          title: firstNonEmpty([state?.serverInfo?.serverInfo?.name], 'เซิร์ฟเวอร์ชุมชน SCUM'),
           body: firstNonEmpty([state?.serverInfo?.serverInfo?.description], 'พื้นที่ชุมชนที่ใช้เล่น ซื้อของ รับรางวัล และติดตามกิจกรรม'),
           meta: `${formatNumber(state?.serverInfo?.status?.onlinePlayers, '0')} คนออนไลน์ · ${formatNumber(state?.serverInfo?.serverInfo?.maxPlayers, '0')} ช่อง`,
           tone: 'info',
@@ -227,8 +227,8 @@
           title: latestOrder && latestOrder.statusTone === 'danger' ? 'มีออเดอร์ที่ควรเปิดเคส' : 'รู้ก่อนว่าควรเตรียมอะไร',
           body: latestOrder && latestOrder.statusTone === 'danger'
             ? 'เริ่มจากเตรียม purchase code, SteamID และเวลาเกิดปัญหาก่อนติดต่อแอดมิน'
-            : 'ถ้ามีปัญหาเรื่องการซื้อหรือการส่งของ ให้ไปหน้า Support เพื่อดู checklist ก่อนติดต่อทีมงาน',
-          meta: latestOrder ? latestOrder.code : 'ใช้หน้า Support เป็นจุดเริ่มต้นเมื่อมีปัญหา',
+            : 'ถ้ามีปัญหาเรื่องการซื้อหรือการส่งของ ให้ไปหน้าช่วยเหลือเพื่อดูเช็กลิสต์ก่อนติดต่อทีมงาน',
+          meta: latestOrder ? latestOrder.code : 'ใช้หน้าช่วยเหลือเป็นจุดเริ่มต้นเมื่อมีปัญหา',
           tone: latestOrder && latestOrder.statusTone === 'danger' ? 'danger' : 'muted',
         },
       ],
@@ -253,7 +253,7 @@
       '<div class="plv4-stack">',
       '<span class="plv4-surface-label">ผู้เล่น</span>',
       '<strong class="plv4-sidebar-title">เมนูหลัก</strong>',
-      '<p class="plv4-sidebar-copy">เริ่มจากงานที่ใช้บ่อยก่อน แล้วค่อยลึกลงไปที่คำสั่งซื้อ กิจกรรม หรือการช่วยเหลือเมื่อจำเป็น</p>',
+      '<p class="plv4-sidebar-copy">เริ่มจากงานที่ใช้บ่อยก่อน แล้วค่อยลึกลงไปที่คำสั่งซื้อ กิจกรรม หรือการช่วยเหลือเมื่อจำเป็น โดยไม่ต้องเดาเมนูเอง</p>',
       '</div>',
       renderNavGroups(model.shell.navGroups),
       '</aside>',

@@ -8,9 +8,26 @@ require('dotenv').config();
 
 const PROJECT_ROOT = process.cwd();
 const GENERATED_SCHEMA_PATH = path.join(PROJECT_ROOT, 'node_modules', '.prisma', 'client', 'schema.prisma');
+const GENERATED_CLIENT_METADATA_PATH = path.join(
+  PROJECT_ROOT,
+  'artifacts',
+  'prisma',
+  'generated',
+  'current.json',
+);
 const TEST_ROOT = path.join(PROJECT_ROOT, 'test');
 
 function readGeneratedProvider() {
+  if (fs.existsSync(GENERATED_CLIENT_METADATA_PATH)) {
+    try {
+      const raw = fs.readFileSync(GENERATED_CLIENT_METADATA_PATH, 'utf8');
+      const parsed = JSON.parse(raw);
+      const provider = String(parsed?.provider || '').trim().toLowerCase();
+      if (provider) {
+        return provider;
+      }
+    } catch {}
+  }
   if (!fs.existsSync(GENERATED_SCHEMA_PATH)) {
     return String(process.env.PRISMA_SCHEMA_PROVIDER || process.env.DATABASE_PROVIDER || 'sqlite').trim().toLowerCase();
   }

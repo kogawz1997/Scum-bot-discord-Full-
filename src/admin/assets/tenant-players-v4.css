@@ -66,6 +66,50 @@
   gap: 12px;
 }
 
+.tdv4-staff-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.tdv4-staff-form,
+.tdv4-staff-controls {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.tdv4-form-field {
+  display: grid;
+  gap: 8px;
+}
+
+.tdv4-form-field-span {
+  grid-column: span 2;
+}
+
+.tdv4-form-actions {
+  display: flex;
+  align-items: end;
+}
+
+.tdv4-staff-list {
+  display: grid;
+  gap: 12px;
+}
+
+.tdv4-staff-card {
+  display: grid;
+  gap: 12px;
+}
+
+.tdv4-staff-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+}
+
 .tdv4-mini-stat-label {
   font-size: 0.72rem;
   text-transform: uppercase;
@@ -105,7 +149,17 @@
   .tdv4-players-main-grid,
   .tdv4-data-header,
   .tdv4-data-row,
-  .tdv4-support-grid {
+  .tdv4-support-grid,
+  .tdv4-staff-form,
+  .tdv4-staff-controls {
     grid-template-columns: 1fr;
+  }
+
+  .tdv4-form-field-span {
+    grid-column: span 1;
+  }
+
+  .tdv4-staff-card-head {
+    flex-direction: column;
   }
 }

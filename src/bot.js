@@ -19,7 +19,6 @@ const {
   createBindOpsAlertRoute,
   formatOpsAlertMessage,
 } = require('./bootstrap/botOpsAlertRuntime');
-const { mountAdminWeb } = require('./bootstrap/adminWebMount');
 const { mountScumWebhook } = require('./bootstrap/scumWebhookMount');
 const { registerGracefulShutdown } = require('./bootstrap/gracefulShutdown');
 const { createBotRuntimeContainer } = require('./bootstrap/runtimeContainer');
@@ -106,7 +105,6 @@ const runtimeContainer = createBotRuntimeContainer({
     features: {
       scumWebhook: botProfile.features.scumWebhook,
       restartScheduler: botProfile.features.restartScheduler,
-      adminWeb: botProfile.features.adminWeb,
       rentBikeService: botProfile.features.rentBikeService,
       deliveryWorker: botProfile.features.deliveryWorker,
       opsAlertRoute: botProfile.features.opsAlertRoute,
@@ -116,10 +114,9 @@ const runtimeContainer = createBotRuntimeContainer({
 const botHealthServer = runtimeContainer.healthServer;
 
 console.log(
-  `[boot] runtime=bot dbProvider=${botProfile.database.provider} adminWeb=${botProfile.features.adminWeb ? 'on' : 'off'} webhook=${botProfile.features.scumWebhook ? 'on' : 'off'} delivery=${botProfile.features.deliveryWorker ? 'on' : 'off'}`,
+  `[boot] runtime=bot dbProvider=${botProfile.database.provider} adminWeb=standalone webhook=${botProfile.features.scumWebhook ? 'on' : 'off'} delivery=${botProfile.features.deliveryWorker ? 'on' : 'off'}`,
 );
 
-mountAdminWeb(client, botProfile.features.adminWeb);
 const bindOpsAlertRoute = createBindOpsAlertRoute({
   adminLiveBus,
   channels,

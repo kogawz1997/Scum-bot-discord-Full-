@@ -94,7 +94,7 @@ test('topology doctor emits JSON report for CI/tooling consumers', () => {
   assert.equal(payload.ok, true);
   assert.equal(payload.status, 'pass');
   assert.equal(payload.mode, 'split-runtime');
-  assert.equal(payload.roles.bot.adminWeb, true);
+  assert.equal(payload.roles.adminWeb.enabled, true);
   assert.equal(payload.roles.worker.delivery, true);
 });
 
@@ -137,6 +137,35 @@ test('topology doctor passes supported execution-node production runtime', () =>
       SCUM_WATCHER_ENABLED: 'true',
       SCUM_WATCHER_HEALTH_PORT: '3212',
       SCUM_CONSOLE_AGENT_PORT: '3213',
+      ADMIN_WEB_PORT: '3200',
+      SCUM_WEBHOOK_PORT: '3100',
+      WEB_PORTAL_PORT: '3300',
+    },
+    ['--production'],
+  );
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /\[topology\] mode: execution-node/);
+  assert.match(result.stdout, /\[topology\] PASS/);
+});
+
+test('topology doctor accepts a production execution-node with standalone server bot', () => {
+  const result = runTopology(
+    {
+      NODE_ENV: 'production',
+      BOT_ENABLE_ADMIN_WEB: 'false',
+      BOT_ENABLE_SCUM_WEBHOOK: 'false',
+      BOT_ENABLE_RENTBIKE_SERVICE: 'false',
+      BOT_ENABLE_DELIVERY_WORKER: 'false',
+      WORKER_ENABLE_RENTBIKE: 'false',
+      WORKER_ENABLE_DELIVERY: 'false',
+      BOT_HEALTH_PORT: '0',
+      WORKER_HEALTH_PORT: '0',
+      SCUM_WATCHER_ENABLED: 'false',
+      SCUM_WATCHER_HEALTH_PORT: '0',
+      SCUM_SERVER_BOT_ENABLED: 'true',
+      SCUM_SERVER_BOT_HEALTH_PORT: '3214',
+      SCUM_CONSOLE_AGENT_PORT: '0',
       ADMIN_WEB_PORT: '3200',
       SCUM_WEBHOOK_PORT: '3100',
       WEB_PORTAL_PORT: '3300',

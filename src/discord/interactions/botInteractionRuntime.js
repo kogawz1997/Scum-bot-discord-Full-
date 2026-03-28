@@ -213,7 +213,7 @@ function createInteractionHandler(deps) {
           });
         }
 
-        const result = bindSteamLinkForUser({
+        const result = await bindSteamLinkForUser({
           steamId,
           userId: interaction.user.id,
           inGameName: null,

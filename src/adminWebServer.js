@@ -295,6 +295,21 @@ const {
   createPlatformServerConfigService,
 } = require('./services/platformServerConfigService');
 const {
+  listRestartExecutions,
+  listRestartPlans,
+} = require('./services/platformRestartOrchestrationService');
+const {
+  getBillingProviderConfigSummary,
+  listBillingInvoices,
+  listBillingPaymentAttempts,
+} = require('./services/platformBillingLifecycleService');
+const {
+  inviteTenantStaff,
+  listTenantStaffMemberships,
+  revokeTenantStaffMembership,
+  updateTenantStaffRole,
+} = require('./services/platformTenantStaffService');
+const {
   createServerRegistryService,
 } = require('./domain/servers/serverRegistryService');
 const {
@@ -926,8 +941,12 @@ const handleAdminGetRoute = createAdminGetRoutes({
   getTenantQuotaSnapshot,
   listPlatformTenants,
   listPlatformTenantConfigs,
+  listTenantStaffMemberships,
   listPlatformSubscriptions,
   listPlatformLicenses,
+  listBillingInvoices,
+  listBillingPaymentAttempts,
+  getBillingProviderConfigSummary,
   listPlatformApiKeys,
   listPlatformWebhookEndpoints,
   listPlatformAgentRuntimes,
@@ -936,6 +955,8 @@ const handleAdminGetRoute = createAdminGetRoutes({
   getServerConfigWorkspace,
   getServerConfigCategory,
   listServerConfigBackups,
+  listRestartPlans,
+  listRestartExecutions,
   listPlatformAgentRegistry,
   listPlatformAgentProvisioningTokens,
   listPlatformAgentDevices,
@@ -1075,6 +1096,9 @@ const handleAdminPlatformPostRoute = createAdminPlatformPostRoutes({
   getCurrentObservabilitySnapshot,
   publishAdminLiveUpdate,
   createTenant,
+  inviteTenantStaff,
+  updateTenantStaffRole,
+  revokeTenantStaffMembership,
   createServer,
   createServerDiscordLink,
   createSubscription,

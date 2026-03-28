@@ -21,15 +21,15 @@
     'restart-control': 'restart-control',
   };
 
-  const PAGE_TITLES = {
-    dashboard: 'ภาพรวมงานประจำวัน',
-    'server-status': 'สถานะเซิร์ฟเวอร์',
-    'server-config': 'ตั้งค่าเซิร์ฟเวอร์',
-    orders: 'คำสั่งซื้อและการส่งของ',
-    players: 'ผู้เล่นและการช่วยเหลือ',
-    'delivery-agents': 'เอเจนต์ส่งของ',
-    'server-bots': 'เซิร์ฟเวอร์บอต',
-    'restart-control': 'ควบคุมการรีสตาร์ต',
+  const PAGE_TITLE_KEYS = {
+    dashboard: 'tenant.app.page.dashboard',
+    'server-status': 'tenant.app.page.server-status',
+    'server-config': 'tenant.app.page.server-config',
+    orders: 'tenant.app.page.orders',
+    players: 'tenant.app.page.players',
+    'delivery-agents': 'tenant.app.page.delivery-agents',
+    'server-bots': 'tenant.app.page.server-bots',
+    'restart-control': 'tenant.app.page.restart-control',
   };
 
   const PAGE_FEATURE_RULES = {
@@ -47,7 +47,7 @@
     Overview: 'ภาพรวม',
     Server: 'เซิร์ฟเวอร์',
     Operations: 'งานประจำวัน',
-    Runtimes: 'รันไทม์',
+    Runtimes: 'เครื่องมือ',
   };
 
   const state = {
@@ -83,6 +83,14 @@
 
   function statusNode() {
     return document.getElementById('tenantV4Status');
+  }
+
+  function t(key, fallback, params) {
+    return window.AdminUiI18n?.t?.(key, fallback, params) || fallback || key;
+  }
+
+  function applyI18n(rootNode = document) {
+    window.AdminUiI18n?.apply?.(rootNode);
   }
 
   function selectorNode() {
@@ -172,8 +180,26 @@
   }
 
   function currentPage() {
-    const raw = String(window.location.hash || '').replace(/^#/, '').trim().toLowerCase();
+    const raw = getRawHashRoute();
     return PAGE_ALIASES[raw] || 'dashboard';
+  }
+
+  function getRawHashRoute() {
+    return String(window.location.hash || '').replace(/^#/, '').trim().toLowerCase();
+  }
+
+  function navigateTenantHash(nextHash) {
+    const hashValue = String(nextHash || '').trim();
+    if (!hashValue || hashValue === '#') return;
+    const normalizedHash = hashValue.startsWith('#') ? hashValue : `#${hashValue}`;
+    if (window.location.hash !== normalizedHash) {
+      window.location.hash = normalizedHash;
+      return;
+    }
+    const surfaceState = renderCurrentPage();
+    if (!surfaceState?.notice && state.payload && !state.refreshing) {
+      setStatus(t('tenant.app.status.ready', 'Ready'), 'success');
+    }
   }
 
   function createEmptyFeatureAccess(tenantId) {
@@ -206,8 +232,8 @@
   function buildNavItemLabel(baseLabel, accessState) {
     const label = String(baseLabel || '').trim();
     if (!label) return '';
-    if (accessState?.preview) return `${label} (ดูตัวอย่าง)`;
-    if (accessState?.locked) return `${label} (ต้องอัปเกรด)`;
+    if (accessState?.preview) return `${label} (${t('tenant.app.tag.preview', 'ดูตัวอย่าง')})`;
+    if (accessState?.locked) return `${label} (${t('tenant.app.tag.upgrade', 'ต้องอัปเกรด')})`;
     return label;
   }
 
@@ -241,7 +267,7 @@
         label: 'Overview',
         items: [
           {
-            label: buildNavItemLabel(PAGE_TITLES.dashboard, pageAccess.dashboard),
+            label: buildNavItemLabel(t(PAGE_TITLE_KEYS.dashboard, 'Daily overview'), pageAccess.dashboard),
             href: '#dashboard',
             current: resolvedPage === 'dashboard',
           },
@@ -251,17 +277,17 @@
         label: 'Server',
         items: [
           {
-            label: buildNavItemLabel(PAGE_TITLES['server-status'], pageAccess['server-status']),
+            label: buildNavItemLabel(t(PAGE_TITLE_KEYS['server-status'], 'Server status'), pageAccess['server-status']),
             href: '#server-status',
             current: resolvedPage === 'server-status',
           },
           {
-            label: buildNavItemLabel(PAGE_TITLES['server-config'], pageAccess['server-config']),
+            label: buildNavItemLabel(t(PAGE_TITLE_KEYS['server-config'], 'Server settings'), pageAccess['server-config']),
             href: '#server-config',
             current: resolvedPage === 'server-config',
           },
           {
-            label: buildNavItemLabel(PAGE_TITLES['restart-control'], pageAccess['restart-control']),
+            label: buildNavItemLabel(t(PAGE_TITLE_KEYS['restart-control'], 'ควบคุมการรีสตาร์ต'), pageAccess['restart-control']),
             href: '#restart-control',
             current: resolvedPage === 'restart-control',
           },
@@ -271,27 +297,27 @@
         label: 'Operations',
         items: [
           {
-            label: buildNavItemLabel(PAGE_TITLES.orders, pageAccess.orders),
+            label: buildNavItemLabel(t(PAGE_TITLE_KEYS.orders, 'Orders and delivery'), pageAccess.orders),
             href: '#orders',
             current: resolvedPage === 'orders',
           },
           {
-            label: buildNavItemLabel(PAGE_TITLES.players, pageAccess.players),
+            label: buildNavItemLabel(t(PAGE_TITLE_KEYS.players, 'Players and support'), pageAccess.players),
             href: '#players',
             current: resolvedPage === 'players',
           },
         ],
       },
       {
-        label: 'Runtimes',
+        label: 'เครื่องมือ',
         items: [
           {
-            label: buildNavItemLabel(PAGE_TITLES['delivery-agents'], pageAccess['delivery-agents']),
+            label: buildNavItemLabel(t(PAGE_TITLE_KEYS['delivery-agents'], 'Delivery Agent'), pageAccess['delivery-agents']),
             href: '#delivery-agents',
             current: resolvedPage === 'delivery-agents',
           },
           {
-            label: buildNavItemLabel(PAGE_TITLES['server-bots'], pageAccess['server-bots']),
+            label: buildNavItemLabel(t(PAGE_TITLE_KEYS['server-bots'], 'Server Bot'), pageAccess['server-bots']),
             href: '#server-bots',
             current: resolvedPage === 'server-bots',
           },
@@ -306,8 +332,11 @@
     const notice = !previewMode && resolvedPage !== requestedPage
       ? {
           tone: 'warning',
-          title: 'แพ็กเกจปัจจุบันยังไม่เปิดหน้านี้',
-          detail: 'สิทธิ์ของผู้เช่ารายนี้ยังไม่ครอบคลุมพื้นที่ทำงานที่เลือก ระบบจึงพากลับมาที่หน้าที่ใช้งานได้ก่อน',
+          title: t('tenant.notice.lockedTitle', 'แพ็กเกจปัจจุบันยังไม่เปิดหน้านี้'),
+          detail: t(
+            'tenant.notice.lockedDetail',
+            'สิทธิ์ของผู้เช่ารายนี้ยังไม่ครอบคลุมหน้านี้ ระบบจึงพากลับมาที่หน้าที่ใช้งานได้ก่อน',
+          ),
         }
       : null;
 
@@ -618,8 +647,11 @@
     if (state.refreshing) return;
     state.refreshing = true;
     if (!options.silent) {
-      setStatus('กำลังโหลดพื้นที่ผู้เช่า...', 'info');
-      renderMessageCard('กำลังเตรียมพื้นที่ผู้เช่า', 'กำลังดึงสถานะเซิร์ฟเวอร์ รันไทม์ คำสั่งซื้อ ผู้เล่น และการตั้งค่าที่เกี่ยวข้อง');
+      setStatus(t('tenant.app.status.loading', 'Loading tenant workspace...'), 'info');
+      renderMessageCard(
+        t('tenant.app.card.loadingTitle', 'Preparing tenant data'),
+        t('tenant.app.card.loadingDetail', 'Loading server status, orders, players, and support tools for this tenant.'),
+      );
     }
     try {
       const me = await api('/admin/api/me', null);
@@ -660,6 +692,7 @@
         deadLetters,
         deliveryLifecycle,
         players,
+        staffMemberships,
         notifications,
         deliveryRuntime,
         purchaseStatuses,
@@ -691,6 +724,7 @@
         api(`/admin/api/delivery/dead-letter?tenantId=${encodeURIComponent(scopedTenantId)}&limit=20`, { items: [] }),
         api(`/admin/api/delivery/lifecycle?tenantId=${encodeURIComponent(scopedTenantId)}&limit=80&pendingOverdueMs=1200000`, {}),
         previewTenant ? Promise.resolve({ items: [] }) : api(`/admin/api/player/accounts?tenantId=${encodeURIComponent(scopedTenantId)}&limit=20`, { items: [] }),
+        previewTenant ? Promise.resolve([]) : api(`/admin/api/platform/tenant-staff?tenantId=${encodeURIComponent(scopedTenantId)}&limit=50`, []),
         api('/admin/api/notifications?acknowledged=false&limit=10', { items: [] }),
         api('/admin/api/delivery/runtime', {}),
         api('/admin/api/purchase/statuses', { knownStatuses: [], allowedTransitions: [] }),
@@ -699,12 +733,31 @@
 
       const serverRows = Array.isArray(servers) ? servers : [];
       const activeServer = serverRows[0] || null;
-      const serverConfigWorkspace = (!previewTenant && activeServer?.id)
-        ? await api(
-          `/admin/api/platform/servers/${encodeURIComponent(activeServer.id)}/config?tenantId=${encodeURIComponent(scopedTenantId)}`,
-          null,
-        ).catch(() => null)
-        : null;
+      const [
+        serverConfigWorkspace,
+        restartPlans,
+        restartExecutions,
+        serverDiscordLinks,
+      ] = (!previewTenant && activeServer?.id)
+        ? await Promise.all([
+          api(
+            `/admin/api/platform/servers/${encodeURIComponent(activeServer.id)}/config?tenantId=${encodeURIComponent(scopedTenantId)}`,
+            null,
+          ).catch(() => null),
+          api(
+            `/admin/api/platform/restart-plans?tenantId=${encodeURIComponent(scopedTenantId)}&serverId=${encodeURIComponent(activeServer.id)}&limit=12`,
+            [],
+          ).catch(() => []),
+          api(
+            `/admin/api/platform/restart-executions?tenantId=${encodeURIComponent(scopedTenantId)}&serverId=${encodeURIComponent(activeServer.id)}&limit=12`,
+            [],
+          ).catch(() => []),
+          api(
+            `/admin/api/platform/server-discord-links?tenantId=${encodeURIComponent(scopedTenantId)}&serverId=${encodeURIComponent(activeServer.id)}`,
+            [],
+          ).catch(() => []),
+        ])
+        : [null, [], [], []];
 
       const playerRows = Array.isArray(players?.items) ? players.items : [];
       const selectedUserId = readUserIdFromUrl() || pickFirstPlayerId(playerRows);
@@ -723,6 +776,9 @@
         servers: serverRows,
         activeServer,
         serverConfigWorkspace,
+        restartPlans: Array.isArray(restartPlans) ? restartPlans : [],
+        restartExecutions: Array.isArray(restartExecutions) ? restartExecutions : [],
+        serverDiscordLinks: Array.isArray(serverDiscordLinks) ? serverDiscordLinks : [],
         overview,
         reconcile,
         quota,
@@ -742,6 +798,7 @@
         deadLetters: Array.isArray(deadLetters?.items) ? deadLetters.items : [],
         deliveryLifecycle,
         players: playerRows,
+        staffMemberships: Array.isArray(staffMemberships) ? staffMemberships : [],
         notifications: Array.isArray(notifications?.items) ? notifications.items : [],
         deliveryRuntime,
         purchaseStatuses,
@@ -752,10 +809,16 @@
 
       renderOwnerTenantSelector(me);
       const surfaceState = renderCurrentPage();
-      setStatus(surfaceState?.notice ? surfaceState.notice.detail : 'พร้อมใช้งาน', surfaceState?.notice ? (surfaceState.notice.tone || 'warning') : 'success');
+      setStatus(
+        surfaceState?.notice ? surfaceState.notice.detail : t('tenant.app.status.ready', 'Ready'),
+        surfaceState?.notice ? (surfaceState.notice.tone || 'warning') : 'success',
+      );
     } catch (error) {
-      renderMessageCard('โหลดพื้นที่ผู้เช่าไม่สำเร็จ', String(error?.message || error));
-      setStatus('โหลดข้อมูลผู้เช่าไม่สำเร็จ', 'danger');
+      renderMessageCard(
+        t('tenant.app.card.loadFailedTitle', 'Could not load tenant workspace'),
+        String(error?.message || error),
+      );
+      setStatus(t('tenant.app.status.loadFailed', 'Load failed'), 'danger');
     } finally {
       state.refreshing = false;
     }
@@ -765,7 +828,10 @@
     const target = root();
     if (!target) return;
     if (!state.payload) {
-      renderMessageCard('ยังไม่มีข้อมูลผู้เช่า', 'รีเฟรชพื้นที่ทำงานหลังจากระบบดึงข้อมูลผู้เช่าล่าสุดเสร็จแล้ว');
+      renderMessageCard(
+        t('tenant.app.card.emptyTitle', 'No tenant data yet'),
+        t('tenant.app.card.emptyDetail', 'Wait for the latest tenant data to load.'),
+      );
       return;
     }
 
@@ -798,7 +864,8 @@
         setStatus(surfaceState.notice.detail, surfaceState.notice.tone || 'warning');
       }, 0);
     }
-    document.title = `SCUM TH Platform | Tenant | ${PAGE_TITLES[page] || 'ภาพรวมงานประจำวัน'}`;
+    applyI18n(target);
+    document.title = `SCUM TH Platform | Tenant | ${t(PAGE_TITLE_KEYS[page] || 'tenant.app.page.dashboard', 'Daily overview')}`;
     return surfaceState;
   }
 
@@ -1552,13 +1619,13 @@
     };
   }
 
-  async function queueRuntimeProvisioning(kind, renderState, triggerButton) {
+  async function queueRuntimeProvisioning(kind, renderState, triggerButton, overrides = {}) {
     const serverNode = document.querySelector(`[data-runtime-server-id="${kind}"]`);
     const displayNode = document.querySelector(`[data-runtime-display-name="${kind}"]`);
     const runtimeKeyNode = document.querySelector(`[data-runtime-runtime-key="${kind}"]`);
-    const serverId = String(serverNode?.value || '').trim();
-    const displayName = String(displayNode?.value || '').trim() || (kind === 'server-bots' ? 'Server Bot' : 'Delivery Agent');
-    const runtimeKey = String(runtimeKeyNode?.value || '').trim();
+    const serverId = String(overrides.serverId || serverNode?.value || '').trim();
+    const displayName = String(overrides.displayName || displayNode?.value || '').trim() || (kind === 'server-bots' ? 'Server Bot' : 'Delivery Agent');
+    const runtimeKey = String(overrides.runtimeKey || runtimeKeyNode?.value || '').trim();
     const payload = buildRuntimeProvisioningPayload(kind, renderState, serverId, displayName, runtimeKey);
 
     setActionButtonBusy(
@@ -1591,6 +1658,180 @@
     } finally {
       setActionButtonBusy(triggerButton, false);
     }
+  }
+
+  function buildRuntimeCredentialInstructions(kind, payload) {
+    const rawKey = String(payload?.rawKey || '').trim();
+    if (!rawKey) return null;
+    const runtimeLabel = kind === 'server-bots' ? 'Server Bot' : 'Delivery Agent';
+    const startCommand = kind === 'server-bots'
+      ? 'node C:\\new\\apps\\watcher\\server.js'
+      : 'node C:\\new\\apps\\agent\\server.js';
+    return {
+      title: `คีย์ใหม่ของ ${runtimeLabel} พร้อมแล้ว`,
+      detail: `นำคีย์นี้ไปแทนค่า PLATFORM_AGENT_TOKEN บนเครื่องเดิม แล้วเริ่มบริการใหม่อีกครั้ง`,
+      command: [
+        `$env:PLATFORM_AGENT_TOKEN="${rawKey}"`,
+        startCommand,
+      ].join('\n'),
+      tone: 'success',
+    };
+  }
+
+  function buildRuntimeActionNotice(title, detail, tone = 'info') {
+    return {
+      title,
+      detail,
+      tone,
+      command: '',
+    };
+  }
+
+  async function queueRuntimeManagementAction(kind, renderState, triggerButton) {
+    const tenantId = getRenderTenantId(renderState);
+    if (!tenantId) {
+      throw new Error('ยังไม่พบ tenant ที่ใช้จัดการเครื่องนี้');
+    }
+    const action = String(triggerButton?.getAttribute('data-runtime-action') || '').trim();
+    const runtimeName = String(triggerButton?.getAttribute('data-runtime-name') || '').trim() || (kind === 'server-bots' ? 'Server Bot' : 'Delivery Agent');
+
+    if (action === 'reissue-provision') {
+      return queueRuntimeProvisioning(
+        kind,
+        renderState,
+        triggerButton,
+        {
+          serverId: String(triggerButton?.getAttribute('data-runtime-server-id-value') || '').trim(),
+          displayName: String(triggerButton?.getAttribute('data-runtime-display-name-value') || '').trim() || runtimeName,
+          runtimeKey: String(triggerButton?.getAttribute('data-runtime-runtime-key-value') || '').trim(),
+        },
+      );
+    }
+
+    if (action === 'revoke-provision') {
+      const tokenId = String(triggerButton?.getAttribute('data-runtime-token-id') || '').trim();
+      if (!tokenId) {
+        throw new Error('ยังไม่พบโทเค็นที่ต้องการยกเลิก');
+      }
+      setActionButtonBusy(triggerButton, true, 'กำลังยกเลิกโทเค็น...');
+      try {
+        const result = await apiRequest('/admin/api/platform/agent-provision/revoke', {
+          method: 'POST',
+          body: {
+            tenantId,
+            tokenId,
+            revokeReason: 'tenant-ui-manual-revoke',
+          },
+        }, null);
+        state.provisioningResult[kind] = {
+          instructions: buildRuntimeActionNotice(
+            `ยกเลิกโทเค็นของ ${runtimeName} แล้ว`,
+            'โทเค็นนี้จะใช้ติดตั้งหรือ activate ไม่ได้อีก',
+            'warning',
+          ),
+          raw: result,
+        };
+        await refreshState({ silent: true });
+        setStatus(`ยกเลิกโทเค็นของ ${runtimeName} เรียบร้อยแล้ว`, 'success');
+        return result;
+      } finally {
+        setActionButtonBusy(triggerButton, false);
+      }
+    }
+
+    if (action === 'revoke-device') {
+      const deviceId = String(triggerButton?.getAttribute('data-runtime-device-id') || '').trim();
+      if (!deviceId) {
+        throw new Error('ยังไม่พบเครื่องที่ต้องการรีเซ็ตการผูก');
+      }
+      setActionButtonBusy(triggerButton, true, 'กำลังรีเซ็ตการผูกเครื่อง...');
+      try {
+        const result = await apiRequest('/admin/api/platform/agent-device/revoke', {
+          method: 'POST',
+          body: {
+            tenantId,
+            deviceId,
+            revokeReason: 'tenant-ui-reset-binding',
+          },
+        }, null);
+        state.provisioningResult[kind] = {
+          instructions: buildRuntimeActionNotice(
+            `รีเซ็ตการผูกเครื่องของ ${runtimeName} แล้ว`,
+            'เครื่องเดิมจะเชื่อมต่อไม่ได้จนกว่าจะออกโทเค็นใหม่และติดตั้งอีกครั้ง',
+            'warning',
+          ),
+          raw: result,
+        };
+        await refreshState({ silent: true });
+        setStatus(`รีเซ็ตการผูกเครื่องของ ${runtimeName} แล้ว`, 'success');
+        return result;
+      } finally {
+        setActionButtonBusy(triggerButton, false);
+      }
+    }
+
+    if (action === 'revoke-token') {
+      const apiKeyId = String(triggerButton?.getAttribute('data-runtime-api-key-id') || '').trim();
+      if (!apiKeyId) {
+        throw new Error('ยังไม่พบคีย์ที่ต้องการเพิกถอน');
+      }
+      setActionButtonBusy(triggerButton, true, 'กำลังเพิกถอนคีย์...');
+      try {
+        const result = await apiRequest('/admin/api/platform/agent-token/revoke', {
+          method: 'POST',
+          body: {
+            tenantId,
+            apiKeyId,
+          },
+        }, null);
+        state.provisioningResult[kind] = {
+          instructions: buildRuntimeActionNotice(
+            `เพิกถอนคีย์ของ ${runtimeName} แล้ว`,
+            'ถ้าต้องการให้เครื่องเดิมเชื่อมต่ออีกครั้ง ให้กดออกคีย์ใหม่หรือสร้างโทเค็นติดตั้งใหม่',
+            'warning',
+          ),
+          raw: result,
+        };
+        await refreshState({ silent: true });
+        setStatus(`เพิกถอนคีย์ของ ${runtimeName} แล้ว`, 'success');
+        return result;
+      } finally {
+        setActionButtonBusy(triggerButton, false);
+      }
+    }
+
+    if (action === 'rotate-token') {
+      const apiKeyId = String(triggerButton?.getAttribute('data-runtime-api-key-id') || '').trim();
+      if (!apiKeyId) {
+        throw new Error('ยังไม่พบคีย์ที่ต้องการออกใหม่');
+      }
+      setActionButtonBusy(triggerButton, true, 'กำลังออกคีย์ใหม่...');
+      try {
+        const result = await apiRequest('/admin/api/platform/agent-token/rotate', {
+          method: 'POST',
+          body: {
+            tenantId,
+            apiKeyId,
+            name: runtimeName,
+          },
+        }, null);
+        state.provisioningResult[kind] = {
+          instructions: buildRuntimeCredentialInstructions(kind, result?.data || result) || buildRuntimeActionNotice(
+            `ออกคีย์ใหม่ของ ${runtimeName} แล้ว`,
+            'คัดลอกคีย์ใหม่ไปใส่บนเครื่องเดิมแล้วเริ่มบริการใหม่อีกครั้ง',
+            'success',
+          ),
+          raw: result,
+        };
+        await refreshState({ silent: true });
+        setStatus(`ออกคีย์ใหม่ของ ${runtimeName} แล้ว`, 'success');
+        return result;
+      } finally {
+        setActionButtonBusy(triggerButton, false);
+      }
+    }
+
+    throw new Error('ยังไม่รู้จักคำสั่งจัดการรายการนี้');
   }
 
   function wireServerConfigPage(renderState, surfaceState) {
@@ -1799,22 +2040,103 @@
 
   function wireRuntimeProvisioningPage(kind, renderState, surfaceState) {
     const button = document.querySelector(`[data-runtime-provision-button="${kind}"]`);
+    const managementButtons = Array.from(document.querySelectorAll(`[data-runtime-action-kind="${kind}"][data-runtime-action]`));
+    if (!button && !managementButtons.length) return;
+    if (Boolean(surfaceState?.featureAccess?.previewMode)) {
+      if (button) {
+        button.disabled = true;
+      }
+      managementButtons.forEach((node) => {
+        node.disabled = true;
+      });
+      return;
+    }
+    if (button) {
+      button.addEventListener('click', async () => {
+        try {
+          const confirmMessage = kind === 'server-bots'
+            ? 'สร้าง Server Bot ใหม่สำหรับเซิร์ฟเวอร์นี้หรือไม่'
+            : 'สร้าง Delivery Agent ใหม่สำหรับเซิร์ฟเวอร์นี้หรือไม่';
+          if (!window.confirm(confirmMessage)) {
+            return;
+          }
+          await queueRuntimeProvisioning(kind, renderState, button);
+        } catch (error) {
+          setStatus(String(error?.message || error), 'danger');
+        }
+      });
+    }
+    managementButtons.forEach((node) => {
+      node.addEventListener('click', async () => {
+        try {
+          const action = String(node.getAttribute('data-runtime-action') || '').trim();
+          const runtimeName = String(node.getAttribute('data-runtime-name') || '').trim() || (kind === 'server-bots' ? 'Server Bot' : 'Delivery Agent');
+          const confirmMessage = action === 'revoke-provision'
+            ? `ยกเลิกโทเค็นของ ${runtimeName} ใช่หรือไม่`
+            : action === 'revoke-device'
+              ? `รีเซ็ตการผูกเครื่องของ ${runtimeName} ใช่หรือไม่`
+              : action === 'revoke-token'
+                ? `เพิกถอนคีย์ของ ${runtimeName} ใช่หรือไม่`
+                : action === 'rotate-token'
+                  ? `ออกคีย์ใหม่ของ ${runtimeName} ใช่หรือไม่`
+                  : kind === 'server-bots'
+                    ? `ออกโทเค็นใหม่ของ Server Bot ตัวนี้ใช่หรือไม่`
+                    : `ออกโทเค็นใหม่ของ Delivery Agent ตัวนี้ใช่หรือไม่`;
+          if (!window.confirm(confirmMessage)) {
+            return;
+          }
+          await queueRuntimeManagementAction(kind, renderState, node);
+        } catch (error) {
+          setStatus(String(error?.message || error), 'danger');
+        }
+      });
+    });
+  }
+
+  function wireServerBotDiscordLinksPage(renderState, surfaceState) {
+    const button = document.querySelector('[data-server-discord-link-create]');
     if (!button) return;
     if (Boolean(surfaceState?.featureAccess?.previewMode)) {
       button.disabled = true;
       return;
     }
     button.addEventListener('click', async () => {
+      const tenantId = String(renderState?.tenantId || '').trim();
+      const serverId = String(document.querySelector('[data-server-discord-link-server]')?.value || '').trim();
+      const guildId = String(document.querySelector('[data-server-discord-link-guild]')?.value || '').trim();
+      const status = String(document.querySelector('[data-server-discord-link-status]')?.value || 'active').trim();
+      if (!serverId) {
+        setStatus('Choose a server before saving the guild mapping.', 'warning');
+        return;
+      }
+      if (!guildId) {
+        setStatus('Guild ID is required.', 'warning');
+        return;
+      }
+      setActionButtonBusy(button, true, 'Saving...');
       try {
-        const confirmMessage = kind === 'server-bots'
-          ? 'สร้าง Server Bot ใหม่สำหรับเซิร์ฟเวอร์นี้หรือไม่'
-          : 'สร้าง Delivery Agent ใหม่สำหรับเซิร์ฟเวอร์นี้หรือไม่';
-        if (!window.confirm(confirmMessage)) {
-          return;
-        }
-        await queueRuntimeProvisioning(kind, renderState, button);
+        await apiRequest('/admin/api/platform/server-discord-link', {
+          method: 'POST',
+          body: {
+            tenantId,
+            serverId,
+            guildId,
+            status,
+            metadata: {
+              source: 'tenant-server-bots-ui',
+            },
+          },
+        });
+        const guildNode = document.querySelector('[data-server-discord-link-guild]');
+        const statusNode = document.querySelector('[data-server-discord-link-status]');
+        if (guildNode) guildNode.value = '';
+        if (statusNode) statusNode.value = 'active';
+        setStatus('Discord guild mapping saved.', 'success');
+        await refreshState({ silent: true });
       } catch (error) {
         setStatus(String(error?.message || error), 'danger');
+      } finally {
+        setActionButtonBusy(button, false);
       }
     });
   }
@@ -1824,13 +2146,136 @@
       wireServerConfigPage(renderState, surfaceState);
       return;
     }
+    if (page === 'players') {
+      wirePlayersPage(renderState, surfaceState);
+      return;
+    }
     if (page === 'delivery-agents') {
       wireRuntimeProvisioningPage('delivery-agents', renderState, surfaceState);
       return;
     }
     if (page === 'server-bots') {
       wireRuntimeProvisioningPage('server-bots', renderState, surfaceState);
+      wireServerBotDiscordLinksPage(renderState, surfaceState);
     }
+  }
+
+  function wirePlayersPage(renderState) {
+    const previewMode = Boolean(
+      renderState?.tenantConfig?.previewMode
+      || renderState?.overview?.tenantConfig?.previewMode
+      || renderState?.overview?.opsState?.previewMode,
+    );
+    const tenantId = String(renderState?.tenantId || '').trim();
+    const inviteForm = document.querySelector('[data-tenant-staff-invite-form]');
+    const inviteButton = inviteForm?.querySelector('[data-tenant-staff-invite-submit]');
+
+    inviteForm?.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (previewMode) {
+        setStatus('Preview tenants cannot invite staff yet.', 'warning');
+        return;
+      }
+      const formData = new FormData(inviteForm);
+      const email = String(formData.get('email') || '').trim();
+      if (!email) {
+        setStatus('Email is required to invite tenant staff.', 'warning');
+        return;
+      }
+      setActionButtonBusy(inviteButton, true, 'Inviting...');
+      try {
+        await apiRequest('/admin/api/platform/tenant-staff', {
+          method: 'POST',
+          body: {
+            tenantId,
+            email,
+            displayName: String(formData.get('displayName') || '').trim(),
+            role: String(formData.get('role') || 'support').trim(),
+            locale: String(formData.get('locale') || 'en').trim(),
+          },
+        });
+        inviteForm.reset();
+        const roleField = inviteForm.querySelector('[name="role"]');
+        const localeField = inviteForm.querySelector('[name="locale"]');
+        if (roleField) roleField.value = 'support';
+        if (localeField) localeField.value = 'en';
+        setStatus('Tenant staff invitation created.', 'success');
+        await refreshState({ silent: true });
+      } catch (error) {
+        setStatus(String(error?.message || error), 'danger');
+      } finally {
+        setActionButtonBusy(inviteButton, false);
+      }
+    });
+
+    document.querySelectorAll('[data-tenant-staff-role-update]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        if (previewMode) {
+          setStatus('Preview tenants cannot change staff access yet.', 'warning');
+          return;
+        }
+        const card = button.closest('[data-tenant-staff-card]');
+        if (!card) return;
+        const membershipId = String(card.getAttribute('data-membership-id') || '').trim();
+        const userId = String(card.getAttribute('data-user-id') || '').trim();
+        const role = String(card.querySelector('[data-tenant-staff-role]')?.value || 'member').trim();
+        const status = String(card.querySelector('[data-tenant-staff-status]')?.value || 'active').trim();
+        setActionButtonBusy(button, true, 'Saving...');
+        try {
+          await apiRequest('/admin/api/platform/tenant-staff/role', {
+            method: 'POST',
+            body: {
+              tenantId,
+              membershipId,
+              userId,
+              role,
+              status,
+            },
+          });
+          setStatus('Tenant staff access updated.', 'success');
+          await refreshState({ silent: true });
+        } catch (error) {
+          setStatus(String(error?.message || error), 'danger');
+        } finally {
+          setActionButtonBusy(button, false);
+        }
+      });
+    });
+
+    document.querySelectorAll('[data-tenant-staff-revoke]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        if (previewMode) {
+          setStatus('Preview tenants cannot revoke staff access yet.', 'warning');
+          return;
+        }
+        const card = button.closest('[data-tenant-staff-card]');
+        if (!card) return;
+        const membershipId = String(card.getAttribute('data-membership-id') || '').trim();
+        const userId = String(card.getAttribute('data-user-id') || '').trim();
+        const revokeReason = String(card.querySelector('[data-tenant-staff-revoke-reason]')?.value || '').trim();
+        if (!window.confirm('Revoke access for this tenant staff member?')) {
+          return;
+        }
+        setActionButtonBusy(button, true, 'Revoking...');
+        try {
+          await apiRequest('/admin/api/platform/tenant-staff/revoke', {
+            method: 'POST',
+            body: {
+              tenantId,
+              membershipId,
+              userId,
+              revokeReason,
+            },
+          });
+          setStatus('Tenant staff access revoked.', 'success');
+          await refreshState({ silent: true });
+        } catch (error) {
+          setStatus(String(error?.message || error), 'danger');
+        } finally {
+          setActionButtonBusy(button, false);
+        }
+      });
+    });
   }
 
   window.addEventListener('DOMContentLoaded', () => {
@@ -1872,6 +2317,16 @@
       setTenantScopeMenuOpen(false);
     });
     document.addEventListener('click', (event) => {
+      const link = event.target instanceof Element
+        ? event.target.closest('a[href^="#"]')
+        : null;
+      if (!link) return;
+      const hash = String(link.getAttribute('href') || '').trim();
+      if (!hash || hash === '#') return;
+      navigateTenantHash(hash);
+      event.preventDefault();
+    });
+    document.addEventListener('click', (event) => {
       const wrap = selectorWrapNode();
       if (!wrap?.contains(event.target)) {
         setTenantScopeMenuOpen(false);
@@ -1886,7 +2341,13 @@
     window.addEventListener('hashchange', () => {
       const surfaceState = renderCurrentPage();
       if (!surfaceState?.notice) {
-        setStatus('พร้อมใช้งาน', 'success');
+        setStatus(t('tenant.app.status.ready', 'Ready'), 'success');
+      }
+    });
+    window.addEventListener('ui-language-change', () => {
+      const surfaceState = renderCurrentPage();
+      if (!surfaceState?.notice && state.payload && !state.refreshing) {
+        setStatus(t('tenant.app.status.ready', 'Ready'), 'success');
       }
     });
     document.addEventListener('visibilitychange', () => {

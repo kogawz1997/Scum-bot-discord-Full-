@@ -64,6 +64,28 @@
     return Array.isArray(list) ? list.length : 0;
   }
 
+  function deriveRestartHistory(state) {
+    if (Array.isArray(state?.restartHistory) && state.restartHistory.length > 0) {
+      return state.restartHistory;
+    }
+    const executions = Array.isArray(state?.restartExecutions) ? state.restartExecutions : [];
+    const plans = Array.isArray(state?.restartPlans) ? state.restartPlans : [];
+    const planMap = new Map(
+      plans
+        .filter((entry) => entry && entry.id)
+        .map((entry) => [String(entry.id), entry]),
+    );
+    return executions.map((execution) => {
+      const plan = planMap.get(String(execution?.planId || '').trim()) || null;
+      return {
+        at: execution?.completedAt || execution?.startedAt || plan?.scheduledFor || null,
+        mode: execution?.action || plan?.restartMode || 'restart',
+        result: execution?.resultStatus || plan?.status || 'unknown',
+        actor: plan?.requestedBy || execution?.runtimeKey || '-',
+      };
+    });
+  }
+
   function statusTone(status) {
     const normalized = String(status || '').trim().toLowerCase();
     if (['ready', 'ok', 'healthy', 'online', 'active'].includes(normalized)) return 'success';
@@ -95,46 +117,46 @@
     ]);
     const maintenanceState = firstNonEmpty([state?.maintenance?.status, state?.restartState?.status, 'idle']);
     const blockers = [];
-    if (String(runtimeStatus).toLowerCase() !== 'ready') blockers.push('Delivery runtime ยังไม่พร้อมสำหรับ announce flow');
-    if (listCount(state?.queueItems) > 0) blockers.push('ยังมี queue jobs ค้างอยู่');
-    if (listCount(state?.deadLetters) > 0) blockers.push('มี dead-letter ค้างอยู่ ควรตรวจต่อก่อน restart');
-    if (state?.serverBotReady === false) blockers.push('Server Bot ยังไม่พร้อมทำ restart');
+    if (String(runtimeStatus).toLowerCase() !== 'ready') blockers.push('Delivery Agent ยังไม่พร้อมสำหรับการประกาศในเกม');
+    if (listCount(state?.queueItems) > 0) blockers.push('ยังมีงานรอค้างอยู่');
+    if (listCount(state?.deadLetters) > 0) blockers.push('ยังมีงานล้มเหลวค้างอยู่ ควรตรวจต่อก่อนรีสตาร์ต');
+    if (state?.serverBotReady === false) blockers.push('Server Bot ยังไม่พร้อมทำงานรีสตาร์ต');
 
-    const history = Array.isArray(state?.restartHistory) ? state.restartHistory : [];
+    const history = deriveRestartHistory(state);
     const modeCards = [
       {
-        title: 'Restart Now',
+        title: 'รีสตาร์ตทันที',
         detail: 'ใช้เมื่อระบบพร้อมและไม่ต้องสื่อสารล่วงหน้า',
-        guard: 'ควรใช้เฉพาะตอน queue โล่งและทีมรับทราบแล้ว',
+        guard: 'ควรใช้เฉพาะตอนงานรอโล่งและทีมรับทราบแล้ว',
         tone: 'danger',
       },
       {
-        title: 'Restart in 1 minute',
+        title: 'รีสตาร์ตใน 1 นาที',
         detail: 'เหมาะกับ downtime สั้นและต้องประกาศเร็ว',
         guard: 'ให้แน่ใจว่า Delivery Agent ออนไลน์ถ้าต้องส่ง #Announce',
         tone: 'warning',
       },
       {
-        title: 'Restart in 5 minutes',
-        detail: 'เหมาะกับ maintenance ที่ต้องให้เวลาผู้เล่นออกจากเกม',
+        title: 'รีสตาร์ตใน 5 นาที',
+        detail: 'เหมาะกับงานบำรุงรักษาที่ต้องให้เวลาผู้เล่นออกจากเกม',
         guard: 'ใช้เมื่ออยากให้ประกาศครบ 5m / 1m / 30s / 10s',
         tone: 'success',
       },
       {
-        title: 'Safe Restart',
-        detail: 'ใช้เมื่อยังต้องเช็ก queue และ post-restart verification อย่างเป็นขั้นตอน',
-        guard: 'โหมดนี้ควรเป็น default ของงานประจำวัน',
+        title: 'รีสตาร์ตแบบปลอดภัย',
+        detail: 'ใช้เมื่อยังต้องเช็กงานรอและการตรวจหลังรีสตาร์ตอย่างเป็นขั้นตอน',
+        guard: 'โหมดนี้ควรเป็นค่าเริ่มต้นของงานประจำวัน',
         tone: 'info',
       },
       {
-        title: 'Schedule Restart',
-        detail: 'กำหนดเวลาไว้ล่วงหน้าเพื่อรอช่วง maintenance ที่เหมาะสม',
+        title: 'ตั้งเวลารีสตาร์ต',
+        detail: 'กำหนดเวลาไว้ล่วงหน้าเพื่อรอช่วงบำรุงรักษาที่เหมาะสม',
         guard: 'เหมาะกับงานที่ต้องมีประวัติและคนเกี่ยวข้องหลายฝ่าย',
         tone: 'muted',
       },
     ];
 
-    const recommendedMode = modeCards.find((item) => item.title === 'Safe Restart') || modeCards[0] || null;
+    const recommendedMode = modeCards.find((item) => item.title === 'รีสตาร์ตแบบปลอดภัย') || modeCards[0] || null;
     const secondaryModes = modeCards.filter((item) => item !== recommendedMode);
 
     return {
@@ -148,24 +170,23 @@
           : NAV_GROUPS,
       },
       header: {
-        title: 'Restart Control',
-        subtitle: 'ศูนย์ควบคุมการรีสตาร์ตแบบมี guardrails แยกงาน maintenance ออกจากงานตรวจ queue และการประกาศให้ผู้เล่นชัดเจน',
+        title: 'ควบคุมการรีสตาร์ต',
+        subtitle: 'ศูนย์ควบคุมการรีสตาร์ตที่แยกงานบำรุงรักษาออกจากการเช็กงานรอและการประกาศให้ผู้เล่น',
         statusChips: [
           { label: `server ${firstNonEmpty([state?.serverStatus, 'ready'])}`, tone: statusTone(firstNonEmpty([state?.serverStatus, 'ready'])) },
-          { label: `delivery ${runtimeStatus}`, tone: statusTone(runtimeStatus) },
-          { label: `queue ${formatNumber(listCount(state?.queueItems), '0')}`, tone: listCount(state?.queueItems) > 0 ? 'warning' : 'success' },
-          { label: `maintenance ${maintenanceState}`, tone: statusTone(maintenanceState) },
+          { label: `การประกาศ ${runtimeStatus}`, tone: statusTone(runtimeStatus) },
+          { label: `งานรอ ${formatNumber(listCount(state?.queueItems), '0')}`, tone: listCount(state?.queueItems) > 0 ? 'warning' : 'success' },
+          { label: `บำรุงรักษา ${maintenanceState}`, tone: statusTone(maintenanceState) },
         ],
-        primaryAction: { label: 'เปิด flow รีสตาร์ต', href: '#restart-open-flow' },
         primaryAction: recommendedMode
-          ? { label: 'Safe Restart (แนะนำ)', href: '#restart-safe' }
-          : { label: 'เปิด flow รีสตาร์ต', href: '#restart-open-flow' },
+          ? { label: 'รีสตาร์ตแบบปลอดภัย (แนะนำ)', href: '#restart-safe' }
+          : { label: 'เปิดขั้นตอนรีสตาร์ต', href: '#restart-open-flow' },
       },
       summaryStrip: [
         { label: 'Server readiness', value: firstNonEmpty([state?.serverStatus, 'ready']), detail: 'ความพร้อมระดับการควบคุมเซิร์ฟเวอร์', tone: statusTone(firstNonEmpty([state?.serverStatus, 'ready'])) },
-        { label: 'Delivery / announce', value: runtimeStatus, detail: 'ใช้ชี้ว่าประกาศในเกมทำได้หรือไม่', tone: statusTone(runtimeStatus) },
-        { label: 'Queue pressure', value: formatNumber(listCount(state?.queueItems), '0'), detail: 'ภาระงานที่ควรตรวจสอบก่อนกดรีสตาร์ต', tone: listCount(state?.queueItems) > 0 ? 'warning' : 'success' },
-        { label: 'Last restart', value: history[0] ? formatDateTime(history[0].at) : 'ยังไม่มี', detail: history[0] ? firstNonEmpty([history[0].mode, history[0].result, '-']) : 'ยังไม่มีประวัติในมุมมองนี้', tone: history[0] ? 'info' : 'muted' },
+        { label: 'การประกาศในเกม', value: runtimeStatus, detail: 'ใช้ชี้ว่าประกาศในเกมทำได้หรือไม่', tone: statusTone(runtimeStatus) },
+        { label: 'งานรอ', value: formatNumber(listCount(state?.queueItems), '0'), detail: 'ภาระงานที่ควรตรวจสอบก่อนกดรีสตาร์ต', tone: listCount(state?.queueItems) > 0 ? 'warning' : 'success' },
+        { label: 'รีสตาร์ตล่าสุด', value: history[0] ? formatDateTime(history[0].at) : 'ยังไม่มี', detail: history[0] ? firstNonEmpty([history[0].mode, history[0].result, '-']) : 'ยังไม่มีประวัติในมุมมองนี้', tone: history[0] ? 'info' : 'muted' },
       ],
       blockers,
       announcementPlan: buildAnnouncementPlan(300),
@@ -180,15 +201,15 @@
       })),
       railCards: [
         {
-          title: 'Checklist ก่อน restart',
-          body: 'ดู queue · ยืนยัน announce · ตรวจ Server Bot · วาง post-check',
-          meta: 'ถ้ายังตอบ 4 ข้อนี้ไม่ได้ อย่าเพิ่งเริ่ม flow รีสตาร์ตจริง',
+          title: 'เช็กลิสต์ก่อนรีสตาร์ต',
+          body: 'ดูงานรอ · ยืนยันการประกาศ · ตรวจ Server Bot · วางแผนตรวจหลังรีสตาร์ต',
+          meta: 'ถ้ายังตอบ 4 ข้อนี้ไม่ได้ อย่าเพิ่งเริ่มการรีสตาร์ตจริง',
           tone: 'info',
         },
         {
           title: 'ประกาศล่วงหน้า 5 นาที',
           body: '5m · 1m · 30s · 10s',
-          meta: 'ใช้เป็น preset กลางสำหรับ maintenance ปกติที่ต้องการให้ผู้เล่นเห็นข้อความครบ',
+          meta: 'ใช้เป็นชุดกลางสำหรับงานบำรุงรักษาปกติที่ต้องการให้ผู้เล่นเห็นข้อความครบ',
           tone: 'warning',
         },
       ],
@@ -228,7 +249,7 @@
   function renderModeCard(item) {
     return [
       `<article class="tdv4-panel tdv4-mode-card tdv4-tone-${escapeHtml(item.tone || 'muted')}">`,
-      `<div class="tdv4-section-kicker">Restart mode</div>`,
+      `<div class="tdv4-section-kicker">โหมดรีสตาร์ต</div>`,
       `<h3 class="tdv4-mode-title">${escapeHtml(item.title)}</h3>`,
       `<p class="tdv4-kpi-detail">${escapeHtml(item.detail)}</p>`,
       `<div class="tdv4-rail-detail">${escapeHtml(item.guard)}</div>`,
@@ -260,7 +281,7 @@
       '</div>',
       '<div class="tdv4-topbar-actions">',
       renderBadge(safeModel.shell.environmentLabel, 'info'),
-      renderBadge('Restart Control', 'warning'),
+      renderBadge('ควบคุมการรีสตาร์ต', 'warning'),
       '</div>',
       '</header>',
       '<div class="tdv4-shell tdv4-restart-shell">',
@@ -286,15 +307,15 @@
       ...(Array.isArray(safeModel.summaryStrip) ? safeModel.summaryStrip.map(renderSummaryCard) : []),
       '</section>',
       '<section class="tdv4-panel tdv4-restart-primary">',
-      '<div class="tdv4-section-kicker">Recommended action</div>',
-      '<h2 class="tdv4-section-title">Safe Restart เป็นตัวเลือกที่แนะนำ</h2>',
+      '<div class="tdv4-section-kicker">ตัวเลือกแนะนำ</div>',
+      '<h2 class="tdv4-section-title">รีสตาร์ตแบบปลอดภัยเป็นตัวเลือกที่แนะนำ</h2>',
       '<p class="tdv4-section-copy">เริ่มจากโหมดนี้ก่อนเมื่อไม่ได้มีเหตุฉุกเฉิน เพราะช่วยเช็กคิวงาน การประกาศ และขั้นตอนหลังรีสตาร์ตได้ครบกว่า</p>',
       '<div class="tdv4-restart-primary-grid">',
       (safeModel.recommendedMode ? renderModeCard(safeModel.recommendedMode) : ''),
       '<div class="tdv4-panel tdv4-restart-primary-actions tdv4-tone-info">',
-      '<div class="tdv4-section-kicker">Primary action</div>',
-      '<h3 class="tdv4-mode-title">เริ่ม Safe Restart ก่อน</h3>',
-      '<p class="tdv4-kpi-detail">ถ้าสถานะระบบยังไม่ชัด ให้ดู blockers และ announcement checklist ใต้หน้านี้ก่อนกดรีสตาร์ตจริง</p>',
+      '<div class="tdv4-section-kicker">ปุ่มหลัก</div>',
+      '<h3 class="tdv4-mode-title">เริ่มรีสตาร์ตแบบปลอดภัยก่อน</h3>',
+      '<p class="tdv4-kpi-detail">ถ้าสถานะระบบยังไม่ชัด ให้ดูรายการที่ต้องเช็กและเช็กลิสต์ประกาศด้านล่างก่อนกดรีสตาร์ตจริง</p>',
       '<div class="tdv4-action-list">',
       `<a class="tdv4-button tdv4-button-primary" href="${escapeHtml(safeModel.header.primaryAction.href || '#')}">${escapeHtml(safeModel.header.primaryAction.label || '')}</a>`,
       '<a class="tdv4-button tdv4-button-secondary" href="#server-status">ดูสถานะเซิร์ฟเวอร์</a>',
@@ -303,8 +324,8 @@
       '</div>',
       '</section>',
       '<details class="tdv4-panel tdv4-more-options">',
-      '<summary class="tdv4-more-options-summary">More options</summary>',
-      '<div class="tdv4-section-kicker">Restart modes</div>',
+      '<summary class="tdv4-more-options-summary">ตัวเลือกอื่น</summary>',
+      '<div class="tdv4-section-kicker">โหมดรีสตาร์ต</div>',
       '<h2 class="tdv4-section-title">เลือกโหมดรีสตาร์ตที่เหมาะกับสถานการณ์</h2>',
       '<div class="tdv4-mode-grid">',
       ...(Array.isArray(safeModel.secondaryModes) ? safeModel.secondaryModes.map(renderModeCard) : []),
@@ -312,17 +333,17 @@
       '</details>',
       '<section class="tdv4-dual-grid tdv4-restart-main-grid">',
       '<section class="tdv4-panel">',
-      '<div class="tdv4-section-kicker">Announcement checklist</div>',
+      '<div class="tdv4-section-kicker">เช็กลิสต์ประกาศ</div>',
       '<h2 class="tdv4-section-title">ลำดับการประกาศและการตรวจพร้อมก่อนกดเริ่ม</h2>',
       '<div class="tdv4-list">',
       ...(Array.isArray(safeModel.announcementPlan)
-        ? safeModel.announcementPlan.map((item) => `<div class="tdv4-list-item"><strong>${escapeHtml(item.delaySeconds)}s</strong><p>${escapeHtml(item.message)}</p></div>`)
+        ? safeModel.announcementPlan.map((item) => `<div class="tdv4-list-item"><strong>${escapeHtml(item.delaySeconds)} วินาที</strong><p>${escapeHtml(item.message)}</p></div>`)
         : []),
       '</div>',
       '</section>',
       '<section class="tdv4-panel">',
       '<div class="tdv4-section-kicker">Blockers</div>',
-      '<h2 class="tdv4-section-title">สิ่งที่ควรเคลียร์ก่อน restart</h2>',
+      '<h2 class="tdv4-section-title">สิ่งที่ควรเคลียร์ก่อนรีสตาร์ต</h2>',
       (Array.isArray(safeModel.blockers) && safeModel.blockers.length
         ? `<div class="tdv4-list">${safeModel.blockers.map((item) => `<div class="tdv4-list-item"><strong>คำเตือน</strong><p>${escapeHtml(item)}</p></div>`).join('')}</div>`
         : '<div class="tdv4-empty-state">ไม่พบ blocker สำคัญในมุมมองตัวอย่างนี้</div>'),
@@ -330,16 +351,16 @@
       '</section>',
       '<section class="tdv4-panel">',
       '<div class="tdv4-section-kicker">Recent activity</div>',
-      '<h2 class="tdv4-section-title">ประวัติ restart ล่าสุด</h2>',
+      '<h2 class="tdv4-section-title">ประวัติรีสตาร์ตล่าสุด</h2>',
       (Array.isArray(safeModel.history) && safeModel.history.length
         ? `<div class="tdv4-history-grid">${safeModel.history.map((item) => `<article class="tdv4-mini-stat"><div class="tdv4-mini-stat-label">${escapeHtml(item.mode)}</div><div class="tdv4-mini-stat-value">${escapeHtml(item.result)}</div><div class="tdv4-kpi-detail">${escapeHtml(item.at)} · ${escapeHtml(item.actor)}</div></article>`).join('')}</div>`
-        : '<div class="tdv4-empty-state">ยังไม่มีประวัติ restart ในมุมมองนี้</div>'),
+        : '<div class="tdv4-empty-state">ยังไม่มีประวัติรีสตาร์ตในมุมมองนี้</div>'),
       '</section>',
       '</main>',
       '<aside class="tdv4-rail">',
       '<div class="tdv4-rail-sticky">',
       `<div class="tdv4-rail-header">${escapeHtml(safeModel.shell.workspaceLabel)}</div>`,
-      '<div class="tdv4-rail-copy">แยก checklist ของงาน maintenance ไว้ด้านขวา เพื่อให้หน้าหลักเหลือเฉพาะการตัดสินใจและสภาพระบบ</div>',
+      '<div class="tdv4-rail-copy">แยกเช็กลิสต์ของงานบำรุงรักษาไว้ด้านขวา เพื่อให้หน้าหลักเหลือเฉพาะการตัดสินใจและสภาพระบบ</div>',
       ...(Array.isArray(safeModel.railCards) ? safeModel.railCards.map(renderRailCard) : []),
       '</div>',
       '</aside>',

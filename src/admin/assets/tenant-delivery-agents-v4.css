@@ -68,6 +68,52 @@
   gap: 8px;
 }
 
+.tdv4-runtime-manage-cell {
+  display: grid;
+  gap: 10px;
+}
+
+.tdv4-runtime-inline-note {
+  color: var(--tdv4-text-soft);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.tdv4-runtime-action-row,
+.tdv4-list-item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tdv4-list-item {
+  display: grid;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--tdv4-border);
+}
+
+.tdv4-list-item:first-child {
+  padding-top: 0;
+}
+
+.tdv4-list-item:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.tdv4-list-main {
+  display: grid;
+  gap: 6px;
+}
+
+.tdv4-list-main p {
+  margin: 0;
+  color: var(--tdv4-text-soft);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
 .tdv4-runtime-readiness-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

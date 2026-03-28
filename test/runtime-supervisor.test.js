@@ -39,6 +39,13 @@ const ENV_KEYS = [
   'SCUM_WATCHER_REQUIRED',
   'SCUM_WATCHER_HEALTH_HOST',
   'SCUM_WATCHER_HEALTH_PORT',
+  'SCUM_SERVER_BOT_ENABLED',
+  'SCUM_SERVER_BOT_REQUIRED',
+  'SCUM_SERVER_BOT_HEALTH_HOST',
+  'SCUM_SERVER_BOT_HEALTH_PORT',
+  'SCUM_SERVER_CONFIG_ROOT',
+  'SCUM_SERVER_SETTINGS_DIR',
+  'SCUM_SERVER_DIR',
   'ADMIN_WEB_HOST',
   'ADMIN_WEB_PORT',
   'WEB_PORTAL_HOST',
@@ -165,6 +172,15 @@ test('runtime supervisor reports ready when all required runtimes are healthy', 
     statusCode: 'READY',
     now: new Date().toISOString(),
   });
+  const serverBot = await startJsonHealthServer({
+    ok: true,
+    service: 'scum-server-bot',
+    ready: true,
+    status: 'ready',
+    role: 'sync',
+    scope: 'sync_only',
+    now: new Date().toISOString(),
+  });
 
   t.after(async () => {
     await Promise.all([
@@ -174,6 +190,7 @@ test('runtime supervisor reports ready when all required runtimes are healthy', 
       new Promise((resolve) => admin.server.close(resolve)),
       new Promise((resolve) => player.server.close(resolve)),
       new Promise((resolve) => agent.server.close(resolve)),
+      new Promise((resolve) => serverBot.server.close(resolve)),
     ]);
   });
 
@@ -195,6 +212,10 @@ test('runtime supervisor reports ready when all required runtimes are healthy', 
   process.env.SCUM_WATCHER_REQUIRED = 'true';
   process.env.SCUM_WATCHER_HEALTH_HOST = watcher.host;
   process.env.SCUM_WATCHER_HEALTH_PORT = String(watcher.port);
+  process.env.SCUM_SERVER_BOT_ENABLED = 'true';
+  process.env.SCUM_SERVER_BOT_REQUIRED = 'true';
+  process.env.SCUM_SERVER_BOT_HEALTH_HOST = serverBot.host;
+  process.env.SCUM_SERVER_BOT_HEALTH_PORT = String(serverBot.port);
 
   process.env.ADMIN_WEB_HOST = admin.host;
   process.env.ADMIN_WEB_PORT = String(admin.port);
@@ -216,8 +237,8 @@ test('runtime supervisor reports ready when all required runtimes are healthy', 
   const snapshot = await collectRuntimeSupervisorSnapshot();
 
   assert.equal(snapshot.overall, 'ready');
-  assert.equal(snapshot.counts.required, 6);
-  assert.equal(snapshot.counts.ready, 6);
+  assert.equal(snapshot.counts.required, 7);
+  assert.equal(snapshot.counts.ready, 7);
   assert.equal(snapshot.counts.degraded, 0);
   assert.equal(snapshot.counts.offline, 0);
   assert.equal(alerts.length, 0);
@@ -340,6 +361,8 @@ test('runtime supervisor does not alert optional watcher or console-agent when d
   process.env.BOT_ENABLE_RESTART_SCHEDULER = 'false';
   process.env.BOT_ENABLE_RENTBIKE_SERVICE = 'false';
   process.env.BOT_ENABLE_DELIVERY_WORKER = 'false';
+  delete process.env.BOT_HEALTH_HOST;
+  delete process.env.BOT_HEALTH_PORT;
   process.env.WORKER_ENABLE_RENTBIKE = 'false';
   process.env.WORKER_ENABLE_DELIVERY = 'false';
   delete process.env.SCUM_LOG_PATH;

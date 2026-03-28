@@ -338,7 +338,7 @@ async function runPlatformAutomationCycle({ client = null, force = false, dryRun
 
   cyclePromise = (async () => {
     const generatedAt = nowIso();
-    const stateBefore = getPlatformAutomationState();
+    const stateBefore = await getPlatformAutomationState();
     const runtimeSupervisor = await getRuntimeSupervisorSnapshot({ forceRefresh: true });
     const evaluated = [];
     const actions = [];
@@ -439,7 +439,7 @@ async function runPlatformAutomationCycle({ client = null, force = false, dryRun
 
     let stateAfter = stateBefore;
     if (!dryRun) {
-      stateAfter = updatePlatformAutomationState(
+      stateAfter = await updatePlatformAutomationState(
         buildNextAutomationState(
           stateBefore,
           actions,

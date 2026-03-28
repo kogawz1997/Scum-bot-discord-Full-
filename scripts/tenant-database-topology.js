@@ -2,7 +2,7 @@
 
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient } = require('../src/prismaClientLoader');
 const {
   buildTenantDatabaseAdminUrl,
   getTenantDatabaseTopologyMode,

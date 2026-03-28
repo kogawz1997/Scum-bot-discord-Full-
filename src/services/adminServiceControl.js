@@ -4,34 +4,46 @@ const { spawn } = require('node:child_process');
 
 const MANAGED_RUNTIME_SERVICES = Object.freeze([
   {
+    key: 'admin-web',
+    label: 'Admin Web',
+    pm2Name: 'scum-admin-web',
+    description: 'Standalone owner and tenant admin web runtime',
+  },
+  {
     key: 'bot',
-    label: 'Discord Bot + Admin Web',
+    label: 'Discord Bot',
     pm2Name: 'scum-bot',
-    description: 'bot.js และ admin web ที่รันใน process เดียวกัน',
+    description: 'Discord command and automation runtime',
   },
   {
     key: 'worker',
     label: 'Worker',
     pm2Name: 'scum-worker',
-    description: 'delivery worker และ rent-bike worker',
+    description: 'Delivery and background job worker',
   },
   {
     key: 'watcher',
     label: 'SCUM Watcher',
     pm2Name: 'scum-watcher',
-    description: 'log watcher และ webhook ingest',
+    description: 'SCUM log watcher and sync runtime',
+  },
+  {
+    key: 'server-bot',
+    label: 'Server Bot',
+    pm2Name: 'scum-server-bot',
+    description: 'Server-side sync, config, backup, and server control runtime',
   },
   {
     key: 'console-agent',
     label: 'Console Agent',
     pm2Name: 'scum-console-agent',
-    description: 'agent mode backend สำหรับส่งคำสั่ง SCUM',
+    description: 'Execution runtime for managed SCUM commands',
   },
   {
     key: 'player-portal',
     label: 'Player Portal',
     pm2Name: 'scum-web-portal',
-    description: 'standalone player portal',
+    description: 'Standalone public and player portal',
   },
 ]);
 

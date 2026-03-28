@@ -85,8 +85,12 @@ function createAdminGetRoutes(deps) {
     getTenantQuotaSnapshot,
     listPlatformTenants,
     listPlatformTenantConfigs,
+    listTenantStaffMemberships,
     listPlatformSubscriptions,
     listPlatformLicenses,
+    listBillingInvoices,
+    listBillingPaymentAttempts,
+    getBillingProviderConfigSummary,
     listPlatformApiKeys,
     listPlatformWebhookEndpoints,
     listPlatformAgentRuntimes,
@@ -95,6 +99,8 @@ function createAdminGetRoutes(deps) {
     getServerConfigWorkspace,
     getServerConfigCategory,
     listServerConfigBackups,
+    listRestartPlans,
+    listRestartExecutions,
     listPlatformAgentRegistry,
     listPlatformAgentProvisioningTokens,
     listPlatformAgentDevices,
@@ -393,7 +399,7 @@ function createAdminGetRoutes(deps) {
           guilds: client.guilds.cache.size,
           role: auth.role,
           runtimeSupervisor,
-          automationState: getPlatformAutomationState(),
+          automationState: await getPlatformAutomationState(),
           automationConfig: getPlatformAutomationConfig(),
           backupRestore: getAdminRestoreState(),
         },
@@ -455,8 +461,8 @@ function createAdminGetRoutes(deps) {
           tenantFeatureAccess: tenantId && typeof getTenantFeatureAccess === 'function'
             ? await getTenantFeatureAccess(tenantId)
             : null,
-          opsState: getPlatformOpsState(),
-          automationState: getPlatformAutomationState(),
+          opsState: await getPlatformOpsState(),
+          automationState: await getPlatformAutomationState(),
           automationConfig: getPlatformAutomationConfig(),
           tenantConfig: tenantId ? await getPlatformTenantConfig(tenantId) : null,
         },
@@ -528,8 +534,8 @@ function createAdminGetRoutes(deps) {
       sendJson(res, 200, {
         ok: true,
         data: {
-          ...getPlatformOpsState(),
-          automation: getPlatformAutomationState(),
+          ...(await getPlatformOpsState()),
+          automation: await getPlatformAutomationState(),
           automationConfig: getPlatformAutomationConfig(),
         },
       });
@@ -625,6 +631,53 @@ function createAdminGetRoutes(deps) {
         data: await getServerConfigWorkspace({
           tenantId,
           serverId: serverConfigWorkspaceMatch[1],
+          limit: asInt(urlObj.searchParams.get('limit'), 20) || 20,
+        }),
+      });
+      return true;
+    }
+
+    if (pathname === '/admin/api/platform/restart-plans') {
+      const auth = ensureRole(req, urlObj, 'mod', res);
+      if (!auth) return true;
+      const tenantId = resolveScopedTenantId(
+        req,
+        res,
+        auth,
+        requiredString(urlObj.searchParams.get('tenantId')),
+        { required: false },
+      );
+      if (requiredString(urlObj.searchParams.get('tenantId')) && !tenantId) return true;
+      sendJson(res, 200, {
+        ok: true,
+        data: await listRestartPlans({
+          tenantId,
+          serverId: requiredString(urlObj.searchParams.get('serverId')),
+          status: requiredString(urlObj.searchParams.get('status')),
+          limit: asInt(urlObj.searchParams.get('limit'), 20) || 20,
+        }),
+      });
+      return true;
+    }
+
+    if (pathname === '/admin/api/platform/restart-executions') {
+      const auth = ensureRole(req, urlObj, 'mod', res);
+      if (!auth) return true;
+      const tenantId = resolveScopedTenantId(
+        req,
+        res,
+        auth,
+        requiredString(urlObj.searchParams.get('tenantId')),
+        { required: false },
+      );
+      if (requiredString(urlObj.searchParams.get('tenantId')) && !tenantId) return true;
+      sendJson(res, 200, {
+        ok: true,
+        data: await listRestartExecutions({
+          tenantId,
+          serverId: requiredString(urlObj.searchParams.get('serverId')),
+          planId: requiredString(urlObj.searchParams.get('planId')),
+          status: requiredString(urlObj.searchParams.get('status')),
           limit: asInt(urlObj.searchParams.get('limit'), 20) || 20,
         }),
       });
@@ -995,6 +1048,26 @@ function createAdminGetRoutes(deps) {
       return true;
     }
 
+    if (pathname === '/admin/api/platform/tenant-staff') {
+      const auth = ensureRole(req, urlObj, 'mod', res);
+      if (!auth) return true;
+      const tenantId = resolveScopedTenantId(
+        req,
+        res,
+        auth,
+        requiredString(urlObj.searchParams.get('tenantId')),
+        { required: true },
+      );
+      if (!tenantId) return true;
+      sendJson(res, 200, {
+        ok: true,
+        data: await listTenantStaffMemberships(tenantId, {
+          limit: asInt(urlObj.searchParams.get('limit'), 100) || 100,
+        }),
+      });
+      return true;
+    }
+
     if (pathname === '/admin/api/platform/subscriptions') {
       const auth = ensureRole(req, urlObj, 'mod', res);
       if (!auth) return true;
@@ -1030,6 +1103,82 @@ function createAdminGetRoutes(deps) {
           tenantId,
           status: requiredString(urlObj.searchParams.get('status')),
           allowGlobal: !tenantId,
+        }),
+      });
+      return true;
+    }
+
+    if (pathname === '/admin/api/platform/billing/overview') {
+      const auth = ensureRole(req, urlObj, 'mod', res);
+      if (!auth) return true;
+      const requestedTenantId = requiredString(urlObj.searchParams.get('tenantId'));
+      const tenantId = resolveScopedTenantId(req, res, auth, requestedTenantId, {
+        required: false,
+      });
+      if (requestedTenantId && !tenantId) return true;
+      const [invoices, paymentAttempts] = await Promise.all([
+        listBillingInvoices({
+          tenantId,
+          limit: asInt(urlObj.searchParams.get('invoiceLimit'), 100) || 100,
+        }),
+        listBillingPaymentAttempts({
+          tenantId,
+          limit: asInt(urlObj.searchParams.get('attemptLimit'), 100) || 100,
+        }),
+      ]);
+      const paidInvoices = invoices.filter((row) => row?.status === 'paid');
+      const openInvoices = invoices.filter((row) => ['draft', 'open', 'past_due'].includes(String(row?.status || '').trim().toLowerCase()));
+      const failedAttempts = paymentAttempts.filter((row) => row?.status === 'failed');
+      sendJson(res, 200, {
+        ok: true,
+        data: {
+          provider: getBillingProviderConfigSummary(),
+          summary: {
+            invoiceCount: invoices.length,
+            openInvoiceCount: openInvoices.length,
+            paidInvoiceCount: paidInvoices.length,
+            collectedCents: paidInvoices.reduce((sum, row) => sum + Number(row?.amountCents || 0), 0),
+            failedAttemptCount: failedAttempts.length,
+          },
+        },
+      });
+      return true;
+    }
+
+    if (pathname === '/admin/api/platform/billing/invoices') {
+      const auth = ensureRole(req, urlObj, 'mod', res);
+      if (!auth) return true;
+      const requestedTenantId = requiredString(urlObj.searchParams.get('tenantId'));
+      const tenantId = resolveScopedTenantId(req, res, auth, requestedTenantId, {
+        required: false,
+      });
+      if (requestedTenantId && !tenantId) return true;
+      sendJson(res, 200, {
+        ok: true,
+        data: await listBillingInvoices({
+          tenantId,
+          status: requiredString(urlObj.searchParams.get('status')),
+          limit: asInt(urlObj.searchParams.get('limit'), 100) || 100,
+        }),
+      });
+      return true;
+    }
+
+    if (pathname === '/admin/api/platform/billing/payment-attempts') {
+      const auth = ensureRole(req, urlObj, 'mod', res);
+      if (!auth) return true;
+      const requestedTenantId = requiredString(urlObj.searchParams.get('tenantId'));
+      const tenantId = resolveScopedTenantId(req, res, auth, requestedTenantId, {
+        required: false,
+      });
+      if (requestedTenantId && !tenantId) return true;
+      sendJson(res, 200, {
+        ok: true,
+        data: await listBillingPaymentAttempts({
+          tenantId,
+          provider: requiredString(urlObj.searchParams.get('provider')),
+          status: requiredString(urlObj.searchParams.get('status')),
+          limit: asInt(urlObj.searchParams.get('limit'), 100) || 100,
         }),
       });
       return true;

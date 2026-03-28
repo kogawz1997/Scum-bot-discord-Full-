@@ -56,6 +56,7 @@ function buildScriptSequence(options = {}) {
   if (options.isProduction) {
     scripts.push('doctor:topology:prod');
     scripts.push('doctor:web-standalone:prod');
+    scripts.push('smoke:persistence');
     if (!options.skipSmoke) {
       scripts.push('smoke:postdeploy');
     }

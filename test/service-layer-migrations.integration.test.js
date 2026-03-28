@@ -28,7 +28,7 @@ test('linkService enforces one-time self bind and supports admin removal', async
   const steamIdB = '76561199000000002';
 
   try {
-    const first = bindSteamLinkForUser({
+    const first = await bindSteamLinkForUser({
       userId,
       steamId: steamIdA,
       inGameName: 'Tester A',
@@ -36,8 +36,9 @@ test('linkService enforces one-time self bind and supports admin removal', async
       allowSteamReuse: false,
     });
     assert.equal(first.ok, true);
+    assert.equal(typeof first.identity?.userId, 'string');
 
-    const duplicate = bindSteamLinkForUser({
+    const duplicate = await bindSteamLinkForUser({
       userId,
       steamId: steamIdA,
       allowReplace: false,
@@ -46,7 +47,7 @@ test('linkService enforces one-time self bind and supports admin removal', async
     assert.equal(duplicate.ok, true);
     assert.equal(duplicate.alreadyLinked, true);
 
-    const blockedRelink = bindSteamLinkForUser({
+    const blockedRelink = await bindSteamLinkForUser({
       userId,
       steamId: steamIdB,
       allowReplace: false,
@@ -64,8 +65,33 @@ test('linkService enforces one-time self bind and supports admin removal', async
     await flushLinkStoreWrites();
     assert.equal(getSteamLinkByUserId(userId), null);
   } finally {
+    const identityRows = await prisma.platformUserIdentity.findMany({
+      where: {
+        OR: [
+          { providerUserId: userId },
+          { providerUserId: { in: [steamIdA, steamIdB] } },
+        ],
+      },
+    }).catch(() => []);
+    const platformUserIds = [...new Set(identityRows.map((row) => row.userId).filter(Boolean))];
     await prisma.link.deleteMany({ where: { userId } }).catch(() => null);
     await prisma.playerAccount.deleteMany({ where: { discordId: userId } }).catch(() => null);
+    await prisma.platformPlayerProfile.deleteMany({
+      where: {
+        OR: [
+          { discordUserId: userId },
+          { steamId: { in: [steamIdA, steamIdB] } },
+          ...(platformUserIds.length > 0 ? [{ userId: { in: platformUserIds } }] : []),
+        ],
+      },
+    }).catch(() => null);
+    await prisma.platformMembership.deleteMany({
+      where: platformUserIds.length > 0 ? { userId: { in: platformUserIds } } : { id: '__none__' },
+    }).catch(() => null);
+    await prisma.platformUserIdentity.deleteMany({ where: { OR: [{ providerUserId: userId }, { providerUserId: { in: [steamIdA, steamIdB] } }] } }).catch(() => null);
+    await prisma.platformUser.deleteMany({
+      where: platformUserIds.length > 0 ? { id: { in: platformUserIds } } : { id: '__none__' },
+    }).catch(() => null);
   }
 });
 

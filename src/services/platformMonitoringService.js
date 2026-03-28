@@ -101,7 +101,7 @@ async function runPlatformMonitoringCycle({ client = null, force = false } = {})
   }
 
   cyclePromise = (async () => {
-    const state = getPlatformOpsState();
+    const state = await getPlatformOpsState();
     const updatedAlertMap = { ...(state.lastAlertAtByKey || {}) };
     const generatedAt = nowIso();
     const report = {
@@ -141,7 +141,7 @@ async function runPlatformMonitoringCycle({ client = null, force = false } = {})
             note: monitoring.backups.note,
           });
           updatedAlertMap['platform-auto-backup-created'] = generatedAt;
-          updatePlatformOpsState({
+          await updatePlatformOpsState({
             lastAutoBackupAt: generatedAt,
             lastAlertAtByKey: updatedAlertMap,
           });
@@ -290,12 +290,12 @@ async function runPlatformMonitoringCycle({ client = null, force = false } = {})
         }
       }
 
-      updatePlatformOpsState({
+      await updatePlatformOpsState({
         lastMonitoringAt: generatedAt,
         lastReconcileAt: shouldReconcile ? generatedAt : state.lastReconcileAt,
         lastAlertAtByKey: updatedAlertMap,
       });
-      report.stateAfter = getPlatformOpsState();
+      report.stateAfter = await getPlatformOpsState();
       return report;
     } finally {
       cyclePromise = null;

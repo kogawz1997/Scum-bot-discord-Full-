@@ -52,19 +52,25 @@ function pushPort(portMap, errors, port, label) {
 }
 
 function detectProductionTopologyShape({
-  botAdmin,
+  adminWebEnabled,
   botServiceEnabled,
   workerEnabled,
   watcherRuntimeEnabled,
+  serverBotRuntimeEnabled,
   agentRuntimeEnabled,
 }) {
-  if (botAdmin && botServiceEnabled && !workerEnabled) {
+  if (adminWebEnabled && botServiceEnabled && !workerEnabled) {
     return 'single-host-prod';
   }
-  if (botAdmin && !botServiceEnabled && workerEnabled) {
+  if (adminWebEnabled && !botServiceEnabled && workerEnabled) {
     return 'split-runtime';
   }
-  if (!botAdmin && !botServiceEnabled && !workerEnabled && (watcherRuntimeEnabled || agentRuntimeEnabled)) {
+  if (
+    !adminWebEnabled
+    && !botServiceEnabled
+    && !workerEnabled
+    && (watcherRuntimeEnabled || serverBotRuntimeEnabled || agentRuntimeEnabled)
+  ) {
     return 'execution-node';
   }
   return 'unsupported-production-shape';
@@ -75,7 +81,7 @@ function evaluateTopology() {
   const errors = [];
   const warnings = [];
 
-  const botAdmin = isTruthy(env.BOT_ENABLE_ADMIN_WEB, true);
+  const adminWebEnabled = isTruthy(env.BOT_ENABLE_ADMIN_WEB, true);
   const botWebhook = isTruthy(env.BOT_ENABLE_SCUM_WEBHOOK, true);
   const botRent = isTruthy(env.BOT_ENABLE_RENTBIKE_SERVICE, true);
   const botDelivery = isTruthy(env.BOT_ENABLE_DELIVERY_WORKER, true);
@@ -88,6 +94,15 @@ function evaluateTopology() {
   const watcherRuntimeEnabled =
     isTruthy(env.SCUM_WATCHER_ENABLED, false)
     || readPort(env.SCUM_WATCHER_HEALTH_PORT, 0) > 0;
+  const serverBotRuntimeEnabled =
+    isTruthy(env.SCUM_SERVER_BOT_ENABLED, false)
+    || readPort(env.SCUM_SERVER_BOT_HEALTH_PORT, 0) > 0
+    || String(
+      env.SCUM_SERVER_CONFIG_ROOT
+      || env.SCUM_SERVER_SETTINGS_DIR
+      || env.SCUM_SERVER_DIR
+      || '',
+    ).trim().length > 0;
   const agentRuntimeEnabled = readPort(env.SCUM_CONSOLE_AGENT_PORT, 0) > 0;
 
   let topology = 'unknown';
@@ -123,10 +138,11 @@ function evaluateTopology() {
 
   if (isProduction) {
     const productionShape = detectProductionTopologyShape({
-      botAdmin,
+      adminWebEnabled,
       botServiceEnabled,
       workerEnabled,
       watcherRuntimeEnabled,
+      serverBotRuntimeEnabled,
       agentRuntimeEnabled,
     });
     topology = productionShape;
@@ -135,9 +151,14 @@ function evaluateTopology() {
         'Production topology must be one of: single-host-prod, split-runtime control plane, or execution-node',
       );
     }
-    if (productionShape === 'execution-node' && !agentRuntimeEnabled && !watcherRuntimeEnabled) {
+    if (
+      productionShape === 'execution-node'
+      && !agentRuntimeEnabled
+      && !watcherRuntimeEnabled
+      && !serverBotRuntimeEnabled
+    ) {
       errors.push(
-        'Execution-node topology requires watcher or console-agent runtime to be enabled',
+        'Execution-node topology requires watcher, server-bot, or console-agent runtime to be enabled',
       );
     }
   }
@@ -150,10 +171,10 @@ function evaluateTopology() {
     && legacyAdminUrl
     && /\/admin\/?$/i.test(legacyAdminUrl)
     && /127\.0\.0\.1:3200|localhost:3200/i.test(legacyAdminUrl)
-    && !botAdmin
+    && !adminWebEnabled
   ) {
     errors.push(
-      'WEB_PORTAL_LEGACY_ADMIN_URL points to local admin web but BOT_ENABLE_ADMIN_WEB=false',
+      'WEB_PORTAL_LEGACY_ADMIN_URL points to local admin web but admin web is disabled',
     );
   }
 
@@ -161,7 +182,7 @@ function evaluateTopology() {
   pushPort(
     portMap,
     errors,
-    botAdmin ? readPort(env.ADMIN_WEB_PORT, 3200) : 0,
+    adminWebEnabled ? readPort(env.ADMIN_WEB_PORT, 3200) : 0,
     'admin-web',
   );
   pushPort(
@@ -191,6 +212,12 @@ function evaluateTopology() {
   pushPort(
     portMap,
     errors,
+    readPort(env.SCUM_SERVER_BOT_HEALTH_PORT, 0),
+    'server-bot-health',
+  );
+  pushPort(
+    portMap,
+    errors,
     readPort(env.SCUM_CONSOLE_AGENT_PORT, 0),
     'scum-console-agent',
   );
@@ -212,8 +239,10 @@ function evaluateTopology() {
     mode: topology,
     isProduction,
     roles: {
+      adminWeb: {
+        enabled: adminWebEnabled,
+      },
       bot: {
-        adminWeb: botAdmin,
         webhook: botWebhook,
         rentBike: botRent,
         delivery: botDelivery,
@@ -222,10 +251,16 @@ function evaluateTopology() {
         rentBike: workerRent,
         delivery: workerDelivery,
       },
+      serverBot: {
+        enabled: serverBotRuntimeEnabled,
+      },
     },
     runtime: {
       workerEnabled,
       botServiceEnabled,
+      watcherRuntimeEnabled,
+      serverBotRuntimeEnabled,
+      agentRuntimeEnabled,
       deliveryExecutionMode,
     },
     warnings,
@@ -263,7 +298,10 @@ function evaluateTopology() {
 function printTextReport(report) {
   console.log(`[topology] mode: ${report.mode}`);
   console.log(
-    `[topology] bot(admin=${report.roles.bot.adminWeb ? 'on' : 'off'}, webhook=${report.roles.bot.webhook ? 'on' : 'off'}, rent=${report.roles.bot.rentBike ? 'on' : 'off'}, delivery=${report.roles.bot.delivery ? 'on' : 'off'})`,
+    `[topology] admin-web(enabled=${report.roles.adminWeb.enabled ? 'on' : 'off'})`,
+  );
+  console.log(
+    `[topology] bot(webhook=${report.roles.bot.webhook ? 'on' : 'off'}, rent=${report.roles.bot.rentBike ? 'on' : 'off'}, delivery=${report.roles.bot.delivery ? 'on' : 'off'})`,
   );
   console.log(
     `[topology] worker(rent=${report.roles.worker.rentBike ? 'on' : 'off'}, delivery=${report.roles.worker.delivery ? 'on' : 'off'})`,

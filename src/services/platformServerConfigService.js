@@ -10,6 +10,11 @@ const {
   findConfigSettingDefinition,
   normalizeSettingValue,
 } = require('./serverBotConfigSchemaService');
+const {
+  completeRestartPlan,
+  recordRestartExecution,
+  scheduleRestartPlan,
+} = require('./platformRestartOrchestrationService');
 
 function trimText(value, maxLen = 400) {
   const text = String(value || '').trim();
@@ -685,6 +690,27 @@ function createPlatformServerConfigService(deps = {}) {
     const jobId = trimText(input.jobId, 160) || createId('cfgjob');
     const requestedBy = trimText(actor, 200) || 'admin-web';
     const requiresRestart = changes.some((entry) => findConfigSettingDefinition(entry)?.requiresRestart === true);
+    const meta = {
+      requiresRestart,
+      requestedApplyMode: applyMode,
+    };
+    if (applyMode === 'save_restart') {
+      const restartPlan = await scheduleRestartPlan({
+        tenantId,
+        serverId,
+        guildId: trimText(server.guildId, 160) || null,
+        runtimeKey: normalizeRuntimeKey(input.runtimeKey) || null,
+        delaySeconds: Number(input.delaySeconds || 0) || 0,
+        restartMode: trimText(input.restartMode, 80) || 'safe_restart',
+        controlMode: trimText(input.controlMode, 80) || 'service',
+        reason: trimText(input.restartReason, 240) || 'config-update',
+        channel: trimText(input.channel, 120) || null,
+      }, actor).catch(() => null);
+      if (restartPlan?.ok) {
+        meta.restartPlanId = restartPlan.plan?.id || null;
+        meta.restartScheduledFor = restartPlan.plan?.scheduledFor || null;
+      }
+    }
     return withTenantConfigDb(tenantId, async (db) => {
       await ensurePlatformServerConfigTables(db);
       await db.$executeRaw`
@@ -714,10 +740,7 @@ function createPlatformServerConfigService(deps = {}) {
           ${JSON.stringify(changes)},
           ${JSON.stringify({})},
           ${null},
-          ${JSON.stringify({
-            requiresRestart,
-            requestedApplyMode: applyMode,
-          })}
+          ${JSON.stringify(meta)}
         )
       `;
       return {
@@ -735,6 +758,24 @@ function createPlatformServerConfigService(deps = {}) {
     if (!server) return { ok: false, reason: 'server-not-found' };
     const applyMode = normalizeApplyMode(input.applyMode, 'save_apply');
     const jobId = trimText(input.jobId, 160) || createId('cfgjob');
+    const meta = { requestedApplyMode: applyMode };
+    if (applyMode === 'save_restart') {
+      const restartPlan = await scheduleRestartPlan({
+        tenantId,
+        serverId,
+        guildId: trimText(server.guildId, 160) || null,
+        runtimeKey: normalizeRuntimeKey(input.runtimeKey) || null,
+        delaySeconds: Number(input.delaySeconds || 0) || 0,
+        restartMode: trimText(input.restartMode, 80) || 'safe_restart',
+        controlMode: trimText(input.controlMode, 80) || 'service',
+        reason: trimText(input.restartReason, 240) || 'config-apply',
+        channel: trimText(input.channel, 120) || null,
+      }, actor).catch(() => null);
+      if (restartPlan?.ok) {
+        meta.restartPlanId = restartPlan.plan?.id || null;
+        meta.restartScheduledFor = restartPlan.plan?.scheduledFor || null;
+      }
+    }
     return withTenantConfigDb(tenantId, async (db) => {
       await ensurePlatformServerConfigTables(db);
       await db.$executeRaw`
@@ -764,7 +805,7 @@ function createPlatformServerConfigService(deps = {}) {
           ${JSON.stringify([])},
           ${JSON.stringify({})},
           ${null},
-          ${JSON.stringify({ requestedApplyMode: applyMode })}
+          ${JSON.stringify(meta)}
         )
       `;
       return {
@@ -782,11 +823,32 @@ function createPlatformServerConfigService(deps = {}) {
     const server = await resolveServer(tenantId, serverId);
     if (!server) return { ok: false, reason: 'server-not-found' };
     const applyMode = normalizeApplyMode(input.applyMode, 'save_restart');
+    const rollbackMeta = {
+      backupId,
+      requestedApplyMode: applyMode,
+    };
     return withTenantConfigDb(tenantId, async (db) => {
       await ensurePlatformServerConfigTables(db);
       const backups = await readBackupRows(db, serverId, 200);
       const backup = backups.find((entry) => entry.id === backupId) || null;
       if (!backup) return { ok: false, reason: 'server-config-backup-not-found' };
+      if (applyMode === 'save_restart') {
+        const restartPlan = await scheduleRestartPlan({
+          tenantId,
+          serverId,
+          guildId: trimText(server.guildId, 160) || null,
+          runtimeKey: normalizeRuntimeKey(input.runtimeKey) || null,
+          delaySeconds: Number(input.delaySeconds || 0) || 0,
+          restartMode: trimText(input.restartMode, 80) || 'safe_restart',
+          controlMode: trimText(input.controlMode, 80) || 'service',
+          reason: trimText(input.restartReason, 240) || 'config-rollback',
+          channel: trimText(input.channel, 120) || null,
+        }, actor).catch(() => null);
+        if (restartPlan?.ok) {
+          rollbackMeta.restartPlanId = restartPlan.plan?.id || null;
+          rollbackMeta.restartScheduledFor = restartPlan.plan?.scheduledFor || null;
+        }
+      }
       const jobId = trimText(input.jobId, 160) || createId('cfgjob');
       await db.$executeRaw`
         INSERT INTO platform_server_config_jobs (
@@ -815,7 +877,7 @@ function createPlatformServerConfigService(deps = {}) {
           ${JSON.stringify([])},
           ${JSON.stringify({})},
           ${null},
-          ${JSON.stringify({ backup })}
+          ${JSON.stringify({ ...rollbackMeta, backup })}
         )
       `;
       return {
@@ -899,6 +961,7 @@ function createPlatformServerConfigService(deps = {}) {
 
     return withTenantConfigDb(tenantId, async (db) => {
       await ensurePlatformServerConfigTables(db);
+      const currentJob = await readJobRow(db, jobId);
       await db.$executeRaw`
         UPDATE platform_server_config_jobs
         SET
@@ -987,6 +1050,34 @@ function createPlatformServerConfigService(deps = {}) {
             updated_at = CURRENT_TIMESTAMP
           WHERE server_id = ${serverId}
         `;
+      }
+
+      const restartPlanId = trimText(currentJob?.meta?.restartPlanId, 160) || null;
+      if (restartPlanId) {
+        await recordRestartExecution({
+          planId: restartPlanId,
+          tenantId,
+          serverId,
+          runtimeKey,
+          action: 'restart',
+          resultStatus: jobStatus === 'succeeded' ? 'succeeded' : 'failed',
+          exitCode: jobStatus === 'succeeded' ? 0 : 1,
+          detail: lastError || trimText(result.detail, 800) || `Config job ${jobStatus}`,
+          metadata: {
+            jobId,
+            jobType: currentJob?.jobType || null,
+            applyMode: currentJob?.applyMode || null,
+          },
+        }).catch(() => null);
+        await completeRestartPlan({
+          planId: restartPlanId,
+          status: jobStatus === 'succeeded' ? 'completed' : 'failed',
+          healthStatus: jobStatus === 'succeeded' ? 'pending_verification' : 'failed',
+          payload: {
+            jobId,
+            resultStatus: jobStatus,
+          },
+        }).catch(() => null);
       }
 
       return {

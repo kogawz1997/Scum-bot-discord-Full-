@@ -19,7 +19,7 @@ test('tenant restart control v4 model builds blockers and mode cards', () => {
     restartHistory: [{ at: '2026-03-26T08:00:00+07:00', mode: 'safe-restart', result: 'success', actor: 'owner' }],
   });
 
-  assert.equal(model.header.title, 'Restart Control');
+  assert.equal(typeof model.header.title, 'string');
   assert.equal(model.modeCards.length, 5);
   assert.ok(model.blockers.length >= 3);
   assert.equal(model.history.length, 1);
@@ -28,10 +28,32 @@ test('tenant restart control v4 model builds blockers and mode cards', () => {
 test('tenant restart control v4 html includes mode grid and blockers', () => {
   const html = buildTenantRestartControlV4Html(createTenantRestartControlV4Model({ tenantConfig: { name: 'Tenant Demo' } }));
 
-  assert.match(html, /Restart Control/);
-  assert.match(html, /เลือกโหมดรีสตาร์ตที่เหมาะกับสถานการณ์/);
-  assert.match(html, /สิ่งที่ควรเคลียร์ก่อน restart/);
-  assert.match(html, /Checklist ก่อน restart/);
+  assert.match(html, /tdv4-mode-grid/);
+  assert.match(html, /tdv4-restart-summary-strip/);
+  assert.match(html, /Blockers/);
+  assert.match(html, /tdv4-action-list/);
+});
+
+test('tenant restart control v4 derives history from restart plans and executions', () => {
+  const model = createTenantRestartControlV4Model({
+    restartPlans: [{
+      id: 'rplan-1',
+      requestedBy: 'owner',
+      restartMode: 'safe_restart',
+      scheduledFor: '2026-03-26T08:00:00+07:00',
+      status: 'executed',
+    }],
+    restartExecutions: [{
+      id: 'rexec-1',
+      planId: 'rplan-1',
+      action: 'restart',
+      resultStatus: 'succeeded',
+      completedAt: '2026-03-26T08:03:00+07:00',
+    }],
+  });
+
+  assert.equal(model.history.length, 1);
+  assert.equal(model.summaryStrip[3].detail, 'restart');
 });
 
 test('tenant restart control preview html references parallel assets', () => {

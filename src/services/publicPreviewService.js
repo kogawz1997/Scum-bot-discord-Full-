@@ -24,6 +24,14 @@ const {
   getPreviewAccountById,
   updatePreviewAccount,
 } = require('../store/publicPreviewAccountStore');
+const {
+  completeEmailVerification,
+  completePasswordReset,
+  ensurePlatformUserIdentity,
+  getIdentitySummaryForPreviewAccount,
+  issueEmailVerificationToken,
+  issuePasswordResetToken,
+} = require('./platformIdentityService');
 
 function trimText(value, maxLen = 240) {
   const text = String(value || '').trim();
@@ -119,6 +127,7 @@ function sanitizePreviewState(account, tenantSnapshot, featureAccess) {
       package: featureAccess?.package || null,
       features: Array.isArray(featureAccess?.features) ? featureAccess.features : [],
     },
+    identity: account?.identity || null,
   };
 }
 
@@ -177,6 +186,17 @@ function createPublicPreviewService(deps = {}) {
   const getPreviewAccountByIdImpl = deps.getPreviewAccountById || getPreviewAccountById;
   const createPreviewAccountImpl = deps.createPreviewAccount || createPreviewAccount;
   const updatePreviewAccountImpl = deps.updatePreviewAccount || updatePreviewAccount;
+  const ensurePlatformUserIdentityImpl = deps.ensurePlatformUserIdentity || ensurePlatformUserIdentity;
+  const getIdentitySummaryForPreviewAccountImpl =
+    deps.getIdentitySummaryForPreviewAccount || getIdentitySummaryForPreviewAccount;
+  const issueEmailVerificationTokenImpl =
+    deps.issueEmailVerificationToken || issueEmailVerificationToken;
+  const issuePasswordResetTokenImpl = deps.issuePasswordResetToken || issuePasswordResetToken;
+  const completeEmailVerificationImpl =
+    deps.completeEmailVerification || completeEmailVerification;
+  const completePasswordResetImpl =
+    deps.completePasswordReset || completePasswordReset;
+  const exposeDebugTokens = deps.exposeDebugTokens === true || String(process.env.PUBLIC_PREVIEW_DEBUG_TOKENS || '').trim().toLowerCase() === 'true';
 
   async function registerPreviewAccount(input = {}) {
     const email = normalizeEmail(input.email);
@@ -195,7 +215,7 @@ function createPublicPreviewService(deps = {}) {
     if (!communityName) {
       return { ok: false, reason: 'community-required' };
     }
-    if (getPreviewAccountByEmailImpl(email)) {
+    if (await getPreviewAccountByEmailImpl(email)) {
       return { ok: false, reason: 'email-exists' };
     }
 
@@ -257,7 +277,7 @@ function createPublicPreviewService(deps = {}) {
       subscriptionResult = null;
     }
 
-    const account = createPreviewAccountImpl({
+    const account = await createPreviewAccountImpl({
       email,
       passwordHash: createPasswordHash(password),
       displayName,
@@ -265,7 +285,7 @@ function createPublicPreviewService(deps = {}) {
       locale,
       packageId,
       accountState: 'preview',
-      verificationState: 'email_verified',
+      verificationState: 'pending_email_verification',
       tenantId: tenantResult?.tenant?.id || null,
       subscriptionId: subscriptionResult?.subscription?.id || null,
       linkedIdentities: {
@@ -277,9 +297,51 @@ function createPublicPreviewService(deps = {}) {
       },
     });
 
+    const identity = await ensurePlatformUserIdentityImpl({
+      provider: 'email_preview',
+      providerUserId: account.id || email,
+      email,
+      displayName,
+      locale,
+      tenantId: tenantResult?.tenant?.id || null,
+      role: 'owner',
+      membershipType: tenantResult?.tenant?.id ? 'tenant' : 'preview',
+      identityMetadata: {
+        source: 'public-preview-signup',
+        previewAccountId: account.id,
+      },
+      membershipMetadata: {
+        source: 'public-preview-signup',
+        previewAccountId: account.id,
+        subscriptionId: subscriptionResult?.subscription?.id || null,
+      },
+      verifiedAt: null,
+    }).catch(() => null);
+    const verification = await issueEmailVerificationTokenImpl({
+      email,
+      userId: identity?.user?.id || null,
+      previewAccountId: account.id,
+      metadata: {
+        source: 'public-preview-signup',
+        tenantId: tenantResult?.tenant?.id || null,
+      },
+    }).catch(() => null);
+
     return {
       ok: true,
-      account,
+      account: {
+        ...account,
+        identity: identity?.ok
+          ? {
+            userId: identity.user?.id || null,
+            providers: Array.isArray(identity.identities)
+              ? identity.identities.map((entry) => entry.provider).filter(Boolean)
+              : [],
+          }
+          : null,
+        verificationQueued: Boolean(verification?.ok),
+        verificationTokenPreview: exposeDebugTokens ? verification?.rawToken || null : null,
+      },
       tenant: tenantResult?.tenant || null,
       subscription: subscriptionResult?.subscription || null,
     };
@@ -288,22 +350,52 @@ function createPublicPreviewService(deps = {}) {
   async function authenticatePreviewAccount(input = {}) {
     const email = normalizeEmail(input.email);
     const password = String(input.password || '');
-    const account = getPreviewAccountByEmailImpl(email);
+    const account = await getPreviewAccountByEmailImpl(email);
     if (!account) {
       return { ok: false, reason: 'invalid-credentials' };
     }
-    const stored = getPreviewAccountByIdImpl(account.id);
+    const stored = await getPreviewAccountByIdImpl(account.id);
     if (!stored || !verifyPasswordHash(password, stored.passwordHash)) {
       return { ok: false, reason: 'invalid-credentials' };
     }
-    const updated = updatePreviewAccountImpl(account.id, {
+    const updated = await updatePreviewAccountImpl(account.id, {
       lastLoginAt: new Date().toISOString(),
     });
-    return { ok: true, account: updated || account };
+    const identity = await ensurePlatformUserIdentityImpl({
+      provider: 'email_preview',
+      providerUserId: account.id || email,
+      email,
+      displayName: account.displayName,
+      locale: account.locale,
+      tenantId: account.tenantId,
+      role: 'owner',
+      membershipType: account.tenantId ? 'tenant' : 'preview',
+      identityMetadata: {
+        source: 'public-preview-login',
+        previewAccountId: account.id,
+      },
+      verifiedAt: String(account.verificationState || '').trim().toLowerCase() === 'email_verified'
+        ? new Date().toISOString()
+        : null,
+    }).catch(() => null);
+    return {
+      ok: true,
+      account: {
+        ...(updated || account),
+        identity: identity?.ok
+          ? {
+            userId: identity.user?.id || null,
+            providers: Array.isArray(identity.identities)
+              ? identity.identities.map((entry) => entry.provider).filter(Boolean)
+              : [],
+          }
+          : null,
+      },
+    };
   }
 
   async function getPreviewState(accountId) {
-    const account = getPreviewAccountByIdImpl(accountId);
+    const account = await getPreviewAccountByIdImpl(accountId);
     if (!account) {
       return { ok: false, reason: 'account-not-found' };
     }
@@ -317,10 +409,28 @@ function createPublicPreviewService(deps = {}) {
       ? featureAccessRaw
       : buildFallbackFeatureAccess(account.packageId);
     const tenantSnapshot = tenantSnapshotRaw || buildFallbackTenantSnapshot(account, featureAccess);
+    const identitySummary = await getIdentitySummaryForPreviewAccountImpl(account).catch(() => null);
 
     return {
       ok: true,
-      state: sanitizePreviewState(account, tenantSnapshot, featureAccess),
+      state: sanitizePreviewState({
+        ...account,
+        identity: identitySummary
+          ? {
+            userId: identitySummary.user?.id || null,
+            providers: Array.isArray(identitySummary.identities)
+              ? identitySummary.identities.map((entry) => entry.provider).filter(Boolean)
+              : [],
+            memberships: Array.isArray(identitySummary.memberships)
+              ? identitySummary.memberships.map((entry) => ({
+                tenantId: entry.tenantId,
+                role: entry.role,
+                membershipType: entry.membershipType,
+              }))
+              : [],
+          }
+          : null,
+      }, tenantSnapshot, featureAccess),
       packageCatalog: getPackageCatalogImpl(),
     };
   }
@@ -330,16 +440,186 @@ function createPublicPreviewService(deps = {}) {
     if (!validateEmail(email)) {
       return { ok: false, reason: 'invalid-email' };
     }
+    const account = await getPreviewAccountByEmailImpl(email);
+    if (account) {
+      const identity = await ensurePlatformUserIdentityImpl({
+        provider: 'email_preview',
+        providerUserId: account.id || email,
+        email,
+        displayName: account.displayName,
+        locale: account.locale,
+        tenantId: account.tenantId,
+        role: 'owner',
+        membershipType: account.tenantId ? 'tenant' : 'preview',
+        identityMetadata: {
+          source: 'public-preview-password-reset',
+          previewAccountId: account.id,
+        },
+      }).catch(() => null);
+      const token = await issuePasswordResetTokenImpl({
+        email,
+        userId: identity?.user?.id || null,
+        previewAccountId: account.id,
+        metadata: {
+          source: 'public-preview-password-reset',
+          tenantId: account.tenantId || null,
+        },
+      }).catch(() => null);
+      return {
+        ok: true,
+        requested: true,
+        resetTokenQueued: Boolean(token?.ok),
+        resetTokenPreview: exposeDebugTokens ? token?.rawToken || null : null,
+      };
+    }
     return {
       ok: true,
-      requested: Boolean(getPreviewAccountByEmailImpl(email)),
+      requested: false,
+      resetTokenQueued: false,
+      resetTokenPreview: null,
+    };
+  }
+
+  async function requestEmailVerification(input = {}) {
+    const email = normalizeEmail(input.email);
+    if (!validateEmail(email)) {
+      return { ok: false, reason: 'invalid-email' };
+    }
+    const account = await getPreviewAccountByEmailImpl(email);
+    if (!account) {
+      return {
+        ok: true,
+        requested: false,
+        verificationTokenQueued: false,
+        verificationTokenPreview: null,
+      };
+    }
+    const identity = await ensurePlatformUserIdentityImpl({
+      provider: 'email_preview',
+      providerUserId: account.id || email,
+      email,
+      displayName: account.displayName,
+      locale: account.locale,
+      tenantId: account.tenantId,
+      role: 'owner',
+      membershipType: account.tenantId ? 'tenant' : 'preview',
+      identityMetadata: {
+        source: 'public-preview-email-verification',
+        previewAccountId: account.id,
+      },
+      verifiedAt: String(account.verificationState || '').trim().toLowerCase() === 'email_verified'
+        ? new Date().toISOString()
+        : null,
+    }).catch(() => null);
+    const token = await issueEmailVerificationTokenImpl({
+      email,
+      userId: identity?.user?.id || null,
+      previewAccountId: account.id,
+      metadata: {
+        source: 'public-preview-email-verification',
+        tenantId: account.tenantId || null,
+      },
+    }).catch(() => null);
+    return {
+      ok: true,
+      requested: true,
+      verificationTokenQueued: Boolean(token?.ok),
+      verificationTokenPreview: exposeDebugTokens ? token?.rawToken || null : null,
+    };
+  }
+
+  async function completeEmailVerificationFlow(input = {}) {
+    const token = trimText(input.token, 512);
+    if (!token) {
+      return { ok: false, reason: 'token-required' };
+    }
+    const completed = await completeEmailVerificationImpl({
+      token,
+      email: input.email,
+    }).catch(() => null);
+    if (!completed?.ok || !completed.verification) {
+      return completed || { ok: false, reason: 'verification-failed' };
+    }
+    const account = completed.verification.previewAccountId
+      ? await getPreviewAccountByIdImpl(completed.verification.previewAccountId)
+      : await getPreviewAccountByEmailImpl(completed.verification.email);
+    if (!account) {
+      return { ok: false, reason: 'account-not-found' };
+    }
+    const updated = await updatePreviewAccountImpl(account.id, {
+      verificationState: 'email_verified',
+    });
+    const identity = await ensurePlatformUserIdentityImpl({
+      provider: 'email_preview',
+      providerUserId: account.id || account.email,
+      email: account.email,
+      displayName: account.displayName,
+      locale: account.locale,
+      tenantId: account.tenantId,
+      role: 'owner',
+      membershipType: account.tenantId ? 'tenant' : 'preview',
+      identityMetadata: {
+        source: 'public-preview-email-verified',
+        previewAccountId: account.id,
+      },
+      verifiedAt: new Date().toISOString(),
+    }).catch(() => null);
+    return {
+      ok: true,
+      account: {
+        ...(updated || account),
+        identity: identity?.ok
+          ? {
+            userId: identity.user?.id || null,
+            providers: Array.isArray(identity.identities)
+              ? identity.identities.map((entry) => entry.provider).filter(Boolean)
+              : [],
+          }
+          : null,
+      },
+      nextUrl: '/login',
+    };
+  }
+
+  async function completePasswordResetFlow(input = {}) {
+    const token = trimText(input.token, 512);
+    const nextPassword = String(input.password || '');
+    if (!token) {
+      return { ok: false, reason: 'token-required' };
+    }
+    if (nextPassword.length < 8) {
+      return { ok: false, reason: 'weak-password' };
+    }
+    const completed = await completePasswordResetImpl({
+      token,
+      email: input.email,
+    }).catch(() => null);
+    if (!completed?.ok || !completed.token) {
+      return completed || { ok: false, reason: 'password-reset-failed' };
+    }
+    const account = completed.token.previewAccountId
+      ? await getPreviewAccountByIdImpl(completed.token.previewAccountId)
+      : await getPreviewAccountByEmailImpl(completed.token.email);
+    if (!account) {
+      return { ok: false, reason: 'account-not-found' };
+    }
+    const updated = await updatePreviewAccountImpl(account.id, {
+      passwordHash: createPasswordHash(nextPassword),
+    });
+    return {
+      ok: true,
+      account: updated || account,
+      nextUrl: '/login',
     };
   }
 
   return {
     authenticatePreviewAccount,
+    completeEmailVerification: completeEmailVerificationFlow,
+    completePasswordReset: completePasswordResetFlow,
     getPreviewState,
     registerPreviewAccount,
+    requestEmailVerification,
     requestPasswordReset,
   };
 }

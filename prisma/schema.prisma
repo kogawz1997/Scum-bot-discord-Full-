@@ -539,3 +539,653 @@ model PlatformMarketplaceOffer {
   @@index([tenantId, updatedAt])
   @@index([status, updatedAt])
 }
+
+model PlatformPreviewAccount {
+  id                   String   @id
+  email                String   @unique
+  passwordHash         String
+  displayName          String?
+  communityName        String?
+  locale               String   @default("en")
+  packageId            String   @default("BOT_LOG_DELIVERY")
+  accountState         String   @default("preview")
+  verificationState    String   @default("registered")
+  tenantId             String?
+  subscriptionId       String?
+  linkedIdentitiesJson String?
+  lastLoginAt          DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @default(now()) @updatedAt
+
+  @@index([accountState, updatedAt])
+  @@index([tenantId, updatedAt])
+  @@index([subscriptionId, updatedAt])
+}
+
+model PlatformUser {
+  id           String   @id
+  primaryEmail String?  @unique
+  displayName  String?
+  locale       String   @default("en")
+  status       String   @default("active")
+  metadataJson String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now()) @updatedAt
+
+  @@index([status, updatedAt])
+  @@map("platform_users")
+}
+
+model PlatformUserIdentity {
+  id             String   @id
+  userId         String
+  provider       String
+  providerUserId String
+  providerEmail  String?
+  displayName    String?
+  avatarUrl      String?
+  verifiedAt     DateTime?
+  linkedAt       DateTime @default(now())
+  metadataJson   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+
+  @@unique([provider, providerUserId])
+  @@index([userId, linkedAt])
+  @@index([provider, providerEmail])
+  @@map("platform_user_identities")
+}
+
+model PlatformMembership {
+  id             String   @id
+  userId         String
+  tenantId       String?
+  membershipType String   @default("tenant")
+  role           String   @default("member")
+  status         String   @default("active")
+  isPrimary      Boolean  @default(false)
+  invitedAt      DateTime?
+  acceptedAt     DateTime?
+  revokedAt      DateTime?
+  metadataJson   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+
+  @@index([userId, updatedAt])
+  @@index([tenantId, role, updatedAt])
+  @@index([status, updatedAt])
+  @@map("platform_memberships")
+}
+
+model PlatformPlayerProfile {
+  id                String   @id
+  userId            String
+  tenantId          String?
+  discordUserId     String?
+  steamId           String?
+  inGameName        String?
+  verificationState String   @default("unverified")
+  linkedAt          DateTime?
+  lastSeenAt        DateTime?
+  metadataJson      String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @default(now()) @updatedAt
+
+  @@index([userId, updatedAt])
+  @@index([tenantId, steamId])
+  @@index([tenantId, discordUserId])
+  @@index([verificationState, updatedAt])
+  @@map("platform_player_profiles")
+}
+
+model PlatformVerificationToken {
+  id         String   @id
+  userId     String?
+  tokenType  String
+  tokenPrefix String
+  tokenHash  String
+  email      String?
+  target     String?
+  expiresAt  DateTime
+  consumedAt DateTime?
+  metadataJson String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  @@unique([tokenType, tokenHash])
+  @@index([userId, tokenType, expiresAt])
+  @@index([email, tokenType, expiresAt])
+  @@index([consumedAt, expiresAt])
+  @@map("platform_verification_tokens")
+}
+
+model PlatformPasswordResetToken {
+  id             String   @id
+  userId         String?
+  previewAccountId String?
+  email          String
+  tokenPrefix    String
+  tokenHash      String
+  expiresAt      DateTime
+  consumedAt     DateTime?
+  metadataJson   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+
+  @@unique([email, tokenHash])
+  @@index([userId, expiresAt])
+  @@index([previewAccountId, expiresAt])
+  @@index([consumedAt, expiresAt])
+  @@map("platform_password_reset_tokens")
+}
+
+model PlatformBillingCustomer {
+  id           String   @id
+  tenantId     String   @unique
+  userId       String?
+  email        String?
+  displayName  String?
+  externalRef  String?
+  status       String   @default("active")
+  metadataJson String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now()) @updatedAt
+
+  @@index([status, updatedAt])
+  @@index([userId, updatedAt])
+  @@map("platform_billing_customers")
+}
+
+model PlatformBillingInvoice {
+  id             String   @id
+  tenantId       String
+  subscriptionId String?
+  customerId     String?
+  status         String   @default("draft")
+  currency       String   @default("THB")
+  amountCents    Int      @default(0)
+  dueAt          DateTime?
+  paidAt         DateTime?
+  externalRef    String?
+  metadataJson   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+
+  @@index([tenantId, createdAt])
+  @@index([subscriptionId, status, updatedAt])
+  @@index([customerId, status, updatedAt])
+  @@map("platform_billing_invoices")
+}
+
+model PlatformBillingPaymentAttempt {
+  id           String   @id
+  invoiceId    String?
+  tenantId     String
+  provider     String
+  status       String   @default("pending")
+  amountCents  Int      @default(0)
+  currency     String   @default("THB")
+  externalRef  String?
+  errorCode    String?
+  errorDetail  String?
+  attemptedAt  DateTime @default(now())
+  completedAt  DateTime?
+  metadataJson String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now()) @updatedAt
+
+  @@index([tenantId, attemptedAt])
+  @@index([invoiceId, status, attemptedAt])
+  @@index([provider, status, attemptedAt])
+  @@map("platform_billing_payment_attempts")
+}
+
+model PlatformSubscriptionEvent {
+  id             String   @id
+  tenantId       String
+  subscriptionId String
+  eventType      String
+  billingStatus  String?
+  actor          String?
+  payloadJson    String?
+  occurredAt     DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+
+  @@index([tenantId, occurredAt])
+  @@index([subscriptionId, occurredAt])
+  @@index([eventType, occurredAt])
+  @@map("platform_subscription_events")
+}
+
+model PlatformTenantConfig {
+  tenantId         String   @id @map("tenant_id")
+  configPatchJson  String?  @map("config_patch_json")
+  portalEnvPatchJson String? @map("portal_env_patch_json")
+  featureFlagsJson String?  @map("feature_flags_json")
+  updatedBy        String?  @map("updated_by")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@index([updatedAt])
+  @@map("platform_tenant_configs")
+}
+
+model PlatformServerConfigSnapshot {
+  serverId     String   @id @map("server_id")
+  tenantId     String   @map("tenant_id")
+  runtimeKey   String?  @map("runtime_key")
+  status       String   @default("ready")
+  snapshotJson String   @map("snapshot_json")
+  collectedAt  DateTime @default(now()) @map("collected_at")
+  updatedBy    String?  @map("updated_by")
+  lastJobId    String?  @map("last_job_id")
+  lastError    String?  @map("last_error")
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@index([tenantId, updatedAt])
+  @@index([runtimeKey, updatedAt])
+  @@map("platform_server_config_snapshots")
+}
+
+model PlatformServerConfigJob {
+  id                 String   @id
+  tenantId           String   @map("tenant_id")
+  serverId           String   @map("server_id")
+  jobType            String   @default("config_update") @map("job_type")
+  applyMode          String   @default("save_only") @map("apply_mode")
+  status             String   @default("queued")
+  requestedBy        String?  @map("requested_by")
+  requestedAt        DateTime @default(now()) @map("requested_at")
+  claimedByRuntimeKey String? @map("claimed_by_runtime_key")
+  claimedAt          DateTime? @map("claimed_at")
+  completedAt        DateTime? @map("completed_at")
+  changesJson        String?  @map("changes_json")
+  resultJson         String?  @map("result_json")
+  errorText          String?  @map("error_text")
+  metaJson           String?  @map("meta_json")
+
+  @@index([tenantId, serverId, requestedAt])
+  @@index([status, requestedAt])
+  @@map("platform_server_config_jobs")
+}
+
+model PlatformServerConfigBackup {
+  id                String   @id
+  tenantId          String   @map("tenant_id")
+  serverId          String   @map("server_id")
+  jobId             String?  @map("job_id")
+  fileName          String   @map("file_name")
+  backupPath        String?  @map("backup_path")
+  changedBy         String?  @map("changed_by")
+  changeSummaryJson String?  @map("change_summary_json")
+  metaJson          String?  @map("meta_json")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId, serverId, createdAt])
+  @@index([jobId, createdAt])
+  @@map("platform_server_config_backups")
+}
+
+model PlatformRestartPlan {
+  id            String   @id
+  tenantId      String   @map("tenant_id")
+  serverId      String   @map("server_id")
+  guildId       String?  @map("guild_id")
+  runtimeKey    String?  @map("runtime_key")
+  status        String   @default("scheduled")
+  restartMode   String   @default("delayed") @map("restart_mode")
+  controlMode   String   @default("service") @map("control_mode")
+  requestedBy   String?  @map("requested_by")
+  scheduledFor  DateTime @map("scheduled_for")
+  delaySeconds  Int      @default(0) @map("delay_seconds")
+  reason        String?
+  payloadJson   String?  @map("payload_json")
+  healthStatus  String?  @map("health_status")
+  healthVerifiedAt DateTime? @map("health_verified_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@index([tenantId, scheduledFor])
+  @@index([serverId, scheduledFor])
+  @@index([status, scheduledFor])
+  @@map("platform_restart_plans")
+}
+
+model PlatformRestartAnnouncement {
+  id              String   @id
+  planId          String   @map("plan_id")
+  tenantId        String   @map("tenant_id")
+  serverId        String   @map("server_id")
+  checkpointSeconds Int    @map("checkpoint_seconds")
+  message         String
+  channel         String?
+  status          String   @default("pending")
+  scheduledFor    DateTime @map("scheduled_for")
+  sentAt          DateTime? @map("sent_at")
+  metaJson        String?  @map("meta_json")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@index([planId, scheduledFor])
+  @@index([status, scheduledFor])
+  @@map("platform_restart_announcements")
+}
+
+model PlatformRestartExecution {
+  id            String   @id
+  planId        String   @map("plan_id")
+  tenantId      String   @map("tenant_id")
+  serverId      String   @map("server_id")
+  runtimeKey    String?  @map("runtime_key")
+  action        String   @default("restart")
+  resultStatus  String   @default("pending") @map("result_status")
+  startedAt     DateTime @default(now()) @map("started_at")
+  completedAt   DateTime? @map("completed_at")
+  exitCode      Int?     @map("exit_code")
+  detail        String?
+  metaJson      String?  @map("meta_json")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@index([planId, startedAt])
+  @@index([tenantId, serverId, startedAt])
+  @@map("platform_restart_executions")
+}
+
+model PlatformAdminNotification {
+  id             String   @id
+  type           String   @default("notice")
+  source         String   @default("system")
+  kind           String   @default("notice")
+  severity       String   @default("info")
+  title          String
+  message        String
+  entityKey      String?
+  dataJson       String?
+  acknowledgedAt DateTime?
+  acknowledgedBy String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+
+  @@index([createdAt])
+  @@index([severity, createdAt])
+  @@index([kind, createdAt])
+  @@index([entityKey, createdAt])
+  @@index([acknowledgedAt, createdAt])
+}
+
+model PlatformAdminSecurityEvent {
+  id           String   @id
+  occurredAt   DateTime @default(now())
+  type         String   @default("security-event")
+  severity     String   @default("info")
+  actor        String?
+  targetUser   String?
+  role         String?
+  authMethod   String?
+  sessionId    String?
+  ip           String?
+  path         String?
+  reason       String?
+  detail       String?
+  dataJson     String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now()) @updatedAt
+
+  @@index([occurredAt])
+  @@index([severity, occurredAt])
+  @@index([type, occurredAt])
+  @@index([sessionId, occurredAt])
+}
+
+model PlatformAutomationState {
+  id                               String   @id
+  lastAutomationAt                 DateTime?
+  lastForcedMonitoringAt           DateTime?
+  lastRecoveryAtByKeyJson          String?
+  recoveryWindowStartedAtByKeyJson String?
+  recoveryAttemptsByKeyJson        String?
+  lastRecoveryResultByKeyJson      String?
+  createdAt                        DateTime @default(now())
+  updatedAt                        DateTime @default(now()) @updatedAt
+
+  @@index([updatedAt])
+}
+
+model PlatformOpsState {
+  id                   String   @id
+  lastMonitoringAt     DateTime?
+  lastAutoBackupAt     DateTime?
+  lastReconcileAt      DateTime?
+  lastAlertAtByKeyJson String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @default(now()) @updatedAt
+
+  @@index([updatedAt])
+}
+
+model ControlPlaneServer {
+  id           String   @id
+  tenantId     String
+  slug         String?
+  name         String
+  status       String   @default("active")
+  locale       String   @default("th")
+  guildId      String?
+  metadataJson String?
+  actor        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now()) @updatedAt
+
+  @@index([tenantId, updatedAt])
+  @@index([tenantId, guildId])
+  @@index([tenantId, slug])
+}
+
+model ControlPlaneServerDiscordLink {
+  id           String   @id
+  tenantId     String
+  serverId     String
+  guildId      String
+  status       String   @default("active")
+  metadataJson String?
+  actor        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now()) @updatedAt
+
+  @@unique([tenantId, guildId])
+  @@index([tenantId, serverId, updatedAt])
+}
+
+model ControlPlaneAgent {
+  id             String   @id
+  tenantId       String
+  serverId       String
+  guildId        String?
+  agentId        String
+  runtimeKey     String
+  displayName    String?
+  role           String   @default("hybrid")
+  scope          String   @default("sync_execute")
+  channel        String?
+  version        String?
+  minimumVersion String?
+  status         String   @default("active")
+  baseUrl        String?
+  hostname       String?
+  metadataJson   String?
+  actor          String?
+  lastSeenAt     DateTime?
+  lastSyncAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+
+  @@unique([tenantId, serverId, agentId])
+  @@index([tenantId, serverId, runtimeKey])
+  @@index([status, updatedAt])
+}
+
+model ControlPlaneAgentTokenBinding {
+  id         String   @id
+  tenantId   String
+  serverId   String
+  guildId    String?
+  agentId    String
+  apiKeyId   String   @unique
+  role       String   @default("hybrid")
+  scope      String   @default("sync_execute")
+  minVersion String?
+  status     String   @default("active")
+  actor      String?
+  revokedAt  DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  @@index([tenantId, serverId, agentId, updatedAt])
+  @@index([status, updatedAt])
+}
+
+model ControlPlaneAgentProvisioningToken {
+  id                    String   @id
+  tenantId              String
+  serverId              String
+  guildId               String?
+  agentId               String
+  runtimeKey            String?
+  role                  String   @default("hybrid")
+  scope                 String   @default("sync_execute")
+  status                String   @default("pending_activation")
+  tokenPrefix           String   @unique
+  tokenHash             String
+  minVersion            String?
+  expiresAt             DateTime?
+  consumedAt            DateTime?
+  revokedAt             DateTime?
+  activatedDeviceId     String?
+  activatedCredentialId String?
+  metadataJson          String?
+  actor                 String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @default(now()) @updatedAt
+
+  @@index([tenantId, serverId, agentId, updatedAt])
+  @@index([status, expiresAt])
+}
+
+model ControlPlaneAgentDevice {
+  id                     String   @id
+  tenantId               String
+  serverId               String
+  guildId                String?
+  agentId                String
+  runtimeKey             String?
+  machineFingerprintHash String
+  hostname               String?
+  status                 String   @default("online")
+  credentialId           String?
+  metadataJson           String?
+  actor                  String?
+  firstSeenAt            DateTime @default(now())
+  lastSeenAt             DateTime @default(now())
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @default(now()) @updatedAt
+
+  @@index([tenantId, serverId, agentId, updatedAt])
+  @@index([status, lastSeenAt])
+}
+
+model ControlPlaneAgentCredential {
+  id            String   @id
+  tenantId      String
+  serverId      String
+  guildId       String?
+  agentId       String
+  apiKeyId      String   @unique
+  keyPrefix     String?
+  role          String   @default("hybrid")
+  scope         String   @default("sync_execute")
+  status        String   @default("active")
+  minVersion    String?
+  deviceId      String?
+  lastIssuedAt  DateTime @default(now())
+  lastRotatedAt DateTime?
+  revokedAt     DateTime?
+  metadataJson  String?
+  actor         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @default(now()) @updatedAt
+
+  @@index([tenantId, serverId, agentId, updatedAt])
+  @@index([status, updatedAt])
+}
+
+model ControlPlaneAgentSession {
+  id             String   @id
+  tenantId       String
+  serverId       String
+  guildId        String?
+  agentId        String
+  runtimeKey     String
+  displayName    String?
+  role           String   @default("hybrid")
+  scope          String   @default("sync_execute")
+  channel        String?
+  version        String?
+  minimumVersion String?
+  status         String   @default("active")
+  baseUrl        String?
+  hostname       String?
+  metadataJson   String?
+  diagnosticsJson String?
+  sessionId      String   @unique
+  heartbeatAt    DateTime @default(now())
+  source         String   @default("agent")
+  actor          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+
+  @@index([tenantId, serverId, agentId, heartbeatAt])
+  @@index([heartbeatAt])
+}
+
+model ControlPlaneSyncRun {
+  id           String   @id
+  tenantId     String
+  serverId     String
+  guildId      String?
+  agentId      String
+  runtimeKey   String
+  role         String   @default("hybrid")
+  scope        String   @default("sync_execute")
+  sourceType   String   @default("log")
+  sourcePath   String?
+  version      String?
+  freshnessAt  DateTime @default(now())
+  eventCount   Int      @default(0)
+  errorsJson   String?
+  snapshotJson String?
+  actor        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now()) @updatedAt
+
+  @@index([tenantId, serverId, agentId, updatedAt])
+  @@index([freshnessAt])
+}
+
+model ControlPlaneSyncEvent {
+  id          String   @id
+  syncRunId   String
+  tenantId    String
+  serverId    String
+  guildId     String?
+  agentId     String
+  runtimeKey  String
+  type        String   @default("event")
+  summary     String?
+  payloadJson String?
+  createdAt   DateTime @default(now())
+
+  @@index([syncRunId, createdAt])
+  @@index([tenantId, serverId, agentId, createdAt])
+}

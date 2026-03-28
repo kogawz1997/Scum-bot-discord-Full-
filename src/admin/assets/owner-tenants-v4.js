@@ -27,12 +27,43 @@
     ] },
   ];
 
+  function normalizeTenantNavRoute(currentRoute) {
+    const route = String(currentRoute || 'tenants').trim().toLowerCase() || 'tenants';
+    if (route.startsWith('tenant-')) return 'tenants';
+    if (route.startsWith('support-')) return 'support';
+    if (route === 'create-tenant') return 'tenants';
+    return route;
+  }
+
+  function cloneNavGroups(groups, currentRoute) {
+    const route = normalizeTenantNavRoute(currentRoute);
+    return (Array.isArray(groups) ? groups : []).map((group) => ({
+      ...group,
+      items: (Array.isArray(group.items) ? group.items : []).map((item) => {
+        const itemRoute = String(item && item.href || '').replace(/^#/, '').trim().toLowerCase();
+        return {
+          ...item,
+          current: itemRoute === route,
+        };
+      }),
+    }));
+  }
+
   function escapeHtml(value) {
     return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
   function formatNumber(value, fallback = '0') {
     const numeric = Number(value);
     return Number.isFinite(numeric) ? new Intl.NumberFormat('th-TH').format(numeric) : fallback;
+  }
+  function formatCurrencyCents(value, currency = 'THB') {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return '-';
+    return new Intl.NumberFormat('th-TH', {
+      style: 'currency',
+      currency: String(currency || 'THB').trim().toUpperCase() || 'THB',
+      maximumFractionDigits: 2,
+    }).format(numeric / 100);
   }
   function parseDate(value) {
     if (!value) return null;
@@ -95,12 +126,24 @@
     const tenants = Array.isArray(state.tenants) ? state.tenants : [];
     const subscriptions = Array.isArray(state.subscriptions) ? state.subscriptions : [];
     const licenses = Array.isArray(state.licenses) ? state.licenses : [];
+    const billingInvoices = Array.isArray(state.billingInvoices) ? state.billingInvoices : [];
+    const billingPaymentAttempts = Array.isArray(state.billingPaymentAttempts) ? state.billingPaymentAttempts : [];
     const quotaSnapshots = Array.isArray(state.tenantQuotaSnapshots) ? state.tenantQuotaSnapshots : [];
     const quotaMap = new Map(quotaSnapshots.map((row) => [String(row.tenantId || row.tenant && row.tenant.id || ''), row]));
     return tenants.map((tenant) => {
       const tenantId = String(tenant.id || '').trim();
       const subscription = subscriptions.find((row) => String(row.tenantId || row.ownerTenantId || '').trim() === tenantId) || {};
       const license = licenses.find((row) => String(row.tenantId || row.ownerTenantId || '').trim() === tenantId) || {};
+      const invoices = billingInvoices.filter((row) => String(row?.tenantId || '').trim() === tenantId);
+      const attempts = billingPaymentAttempts.filter((row) => String(row?.tenantId || '').trim() === tenantId);
+      const latestInvoice = invoices[0] || null;
+      const latestAttempt = attempts[0] || null;
+      const outstandingCents = invoices
+        .filter((row) => ['draft', 'open', 'past_due'].includes(String(row?.status || '').trim().toLowerCase()))
+        .reduce((sum, row) => sum + Number(row?.amountCents || 0), 0);
+      const collectedCents = invoices
+        .filter((row) => String(row?.status || '').trim().toLowerCase() === 'paid')
+        .reduce((sum, row) => sum + Number(row?.amountCents || 0), 0);
       const quota = summarizeQuota(quotaMap.get(tenantId));
       return {
         tenantId,
@@ -109,17 +152,182 @@
         packageName: firstNonEmpty([subscription.packageName, subscription.planName, tenant.plan, tenant.type, 'ยังไม่กำหนดแพ็กเกจ']),
         status: firstNonEmpty([subscription.status, tenant.status, 'active']),
         statusTone: toneForStatus(subscription.status || tenant.status),
-        licenseState: firstNonEmpty([license.status, license.state, 'No license']),
+        licenseState: firstNonEmpty([license.status, license.state, 'ยังไม่มีไลเซนส์']),
         quotaText: quota.text,
         quotaTone: quota.tone,
+        invoiceState: latestInvoice ? firstNonEmpty([latestInvoice.status], 'open') : 'no-invoice',
+        invoiceStateTone: toneForStatus(latestInvoice?.status || (outstandingCents > 0 ? 'warning' : 'muted')),
+        outstandingAmount: outstandingCents > 0 ? formatCurrencyCents(outstandingCents, latestInvoice?.currency || 'THB') : 'ไม่มีค้างชำระ',
+        collectedAmount: collectedCents > 0 ? formatCurrencyCents(collectedCents, latestInvoice?.currency || 'THB') : 'ยังไม่มีรายการรับเงิน',
+        paymentAttemptState: latestAttempt ? firstNonEmpty([latestAttempt.status, latestAttempt.provider], latestAttempt.provider || '-') : '-',
         updatedAt: tenant.updatedAt || tenant.createdAt,
         renewsAt: subscription.renewsAt || subscription.expiresAt || subscription.endsAt,
       };
     });
   }
 
-  function createOwnerTenantsV4Model(source) {
+  function buildTenantRouteView(currentRoute, context = {}) {
+    const route = normalizeTenantNavRoute(currentRoute);
+    const spotlight = context.spotlight || null;
+    const spotlightHref = spotlight && spotlight.tenantId ? `#tenant-${spotlight.tenantId}` : '#tenants';
+    const hasExpiring = Number(context.expiringCount || 0) > 0;
+    const hasUrgent = Number(context.dangerCount || 0) > 0;
+    const base = {
+      pageKicker: 'ทะเบียนงานลูกค้าและผู้เช่า',
+      headerTitle: 'ผู้เช่าและสถานะเชิงพาณิชย์',
+      headerSubtitle: 'รวมแผน การต่ออายุ โควตา และบริบทลูกค้าไว้ในหน้าเดียวเพื่อให้ตัดสินใจได้เร็ว',
+      primaryAction: hasUrgent
+        ? { label: 'เปิดรายการที่ต้องจัดการก่อน (แนะนำ)', href: '#billing' }
+        : hasExpiring
+          ? { label: 'ดูรายการใกล้ต่ออายุ (แนะนำ)', href: '#subscriptions' }
+          : { label: 'สร้างผู้เช่ารายใหม่', href: '#create-tenant' },
+      secondaryActions: [
+        { label: 'ดูผู้เช่าทั้งหมด', href: '#tenants' },
+        { label: 'เปิดเคสซัพพอร์ต', href: '#support' },
+      ],
+      nextActionsKicker: 'ควรทำอะไรก่อน',
+      nextActionsTitle: 'เริ่มจากเรื่องที่กระทบรายได้และบริการก่อน',
+      nextActionsCopy: 'เริ่มจากเรื่องรายได้ ซัพพอร์ต และผู้เช่าที่เสี่ยงก่อน แล้วค่อยลงรายละเอียด',
+      registryKicker: 'ทะเบียน',
+      registryTitle: 'รายชื่อผู้เช่า',
+      registryCopy: 'ตารางนี้ตั้งใจทำให้หาผู้เช่าและตัดสินใจต่อได้เร็ว ไม่ใช่กำแพงข้อมูล',
+      spotlightKicker: 'ผู้เช่าที่ควรเปิดดูก่อน',
+      spotlightEmptyTitle: 'ผู้เช่าที่ควรเปิดดูก่อน',
+      spotlightTitleMode: 'name',
+      spotlightCopy: 'ใช้การ์ดนี้ช่วยชี้ว่าควรเปิดผู้เช่ารายใดก่อนลงลึก',
+      spotlightEmptyCopy: 'เลือกผู้เช่าจากทะเบียนเพื่อดูสุขภาพระบบ บริบทซัพพอร์ต และสถานะเชิงพาณิชย์ต่อทันที',
+      spotlightNextTitle: 'อยู่ในบริบทของผู้เช่ารายนี้ต่อ',
+      spotlightNextItems: ['เปิดเคสซัพพอร์ต', 'ส่งออก diagnostics', 'ทบทวน billing และการต่ออายุ'],
+      blockOrder: ['nextActions', 'registry', 'spotlight'],
+      railHeader: 'บริบทเจ้าของระบบ',
+      railCopy: 'เก็บงานซัพพอร์ตและงานเชิงพาณิชย์ไว้ใกล้ทะเบียนผู้เช่า เพื่อไม่ให้หลุดบริบท',
+    };
+
+    if (route === 'packages') {
+      return {
+        ...base,
+        pageKicker: 'แพ็กเกจและสิทธิ์ใช้งาน',
+        headerTitle: 'แพ็กเกจและสิทธิ์ใช้งาน',
+        headerSubtitle: 'ดูว่าผู้เช่าแต่ละรายอยู่แพ็กเกจใด และได้สิทธิ์อะไรบ้างก่อนเปลี่ยนแผน',
+        primaryAction: { label: 'ดูแพ็กเกจที่ถูกใช้งาน (แนะนำ)', href: '#packages' },
+        secondaryActions: [
+          { label: 'ดูการสมัครใช้', href: '#subscriptions' },
+          { label: 'กลับไปรายชื่อผู้เช่า', href: '#tenants' },
+        ],
+        nextActionsKicker: 'แพ็กเกจ',
+        nextActionsTitle: 'เริ่มจากแพ็กเกจที่กระทบผู้เช่ามากที่สุด',
+        nextActionsCopy: 'แยกก่อนว่าควรตรวจสิทธิ์ การต่ออายุ หรือผู้เช่าที่อยู่ผิดแผน',
+        registryKicker: 'ผู้เช่าตามแพ็กเกจ',
+        registryTitle: 'รายชื่อผู้เช่าตามแพ็กเกจ',
+        registryCopy: 'ดูได้ทันทีว่าผู้เช่ารายไหนอยู่แผนใด และควรย้ายหรือคงแผนเดิม',
+      };
+    }
+
+    if (route === 'subscriptions') {
+      return {
+        ...base,
+        pageKicker: 'การสมัครใช้และการต่ออายุ',
+        headerTitle: 'การสมัครใช้และการต่ออายุ',
+        headerSubtitle: 'ไล่รายการที่ใกล้ต่ออายุ หมดอายุ หรือเสี่ยงสะดุดบริการก่อนเรื่องอื่น',
+        primaryAction: { label: 'ดูรายการใกล้ต่ออายุ (แนะนำ)', href: '#subscriptions' },
+        secondaryActions: [
+          { label: 'ดูการเงิน', href: '#billing' },
+          { label: 'กลับไปรายชื่อผู้เช่า', href: '#tenants' },
+        ],
+        nextActionsKicker: 'การต่ออายุ',
+        nextActionsTitle: 'เริ่มจากรายการที่ใกล้หมดอายุก่อน',
+        nextActionsCopy: 'จัดการรายการใกล้ต่ออายุให้เรียบร้อยก่อน เพื่อลดแรงกระแทกต่อทีมซัพพอร์ต',
+        registryKicker: 'ผู้เช่าที่ต้องตามต่อ',
+        registryTitle: 'รายชื่อผู้เช่าที่ต้องตามเรื่องการสมัครใช้',
+        registryCopy: 'ใช้ตารางนี้คัดรายที่ต้องทบทวนเรื่องการต่ออายุ แผน และสิทธิ์ใช้งานในรอบเดียว',
+      };
+    }
+
+    if (route === 'billing') {
+      return {
+        ...base,
+        pageKicker: 'การเงินและการต่ออายุ',
+        headerTitle: 'การเงินและการต่ออายุ',
+        headerSubtitle: 'รวมรายการที่กระทบรายได้ การต่ออายุ และโควตาไว้ในมุมเดียวเพื่อใช้ตัดสินใจ',
+        primaryAction: { label: 'ดูรายการเสี่ยงรายได้ (แนะนำ)', href: '#billing' },
+        secondaryActions: [
+          { label: 'ดูการสมัครใช้', href: '#subscriptions' },
+          { label: 'เปิดซัพพอร์ต', href: '#support' },
+        ],
+        nextActionsKicker: 'รายได้',
+        nextActionsTitle: 'เริ่มจากเรื่องที่กระทบรายได้ก่อน',
+        nextActionsCopy: 'โฟกัสรายที่หมดอายุ ใกล้ต่ออายุ หรือเริ่มชนโควตาก่อนงานอื่น',
+      };
+    }
+
+    if (route === 'support') {
+      return {
+        ...base,
+        pageKicker: 'ซัพพอร์ตและบริบทลูกค้า',
+        headerTitle: 'ซัพพอร์ตและบริบทลูกค้า',
+        headerSubtitle: 'เริ่มจากผู้เช่าที่กำลังคุยกับทีมอยู่ แล้วค่อยไล่หลักฐาน การเงิน และบริบทระบบต่อ',
+        primaryAction: { label: 'เปิดผู้เช่าที่กำลังตามอยู่ (แนะนำ)', href: spotlightHref },
+        secondaryActions: [
+          { label: 'เปิดเคสซัพพอร์ต', href: '#support' },
+          { label: 'ดูการเงินที่เกี่ยวข้อง', href: '#billing' },
+        ],
+        nextActionsKicker: 'งานซัพพอร์ต',
+        nextActionsTitle: 'เริ่มจากบริบทของผู้เช่าที่กำลังคุยอยู่',
+        nextActionsCopy: 'เริ่มจากผู้เช่าและหลักฐานที่เกี่ยวกับเคสก่อน แล้วค่อยดูทะเบียนและการต่ออายุ',
+        spotlightKicker: 'เคสที่กำลังตามอยู่',
+        spotlightEmptyTitle: 'ยังไม่มีเคสที่ปักหมุดไว้',
+        spotlightEmptyCopy: 'เมื่อมีผู้เช่าที่กำลังคุยกับทีมงาน ระบบจะปักหมุดไว้ให้กลับมาทำต่อได้ง่าย',
+        spotlightNextTitle: 'อยู่กับเคสนี้ต่อ',
+        spotlightNextItems: ['เปิดเคสซัพพอร์ต', 'ส่งออก diagnostics', 'ดูการต่ออายุและโควตา'],
+        blockOrder: ['spotlight', 'nextActions', 'registry'],
+        railHeader: 'บริบทงานซัพพอร์ต',
+        railCopy: 'เก็บบริบทของผู้เช่า หลักฐาน และเรื่องเชิงพาณิชย์ไว้ใกล้กันเพื่อให้คุยกับลูกค้าได้ต่อ',
+      };
+    }
+
+    if (route === 'security') {
+      return {
+        ...base,
+        pageKicker: 'ความปลอดภัยของผู้เช่า',
+        headerTitle: 'ความปลอดภัยของผู้เช่า',
+        headerSubtitle: 'ใช้หน้านี้ทบทวนสิทธิ์ การเข้าถึง และบริบทผู้เช่าที่ต้องจับตา ก่อนแตะงานเชิงปฏิบัติการอื่น',
+        primaryAction: { label: 'เปิดบันทึกออดิท (แนะนำ)', href: '#audit' },
+        secondaryActions: [
+          { label: 'ดูผู้เช่าที่มีความเสี่ยง', href: '#billing' },
+          { label: 'เปิดบริบทซัพพอร์ต', href: '#support' },
+        ],
+        nextActionsKicker: 'ความปลอดภัย',
+        nextActionsTitle: 'เริ่มจากรายการที่ต้องยืนยันสิทธิ์และหลักฐานก่อน',
+        nextActionsCopy: 'ใช้มุมมองนี้แยกเรื่องสิทธิ์และออดิทออกจากงานซัพพอร์ตทั่วไป เพื่อไม่ให้ประเด็นสำคัญหลุด',
+        blockOrder: ['nextActions', 'spotlight', 'registry'],
+        railHeader: 'บริบทความปลอดภัย',
+        railCopy: 'งานด้านสิทธิ์ การเข้าถึง และหลักฐานควรถูกวางคู่กับบริบทของผู้เช่าเสมอ',
+      };
+    }
+
+    if (route === 'settings') {
+      return {
+        ...base,
+        pageKicker: 'ตั้งค่าและนโยบาย',
+        headerTitle: 'ตั้งค่าและนโยบาย',
+        headerSubtitle: 'ใช้หน้านี้ทบทวนแนวทางการดูแลผู้เช่า สิทธิ์ใช้งาน และเรื่องที่ต้องคุมให้สม่ำเสมอทั้งแพลตฟอร์ม',
+        primaryAction: { label: 'เปิดรายการที่ต้องกำหนดต่อ (แนะนำ)', href: '#settings' },
+        secondaryActions: [
+          { label: 'ดูความปลอดภัย', href: '#security' },
+          { label: 'กลับไปรายชื่อผู้เช่า', href: '#tenants' },
+        ],
+        nextActionsKicker: 'นโยบาย',
+        nextActionsTitle: 'เริ่มจากกติกาที่กระทบผู้เช่าหลายรายก่อน',
+        nextActionsCopy: 'ใช้มุมนี้ทบทวนสิ่งที่ควรคุมเป็นมาตรฐาน เช่น การต่ออายุ สิทธิ์ใช้งาน และแนวทางซัพพอร์ต',
+      };
+    }
+
+    return base;
+  }
+
+  function createOwnerTenantsV4Model(source, options = {}) {
     const state = source && typeof source === 'object' ? source : {};
+    const currentRoute = String(options.currentRoute || 'tenants').trim().toLowerCase() || 'tenants';
     const rows = buildRows(state);
     const activeCount = rows.filter((row) => row.statusTone === 'success').length;
     const warningCount = rows.filter((row) => row.statusTone === 'warning').length;
@@ -127,15 +335,11 @@
     const expiringRows = rows.filter((row) => row.statusTone === 'warning');
     const urgentRows = rows.filter((row) => row.statusTone === 'danger');
     const spotlight = rows.find((row) => row.tenantId === String(state.supportCase && state.supportCase.tenantId || '').trim()) || rows[0] || null;
-    const primaryAction = urgentRows.length > 0
-      ? { label: 'ดูผู้เช่าที่ต้องจัดการก่อน (แนะนำ)', href: '#billing' }
-      : expiringRows.length > 0
-        ? { label: 'ดูรายการใกล้ต่ออายุ (แนะนำ)', href: '#subscriptions' }
-        : { label: 'สร้างผู้เช่า', href: '#create-tenant' };
-    const secondaryActions = [
-      { label: 'เปิดเคสซัพพอร์ต', href: '#support' },
-      { label: 'ดูภาพรวมแพ็กเกจ', href: '#packages' },
-    ];
+    const routeView = buildTenantRouteView(currentRoute, {
+      spotlight,
+      expiringCount: expiringRows.length,
+      dangerCount,
+    });
     const nextActions = [
       {
         label: 'รายได้และการต่ออายุ',
@@ -171,22 +375,22 @@
     return {
       shell: {
         brand: 'SCUM TH',
-      surfaceLabel: 'แผงเจ้าของระบบ',
-        workspaceLabel: 'ทะเบียนผู้เช่า',
-      environmentLabel: 'ระดับแพลตฟอร์ม',
-        navGroups: NAV_GROUPS,
+        surfaceLabel: 'แผงเจ้าของระบบ',
+        workspaceLabel: routeView.headerTitle || 'ทะเบียนผู้เช่า',
+        environmentLabel: 'ระดับแพลตฟอร์ม',
+        navGroups: cloneNavGroups(NAV_GROUPS, currentRoute),
       },
       header: {
-        title: 'ผู้เช่าและสถานะเชิงพาณิชย์',
-        subtitle: 'รวมแพ็กเกจ การสมัครใช้ โควตา และบริบทซัพพอร์ตไว้ในหน้าเดียวเพื่อช่วยให้เจ้าของระบบตัดสินใจได้เร็ว',
+        title: routeView.headerTitle || 'ผู้เช่าและสถานะเชิงพาณิชย์',
+        subtitle: routeView.headerSubtitle || 'รวมแพ็กเกจ การสมัครใช้ โควตา และบริบทซัพพอร์ตไว้ในหน้าเดียวเพื่อช่วยให้เจ้าของระบบตัดสินใจได้เร็ว',
         statusChips: [
           { label: `${formatNumber(rows.length, '0')} ผู้เช่า`, tone: 'info' },
           { label: `${formatNumber(activeCount, '0')} ปกติ`, tone: 'success' },
           { label: `${formatNumber(warningCount, '0')} ต้องจับตา`, tone: warningCount > 0 ? 'warning' : 'muted' },
           { label: `${formatNumber(dangerCount, '0')} ด่วน`, tone: dangerCount > 0 ? 'danger' : 'muted' },
         ],
-        primaryAction,
-        secondaryActions,
+        primaryAction: routeView.primaryAction || { label: 'สร้างผู้เช่า', href: '#create-tenant' },
+        secondaryActions: Array.isArray(routeView.secondaryActions) ? routeView.secondaryActions : [],
       },
       summaryStrip: [
         { label: 'ปกติ', value: formatNumber(activeCount, '0'), detail: 'ผู้เช่าที่เดินระบบได้ตามปกติ', tone: 'success' },
@@ -197,6 +401,9 @@
       rows,
       spotlight,
       nextActions,
+      billingSummary: state.billingOverview?.summary || null,
+      billingProvider: state.billingOverview?.provider || null,
+      routeView,
       railCards: [
         { title: 'เครื่องมือซัพพอร์ต', body: 'วางปุ่มส่งออก diagnostics และเปิดเคสไว้ใกล้ทะเบียนผู้เช่า เพื่อให้เจ้าของระบบไล่งานได้ในหนึ่งหรือสองคลิก', meta: 'งานซัพพอร์ตไม่ควรถูกซ่อนไว้ลึกใน hash section เก่า', tone: 'info' },
         { title: 'ทบทวนเชิงพาณิชย์', body: `${formatNumber(warningCount + dangerCount, '0')} รายยังต้องทบทวนเรื่องต่ออายุ โควตา หรือไลเซนส์`, meta: 'ดูมุม billing ก่อนเปลี่ยนแพ็กเกจหรือสิทธิ์ใช้งาน', tone: warningCount + dangerCount > 0 ? 'warning' : 'success' },
@@ -238,11 +445,11 @@
       '<div class="odv4-table">',
       '<div class="odv4-table-head cols-6"><span>ผู้เช่า</span><span>แพ็กเกจ</span><span>การสมัครใช้</span><span>โควตา</span><span>อัปเดตล่าสุด</span><span>การกระทำ</span></div>',
       ...items.map((row) => [
-        '<div class="odv4-table-row cols-6">',
+        `<div id="tenant-${escapeHtml(row.tenantId)}" class="odv4-table-row cols-6 odv4-focus-target" data-owner-focus-route="tenant-${escapeHtml(row.tenantId)} support-${escapeHtml(row.tenantId)}">`,
         `<div class="odv4-table-cell"><strong>${escapeHtml(row.name)}</strong><span class="odv4-table-note">${escapeHtml(row.owner)}</span></div>`,
         `<div class="odv4-table-cell"><span class="odv4-pill odv4-pill-muted">${escapeHtml(row.packageName)}</span><span class="odv4-table-note">${escapeHtml(row.licenseState)}</span></div>`,
-        `<div class="odv4-table-cell"><span class="odv4-pill odv4-pill-${escapeHtml(row.statusTone)}">${escapeHtml(row.status)}</span>${row.renewsAt ? `<span class="odv4-table-note">${escapeHtml(formatRelative(row.renewsAt))}</span>` : ''}</div>`,
-        `<div class="odv4-table-cell"><span class="odv4-pill odv4-pill-${escapeHtml(row.quotaTone)}">${escapeHtml(row.quotaTone)}</span><span class="odv4-table-note">${escapeHtml(row.quotaText)}</span></div>`,
+        `<div class="odv4-table-cell"><span class="odv4-pill odv4-pill-${escapeHtml(row.statusTone)}">${escapeHtml(row.status)}</span>${row.renewsAt ? `<span class="odv4-table-note">${escapeHtml(formatRelative(row.renewsAt))}</span>` : ''}<span class="odv4-table-note">Invoice: ${escapeHtml(row.invoiceState)}</span></div>`,
+        `<div class="odv4-table-cell"><span class="odv4-pill odv4-pill-${escapeHtml(row.quotaTone)}">${escapeHtml(row.quotaTone)}</span><span class="odv4-table-note">${escapeHtml(row.quotaText)}</span><span class="odv4-table-note">${escapeHtml(row.outstandingAmount)}</span></div>`,
         `<div class="odv4-table-cell"><span class="odv4-table-value">${escapeHtml(formatDateTime(row.updatedAt))}</span></div>`,
         `<div class="odv4-table-actions"><a class="odv4-table-button odv4-table-button-primary" href="#tenant-${escapeHtml(row.tenantId)}">เปิดรายละเอียด</a><a class="odv4-table-button" href="#support-${escapeHtml(row.tenantId)}">ซัพพอร์ต</a></div>`,
         '</div>',
@@ -250,26 +457,36 @@
       '</div>',
     ].join('');
   }
-  function renderSpotlight(spotlight) {
+  function renderSpotlight(spotlight, routeView = {}) {
+    const kicker = routeView.spotlightKicker || 'ผู้เช่าที่ควรเปิดดูก่อน';
+    const emptyTitle = routeView.spotlightEmptyTitle || 'ผู้เช่าที่ควรเปิดดูก่อน';
+    const emptyCopy = routeView.spotlightEmptyCopy || 'เลือกผู้เช่าจากทะเบียนเพื่อดูสุขภาพระบบ บริบทซัพพอร์ต และสถานะเชิงพาณิชย์ต่อทันที';
+    const spotlightTitleMode = routeView.spotlightTitleMode || 'name';
+    const detailTitle = spotlightTitleMode === 'name' ? (spotlight && spotlight.name) : (routeView.spotlightTitle || spotlight && spotlight.name);
+    const spotlightCopy = routeView.spotlightCopy || 'ใช้การ์ดนี้ช่วยให้เห็นงานถัดไปชัดก่อนลงลึกไปยังหน้ารายละเอียดของผู้เช่า';
+    const nextTitle = routeView.spotlightNextTitle || 'อยู่ในบริบทของผู้เช่ารายนี้ต่อ';
+    const nextItems = Array.isArray(routeView.spotlightNextItems) && routeView.spotlightNextItems.length
+      ? routeView.spotlightNextItems
+      : ['เปิดเคสซัพพอร์ต', 'ส่งออก diagnostics', 'ทบทวน billing และการต่ออายุ'];
     if (!spotlight) {
       return [
         '<section class="odv4-panel">',
-        '<div class="odv4-section-head"><span class="odv4-section-kicker">ผู้เช่าที่ควรเปิดดูก่อน</span><h2 class="odv4-section-title">ผู้เช่าที่ควรเปิดดูก่อน</h2><p class="odv4-section-copy">เลือกผู้เช่าจากทะเบียนเพื่อดูสุขภาพระบบ บริบทซัพพอร์ต และสถานะเชิงพาณิชย์ต่อทันที</p></div>',
+        `<div class="odv4-section-head"><span class="odv4-section-kicker">${escapeHtml(kicker)}</span><h2 class="odv4-section-title">${escapeHtml(emptyTitle)}</h2><p class="odv4-section-copy">${escapeHtml(emptyCopy)}</p></div>`,
         '<div class="odv4-empty-state">ยังไม่มีผู้เช่าเด่นให้เปิดดูต่อ</div>',
         '</section>',
       ].join('');
     }
     return [
       '<section class="odv4-panel">',
-      '<div class="odv4-section-head"><span class="odv4-section-kicker">ผู้เช่าที่ควรเปิดดูก่อน</span>',
-      `<h2 class="odv4-section-title">${escapeHtml(spotlight.name)}</h2>`,
-      '<p class="odv4-section-copy">ใช้การ์ดนี้ช่วยให้เห็นงานถัดไปชัดก่อนลงลึกไปยังหน้ารายละเอียดของผู้เช่า</p></div>',
+      `<div class="odv4-section-head"><span class="odv4-section-kicker">${escapeHtml(kicker)}</span>`,
+      `<h2 class="odv4-section-title">${escapeHtml(detailTitle || spotlight.name)}</h2>`,
+      `<p class="odv4-section-copy">${escapeHtml(spotlightCopy)}</p></div>`,
       '<div class="odv4-runbook-grid">',
       `<article class="odv4-runbook-card"><span class="odv4-table-label">แพ็กเกจ</span><strong>${escapeHtml(spotlight.packageName)}</strong></article>`,
       `<article class="odv4-runbook-card"><span class="odv4-table-label">การสมัครใช้</span><strong>${escapeHtml(spotlight.status)}</strong></article>`,
       `<article class="odv4-runbook-card"><span class="odv4-table-label">โควตา</span><strong>${escapeHtml(spotlight.quotaText)}</strong></article>`,
       '</div>',
-      '<div class="odv4-panel" style="margin-top:16px;"><div class="odv4-section-head"><span class="odv4-section-kicker">งานถัดไป</span><h3 class="odv4-section-title">อยู่ในบริบทของผู้เช่ารายนี้ต่อ</h3></div><ul class="odv4-bullet-list"><li>เปิดเคสซัพพอร์ต</li><li>ส่งออก diagnostics</li><li>ทบทวน billing และการต่ออายุ</li></ul></div>',
+      `<div class="odv4-panel" style="margin-top:16px;"><div class="odv4-section-head"><span class="odv4-section-kicker">งานถัดไป</span><h3 class="odv4-section-title">${escapeHtml(nextTitle)}</h3></div><ul class="odv4-bullet-list">${nextItems.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div>`,
       '</section>',
     ].join('');
   }
@@ -294,6 +511,41 @@
 
   function buildOwnerTenantsV4Html(model) {
     const safeModel = model && typeof model === 'object' ? model : createOwnerTenantsV4Model({});
+    const routeView = safeModel.routeView && typeof safeModel.routeView === 'object' ? safeModel.routeView : {};
+    const nextActionsSection = [
+      '<section class="odv4-panel"><div class="odv4-section-head">',
+      `<span class="odv4-section-kicker">${escapeHtml(routeView.nextActionsKicker || 'ควรทำอะไรก่อน')}</span>`,
+      `<h2 class="odv4-section-title">${escapeHtml(routeView.nextActionsTitle || 'เริ่มจากเรื่องที่กระทบรายได้และบริการก่อน')}</h2>`,
+      `<p class="odv4-section-copy">${escapeHtml(routeView.nextActionsCopy || 'เจ้าของระบบควรเห็นงานเชิงพาณิชย์ ซัพพอร์ต และผู้เช่าที่เสี่ยงอยู่เหนือรายละเอียด registry เสมอ')}</p></div>`,
+      safeModel.billingSummary
+        ? `<div class="odv4-runbook-grid" style="margin-bottom:16px;"><article class="odv4-runbook-card odv4-tone-info"><span class="odv4-table-label">Provider</span><strong>${escapeHtml(safeModel.billingProvider?.provider || 'platform_local')}</strong><p>${escapeHtml(safeModel.billingProvider?.mode || 'platform_local')}</p></article><article class="odv4-runbook-card odv4-tone-success"><span class="odv4-table-label">Collected</span><strong>${escapeHtml(formatCurrencyCents(safeModel.billingSummary.collectedCents || 0))}</strong><p>${escapeHtml(`${formatNumber(safeModel.billingSummary.paidInvoiceCount || 0)} paid invoices`)}</p></article><article class="odv4-runbook-card odv4-tone-warning"><span class="odv4-table-label">Open invoices</span><strong>${escapeHtml(formatNumber(safeModel.billingSummary.openInvoiceCount || 0))}</strong><p>${escapeHtml(`${formatNumber(safeModel.billingSummary.failedAttemptCount || 0)} failed payment attempts`)}</p></article></div>`
+        : '',
+      `<div class="odv4-runbook-grid">${renderNextActionCards(safeModel.nextActions)}</div>`,
+      '</section>',
+    ].join('');
+    const registrySection = [
+      '<section class="odv4-panel"><div class="odv4-section-head">',
+      `<span class="odv4-section-kicker">${escapeHtml(routeView.registryKicker || 'ทะเบียน')}</span>`,
+      `<h2 class="odv4-section-title">${escapeHtml(routeView.registryTitle || 'รายชื่อผู้เช่า')}</h2>`,
+      `<p class="odv4-section-copy">${escapeHtml(routeView.registryCopy || 'ตารางนี้ตั้งใจทำให้เรียบและอ่านง่าย เพื่อให้เป็น registry ที่ใช้งานจริง ไม่ใช่กำแพงการ์ดที่ทำให้หางานไม่เจอ')}</p></div>`,
+      renderTable(safeModel.rows),
+      '</section>',
+    ].join('');
+    const spotlightSection = renderSpotlight(safeModel.spotlight, routeView);
+    const orderedBlocks = [];
+    const blockMap = {
+      nextActions: `<div id="billing" class="odv4-focus-target" data-owner-focus-route="billing settings">${nextActionsSection}</div>`,
+      registry: `<div id="packages" class="odv4-focus-target" data-owner-focus-route="tenants packages subscriptions create-tenant">${registrySection}</div>`,
+      spotlight: `<div id="support" class="odv4-focus-target" data-owner-focus-route="support">${spotlightSection}</div>`,
+    };
+    const order = Array.isArray(routeView.blockOrder) && routeView.blockOrder.length
+      ? routeView.blockOrder
+      : ['nextActions', 'registry', 'spotlight'];
+    order.forEach((key) => {
+      if (blockMap[key]) {
+        orderedBlocks.push(blockMap[key]);
+      }
+    });
     return [
       '<div class="odv4-app"><header class="odv4-topbar"><div class="odv4-brand-row">',
       `<div class="odv4-brand-mark">${escapeHtml(safeModel.shell.brand || 'SCUM')}</div><div class="odv4-brand-copy"><span class="odv4-surface-label">${escapeHtml(safeModel.shell.surfaceLabel || '')}</span><strong class="odv4-workspace-label">${escapeHtml(safeModel.shell.workspaceLabel || '')}</strong></div>`,
@@ -309,20 +561,14 @@
         : '',
       '</div></div></section>',
       `<section class="odv4-kpi-strip">${renderSummaryStrip(safeModel.summaryStrip)}</section>`,
-      '<section class="odv4-panel"><div class="odv4-section-head"><span class="odv4-section-kicker">ควรทำอะไรก่อน</span><h2 class="odv4-section-title">เริ่มจากเรื่องที่กระทบรายได้และบริการก่อน</h2><p class="odv4-section-copy">เจ้าของระบบควรเห็นงานเชิงพาณิชย์ ซัพพอร์ต และผู้เช่าที่เสี่ยงอยู่เหนือรายละเอียด registry เสมอ</p></div>',
-      `<div class="odv4-runbook-grid">${renderNextActionCards(safeModel.nextActions)}</div>`,
-      '</section>',
-      '<section class="odv4-panel"><div class="odv4-section-head"><span class="odv4-section-kicker">ทะเบียน</span><h2 class="odv4-section-title">รายชื่อผู้เช่า</h2><p class="odv4-section-copy">ตารางนี้ตั้งใจทำให้เรียบและอ่านง่าย เพื่อให้เป็น registry ที่ใช้งานจริง ไม่ใช่กำแพงการ์ดที่ทำให้หางานไม่เจอ</p></div>',
-      renderTable(safeModel.rows),
-      '</section>',
-      renderSpotlight(safeModel.spotlight),
-      `</main><aside class="odv4-rail"><div class="odv4-rail-sticky"><div class="odv4-rail-header">บริบทเจ้าของระบบ</div><p class="odv4-rail-copy">เก็บงานซัพพอร์ตและงานเชิงพาณิชย์ไว้ใกล้ทะเบียนผู้เช่า เพื่อไม่ให้เจ้าของระบบหลุดบริบทตอนกำลังไล่งาน</p>${renderRailCards(safeModel.railCards)}</div></aside></div></div>`,
+      orderedBlocks.join(''),
+      `</main><aside class="odv4-rail"><div class="odv4-rail-sticky"><div class="odv4-rail-header">${escapeHtml(routeView.railHeader || 'บริบทเจ้าของระบบ')}</div><p class="odv4-rail-copy">${escapeHtml(routeView.railCopy || 'เก็บงานซัพพอร์ตและงานเชิงพาณิชย์ไว้ใกล้ทะเบียนผู้เช่า เพื่อไม่ให้เจ้าของระบบหลุดบริบทตอนกำลังไล่งาน')}</p>${renderRailCards(safeModel.railCards)}</div></aside></div></div>`,
     ].join('');
   }
 
-  function renderOwnerTenantsV4(target, source) {
+  function renderOwnerTenantsV4(target, source, options) {
     if (!target) throw new Error('Owner tenants V4 target is required');
-    target.innerHTML = buildOwnerTenantsV4Html(createOwnerTenantsV4Model(source));
+    target.innerHTML = buildOwnerTenantsV4Html(createOwnerTenantsV4Model(source, options));
     return target;
   }
 

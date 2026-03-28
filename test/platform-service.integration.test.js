@@ -5,6 +5,7 @@ const { once } = require('node:events');
 const crypto = require('node:crypto');
 
 const { prisma, getTenantScopedPrismaClient, disconnectAllPrismaClients } = require('../src/prisma');
+const { cleanupPlatformTenantFixtures } = require('./helpers/platformTestCleanup');
 const {
   acceptPlatformLicenseLegal,
   createMarketplaceOffer,
@@ -23,40 +24,12 @@ const {
 } = require('../src/services/platformService');
 
 async function cleanupPlatformTables() {
-  await prisma.$transaction([
-    prisma.platformMarketplaceOffer.deleteMany({}),
-    prisma.platformAgentRuntime.deleteMany({}),
-    prisma.platformWebhookEndpoint.deleteMany({}),
-    prisma.platformApiKey.deleteMany({}),
-    prisma.platformLicense.deleteMany({}),
-    prisma.platformSubscription.deleteMany({}),
-    prisma.platformTenant.deleteMany({}),
-    prisma.deliveryAudit.deleteMany({}),
-    prisma.deliveryDeadLetter.deleteMany({}),
-    prisma.deliveryQueueJob.deleteMany({}),
-    prisma.purchase.deleteMany({
-      where: {
-        code: {
-          startsWith: 'PLATFORM-TEST-',
-        },
-      },
-    }),
-    prisma.shopItem.deleteMany({
-      where: {
-        id: {
-          startsWith: 'platform-test-',
-        },
-      },
-    }),
-    prisma.vipMembership.deleteMany({
-      where: {
-        userId: {
-          startsWith: 'platform-test-',
-        },
-      },
-    }),
-  ]);
-  await prisma.$executeRawUnsafe('DELETE FROM platform_tenant_configs').catch(() => null);
+  await cleanupPlatformTenantFixtures({
+    tenantIds: ['tenant-test-platform'],
+    purchaseCodePrefixes: ['PLATFORM-TEST-'],
+    shopItemPrefixes: ['platform-test-'],
+    vipUserPrefixes: ['platform-test-'],
+  });
 }
 
 function randomPort() {
@@ -303,6 +276,11 @@ test('platform service manages tenant lifecycle, webhook delivery, analytics, an
 });
 
 test('platform service strict mode requires explicit global access for tenant-scoped analytics and reconcile', async (t) => {
+  if (!isPostgresRuntime()) {
+    t.skip('postgres runtime is required for strict isolation integration');
+    return;
+  }
+
   const previousMode = process.env.TENANT_DB_ISOLATION_MODE;
   process.env.TENANT_DB_ISOLATION_MODE = 'postgres-rls-strict';
   t.after(() => {

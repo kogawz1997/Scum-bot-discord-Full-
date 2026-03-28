@@ -122,7 +122,7 @@
       shell: {
         brand: 'SCUM TH',
         surfaceLabel: 'พอร์ทัลผู้เล่น',
-        workspaceLabel: firstNonEmpty([state?.me?.user], 'Community Workspace'),
+        workspaceLabel: firstNonEmpty([state?.me?.user], 'ศูนย์ชุมชน'),
         environmentLabel: 'ชุมชนผู้เล่น',
         navGroups: Array.isArray(state?.__surfaceShell?.navGroups)
           ? state.__surfaceShell.navGroups
@@ -169,7 +169,7 @@
         { label: 'ภารกิจพร้อมรับ', value: formatNumber(missions.filter((row) => row.claimable).length, '0') },
         { label: 'วงล้อสุ่มรางวัล', value: wheel.enabled ? 'เปิดใช้งาน' : 'ปิดใช้งาน' },
         { label: 'Bounty ที่มองเห็น', value: formatNumber(bounties.length, '0') },
-        { label: 'ประกาศเซิร์ฟเวอร์', value: firstNonEmpty([serverInfo.name], 'Community server') },
+        { label: 'ประกาศเซิร์ฟเวอร์', value: firstNonEmpty([serverInfo.name], 'เซิร์ฟเวอร์ชุมชน') },
       ],
       railCards: [
         {
@@ -215,7 +215,7 @@
       '<div class="plv4-stack">',
       '<span class="plv4-surface-label">ชุมชนและกิจกรรม</span>',
       '<strong class="plv4-sidebar-title">พื้นที่ของผู้เล่น</strong>',
-      '<p class="plv4-sidebar-copy">ให้ผู้เล่นกลับมาเช็กอันดับ ภารกิจ และสถานะบัญชีได้บ่อย โดยไม่กลายเป็นหน้า social feed ที่รกเกินจำเป็น</p>',
+      '<p class="plv4-sidebar-copy">ให้ผู้เล่นกลับมาเช็กอันดับ ภารกิจ และสถานะบัญชีได้บ่อย โดยไม่กลายเป็นหน้าฟีดที่รกเกินจำเป็น</p>',
       '</div>',
       renderNavGroups(model.shell.navGroups),
       '</aside>',
@@ -236,7 +236,7 @@
         : '',
       `<section class="plv4-summary-strip">${renderSummaryStrip(model.summaryStrip)}</section>`,
       '<section class="plv4-panel">',
-      '<div class="plv4-panel-head"><div class="plv4-stack"><span class="plv4-section-kicker">ควรทำอะไรต่อ</span><h2 class="plv4-section-title">เริ่มจากสิ่งที่พาคุณกลับมาเล่นต่อได้ทันที</h2><p class="plv4-section-copy">กิจกรรม อันดับ และงานที่ต้องจัดการควรถูกยกขึ้นมาก่อนรายละเอียดเชิงลึก เพื่อให้ผู้เล่นรู้ว่าควรกดอะไรต่อ</p></div></div>',
+      '<div class="plv4-panel-head"><div class="plv4-stack"><span class="plv4-section-kicker">ควรทำอะไรต่อ</span><h2 class="plv4-section-title">เริ่มจากสิ่งที่พาคุณกลับมาเล่นต่อได้ทันที</h2><p class="plv4-section-copy">กิจกรรม อันดับ และงานที่ต้องจัดการควรถูกยกขึ้นมาก่อนรายละเอียดลึก เพื่อให้ผู้เล่นรู้ว่าควรกดอะไรต่อ</p></div></div>',
       `<div class="plv4-task-grid">${renderCommunityActionCards(model.communityActionCards)}</div>`,
       '</section>',
       '<section class="plv4-content-grid plv4-content-grid-two">',

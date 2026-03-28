@@ -18,10 +18,10 @@
     profile: 'stats',
   };
 
-  const PAGE_TITLES = {
-    home: 'หน้าหลัก',
-    commerce: 'ร้านค้า กระเป๋าเงิน และคำสั่งซื้อ',
-    stats: 'สถิติ กิจกรรม และซัพพอร์ต',
+  const PAGE_TITLE_KEYS = {
+    home: 'player.app.page.home',
+    commerce: 'player.app.page.commerce',
+    stats: 'player.app.page.stats',
   };
 
   const state = {
@@ -29,11 +29,13 @@
     refreshing: false,
   };
 
-  const LOCALIZED_PAGE_TITLES = {
-    home: 'หน้าหลัก',
-    commerce: 'ร้านค้า กระเป๋าเงิน และคำสั่งซื้อ',
-    stats: 'สถิติ กิจกรรม และการช่วยเหลือ',
-  };
+  function t(key, fallback, params) {
+    return window.PortalUiI18n?.t?.(key, fallback, params) || fallback || key;
+  }
+
+  function applyI18n(rootNode = document) {
+    window.PortalUiI18n?.apply?.(rootNode);
+  }
 
   function escapeHtml(value) {
     return String(value ?? '')
@@ -89,8 +91,28 @@
   }
 
   function currentPage() {
-    const raw = String(window.location.hash || '').replace(/^#/, '').trim().toLowerCase();
+    const raw = getRawHashRoute();
     return PAGE_ALIASES[raw] || 'home';
+  }
+
+  function getRawHashRoute() {
+    return String(window.location.hash || '').replace(/^#/, '').trim().toLowerCase();
+  }
+
+  function navigatePlayerHash(nextHash) {
+    const hashValue = String(nextHash || '').trim();
+    if (!hashValue || hashValue === '#') return;
+    const normalizedHash = hashValue.startsWith('#') ? hashValue : `#${hashValue}`;
+    if (window.location.hash !== normalizedHash) {
+      window.location.hash = normalizedHash;
+      return;
+    }
+    const surfaceState = renderCurrentPage();
+    if (surfaceState?.notice) {
+      setStatus(surfaceState.notice.detail, surfaceState.notice.tone || 'warning');
+    } else if (state.payload && !state.refreshing) {
+      setStatus(t('player.app.status.ready', 'Ready'), 'success');
+    }
   }
 
   function isSectionEnabled(featureAccess, key) {
@@ -117,73 +139,55 @@
     const resolvedPage = pageAccess[requestedPage]?.enabled ? requestedPage : 'home';
     const navGroups = [
       {
-        label: 'Start',
+        label: t('player.nav.group.start', 'Overview'),
         items: [
           {
-            label: 'Home',
+            label: t('player.nav.home', 'Overview'),
             href: '#home',
             current: resolvedPage === 'home',
           },
         ],
       },
       {
-        label: 'Commerce',
+        label: t('player.nav.group.commerce', 'Store and wallet'),
         items: [
           {
             label: pageAccess.commerce.locked
-              ? 'Shop, Wallet & Orders · locked'
-              : 'Shop, Wallet & Orders',
+              ? t('player.nav.commerceLocked', 'Store, Wallet & Orders (Locked)')
+              : t('player.nav.commerce', 'Store, Wallet & Orders'),
             href: '#shop',
             current: resolvedPage === 'commerce',
           },
         ],
       },
       {
-        label: 'Community',
+        label: t('player.nav.group.community', 'Community and stats'),
         items: [
           {
             label: pageAccess.stats.locked
-              ? 'Stats, Events & Support · locked'
-              : 'Stats, Events & Support',
+              ? t('player.nav.statsLocked', 'Stats, Events & Support (Locked)')
+              : t('player.nav.stats', 'Stats, Events & Support'),
             href: '#stats',
             current: resolvedPage === 'stats',
           },
         ],
       },
     ];
-
-    const localizedGroupLabels = {
-      Start: 'เริ่มต้น',
-      Commerce: 'ร้านค้าและกระเป๋าเงิน',
-      Community: 'ชุมชน',
-    };
-    const localizedLabelsByHref = {
-      '#home': 'หน้าหลัก',
-      '#shop': LOCALIZED_PAGE_TITLES.commerce,
-      '#stats': LOCALIZED_PAGE_TITLES.stats,
-    };
-    const visibleNavGroups = navGroups.map((group) => ({
-      ...group,
-      label: localizedGroupLabels[group.label] || group.label,
-      items: Array.isArray(group.items)
-        ? group.items.map((item) => ({
-            ...item,
-            label: localizedLabelsByHref[item.href] || item.label,
-          }))
-        : [],
-    }));
     const notice = resolvedPage !== requestedPage
       ? {
           tone: 'warning',
-          title: 'สิทธิ์ของเซิร์ฟนี้ยังไม่เปิดพื้นที่นี้',
-          detail: 'แพ็กเกจของเซิร์ฟเวอร์ยังไม่เปิดหน้านี้สำหรับผู้เล่น ระบบจึงพากลับมาที่พื้นที่ที่ใช้งานได้ก่อน',
+          title: t('player.notice.lockedTitle', 'This server has not opened this area yet'),
+          detail: t(
+            'player.notice.lockedDetail',
+            'This area is not included in the current server package yet, so the portal returned you to a page that is available now.',
+          ),
         }
       : null;
 
     return {
       resolvedPage,
       pageAccess,
-      navGroups: visibleNavGroups,
+      navGroups,
       notice,
     };
   }
@@ -192,8 +196,11 @@
     if (state.refreshing) return;
     state.refreshing = true;
     if (!options.silent) {
-      setStatus('กำลังโหลดข้อมูลพอร์ทัลผู้เล่น...', 'info');
-      renderMessageCard('กำลังเตรียมข้อมูลผู้เล่น', 'กำลังดึงร้านค้า กระเป๋าเงิน คำสั่งซื้อ สถิติ และข้อมูลชุมชนล่าสุด');
+      setStatus(t('player.app.status.loading', 'Loading player data...'), 'info');
+      renderMessageCard(
+        t('player.app.card.loadingTitle', 'Preparing player data'),
+        t('player.app.card.loadingDetail', 'Loading account, store, orders, and community updates.'),
+      );
     }
     try {
       const [
@@ -292,11 +299,14 @@
       if (surfaceState?.notice) {
         setStatus(surfaceState.notice.detail, surfaceState.notice.tone || 'warning');
       } else {
-        setStatus('พร้อมใช้งาน', 'success');
+        setStatus(t('player.app.status.ready', 'Ready'), 'success');
       }
     } catch (error) {
-      renderMessageCard('โหลดพอร์ทัลผู้เล่นไม่สำเร็จ', String(error?.message || error));
-      setStatus('โหลดข้อมูลไม่สำเร็จ', 'danger');
+      renderMessageCard(
+        t('player.app.card.loadFailedTitle', 'Could not load player portal'),
+        String(error?.message || error),
+      );
+      setStatus(t('player.app.status.loadFailed', 'Load failed'), 'danger');
     } finally {
       state.refreshing = false;
     }
@@ -306,7 +316,10 @@
     const target = root();
     if (!target) return null;
     if (!state.payload) {
-      renderMessageCard('ยังไม่มีข้อมูล', 'รอให้ระบบดึงข้อมูลล่าสุดก่อน');
+      renderMessageCard(
+        t('player.app.card.emptyTitle', 'No player data yet'),
+        t('player.app.card.emptyDetail', 'Wait for the latest player data to load.'),
+      );
       return null;
     }
 
@@ -327,21 +340,42 @@
     } else {
       window.PlayerHomeV4.renderPlayerHomeV4(target, renderState);
     }
-    document.title = `SCUM TH Platform | Player | ${LOCALIZED_PAGE_TITLES[page] || 'หน้าหลัก'}`;
+    applyI18n(target);
+    document.title = `SCUM TH Platform | Player | ${t(PAGE_TITLE_KEYS[page] || 'player.app.page.home', 'Home')}`;
     return surfaceState;
   }
 
   window.addEventListener('DOMContentLoaded', () => {
     const refreshButton = document.getElementById('playerV4RefreshBtn');
     refreshButton?.addEventListener('click', () => refreshState({ silent: false }));
+    document.addEventListener('click', (event) => {
+      const link = event.target instanceof Element
+        ? event.target.closest('a[href^="#"]')
+        : null;
+      if (!link) return;
+      const hash = String(link.getAttribute('href') || '').trim();
+      if (!hash || hash === '#') return;
+      navigatePlayerHash(hash);
+      event.preventDefault();
+    });
     window.addEventListener('hashchange', () => {
       const surfaceState = renderCurrentPage();
       if (surfaceState?.notice) {
         setStatus(surfaceState.notice.detail, surfaceState.notice.tone || 'warning');
+      } else if (state.payload && !state.refreshing) {
+        setStatus(t('player.app.status.ready', 'Ready'), 'success');
       }
     });
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) refreshState({ silent: true });
+    });
+    window.addEventListener('ui-language-change', () => {
+      const surfaceState = renderCurrentPage();
+      if (surfaceState?.notice) {
+        setStatus(surfaceState.notice.detail, surfaceState.notice.tone || 'warning');
+      } else if (state.payload && !state.refreshing) {
+        setStatus(t('player.app.status.ready', 'Ready'), 'success');
+      }
     });
     window.setInterval(() => {
       if (!document.hidden) refreshState({ silent: true });

@@ -12,9 +12,64 @@ const {
 const PROJECT_ROOT = process.cwd();
 const SOURCE_SCHEMA_PATH = path.join(PROJECT_ROOT, 'prisma', 'schema.prisma');
 const OUTPUT_DIR = path.join(PROJECT_ROOT, 'artifacts', 'prisma');
+const GENERATED_CLIENT_ROOT = path.join(OUTPUT_DIR, 'generated');
+const GENERATED_CLIENT_METADATA_PATH = path.join(GENERATED_CLIENT_ROOT, 'current.json');
 
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
+}
+
+function nowStamp() {
+  return new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
+}
+
+function pathToSchemaLiteral(value) {
+  return String(value || '').replace(/\\/g, '/');
+}
+
+function buildGeneratedClientOutputPath(provider) {
+  return path.join(GENERATED_CLIENT_ROOT, provider, `${nowStamp()}-${process.pid}`, 'client');
+}
+
+function pruneGeneratedClients(provider, keep = 4) {
+  const providerRoot = path.join(GENERATED_CLIENT_ROOT, provider);
+  if (!fs.existsSync(providerRoot)) return;
+  const entries = fs.readdirSync(providerRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => ({
+      name: entry.name,
+      fullPath: path.join(providerRoot, entry.name),
+      mtimeMs: fs.statSync(path.join(providerRoot, entry.name)).mtimeMs,
+    }))
+    .sort((left, right) => right.mtimeMs - left.mtimeMs);
+  for (const entry of entries.slice(Math.max(keep, 1))) {
+    fs.rmSync(entry.fullPath, { recursive: true, force: true });
+  }
+}
+
+function writeGeneratedClientMetadata(payload = {}) {
+  ensureDir(path.dirname(GENERATED_CLIENT_METADATA_PATH));
+  fs.writeFileSync(
+    GENERATED_CLIENT_METADATA_PATH,
+    JSON.stringify(payload, null, 2),
+    'utf8',
+  );
+}
+
+function upsertGeneratorOutput(schemaText, outputValue) {
+  const generatorPattern = /generator\s+client\s*\{([\s\S]*?)\}/m;
+  return schemaText.replace(generatorPattern, (block) => {
+    if (/output\s*=\s*"[^"]*"/m.test(block)) {
+      return block.replace(/output\s*=\s*"[^"]*"/m, `output   = "${outputValue}"`);
+    }
+    if (/provider\s*=\s*"[^"]*"/m.test(block)) {
+      return block.replace(
+        /provider\s*=\s*"[^"]*"/m,
+        (line) => `${line}\n  output   = "${outputValue}"`,
+      );
+    }
+    return block.replace(/\}\s*$/, `  output   = "${outputValue}"\n}`);
+  });
 }
 
 function parseCliArgs(argv = process.argv.slice(2)) {
@@ -56,14 +111,19 @@ function renderSchemaForProvider(provider, options = {}) {
   const sourcePath = options.sourcePath || SOURCE_SCHEMA_PATH;
   const outputDir = options.outputDir || (provider === 'sqlite' ? path.dirname(sourcePath) : OUTPUT_DIR);
   const source = fs.readFileSync(sourcePath, 'utf8');
-  const rendered = source.replace(
+  let rendered = source.replace(
     /datasource\s+db\s*\{([\s\S]*?)provider\s*=\s*"[^"]+"/m,
     (match) => match.replace(/provider\s*=\s*"[^"]+"/, `provider = "${provider}"`),
   );
+  if (options.clientOutputDir) {
+    const relativeOutputPath = pathToSchemaLiteral(path.relative(outputDir, options.clientOutputDir));
+    rendered = upsertGeneratorOutput(rendered, relativeOutputPath);
+  }
   ensureDir(outputDir);
   const outputPath = path.join(outputDir, `schema.${provider}.prisma`);
   fs.writeFileSync(outputPath, rendered, 'utf8');
   return {
+    clientOutputDir: options.clientOutputDir || null,
     provider,
     sourcePath,
     outputPath,
@@ -72,8 +132,12 @@ function renderSchemaForProvider(provider, options = {}) {
 
 function runPrisma(args = [], options = {}) {
   const provider = resolveProvider(options.provider);
-  const rendered = renderSchemaForProvider(provider, options);
   const prismaArgs = [...args];
+  const isGenerateCommand = String(prismaArgs[0] || '').trim().toLowerCase() === 'generate';
+  const rendered = renderSchemaForProvider(provider, {
+    ...options,
+    clientOutputDir: isGenerateCommand ? buildGeneratedClientOutputPath(provider) : null,
+  });
   if (!prismaArgs.includes('--schema')) {
     prismaArgs.push('--schema', rendered.outputPath);
   }
@@ -88,12 +152,23 @@ function runPrisma(args = [], options = {}) {
   if (result.error) {
     console.error(`[prisma-with-provider] failed to start Prisma CLI: ${result.error.message}`);
   }
-  return {
+  const payload = {
     ...rendered,
     command,
     prismaArgs,
     status: Number.isInteger(result.status) ? result.status : 1,
   };
+  if (payload.status === 0 && isGenerateCommand && rendered.clientOutputDir) {
+    writeGeneratedClientMetadata({
+      provider,
+      generatedAt: new Date().toISOString(),
+      outputPath: rendered.clientOutputDir,
+      schemaPath: rendered.outputPath,
+      sourceSchemaPath: rendered.sourcePath,
+    });
+    pruneGeneratedClients(provider);
+  }
+  return payload;
 }
 
 function main() {
@@ -111,10 +186,16 @@ if (require.main === module) {
 }
 
 module.exports = {
+  GENERATED_CLIENT_METADATA_PATH,
+  GENERATED_CLIENT_ROOT,
   OUTPUT_DIR,
   SOURCE_SCHEMA_PATH,
+  buildGeneratedClientOutputPath,
   parseCliArgs,
+  pruneGeneratedClients,
   renderSchemaForProvider,
   resolveProvider,
   runPrisma,
+  upsertGeneratorOutput,
+  writeGeneratedClientMetadata,
 };

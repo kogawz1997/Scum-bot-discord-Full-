@@ -1,0 +1,43 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+
+const {
+  renderSchemaForProvider,
+} = require('../scripts/prisma-with-provider.js');
+
+test('renderSchemaForProvider rewrites datasource provider and injects generated client output path', () => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'prisma-with-provider-'));
+  const sourcePath = path.join(tempRoot, 'schema.prisma');
+  const outputDir = path.join(tempRoot, 'rendered');
+  const clientOutputDir = path.join(tempRoot, 'generated', 'sqlite', '123', 'client');
+
+  fs.writeFileSync(
+    sourcePath,
+    [
+      'generator client {',
+      '  provider = "prisma-client-js"',
+      '}',
+      '',
+      'datasource db {',
+      '  provider = "postgresql"',
+      '  url      = env("DATABASE_URL")',
+      '}',
+    ].join('\n'),
+    'utf8',
+  );
+
+  const rendered = renderSchemaForProvider('sqlite', {
+    sourcePath,
+    outputDir,
+    clientOutputDir,
+  });
+
+  const text = fs.readFileSync(rendered.outputPath, 'utf8');
+  assert.match(text, /provider = "sqlite"/);
+  assert.match(text, /output\s+=\s+"\.\.\/generated\/sqlite\/123\/client"/);
+
+  fs.rmSync(tempRoot, { recursive: true, force: true });
+});

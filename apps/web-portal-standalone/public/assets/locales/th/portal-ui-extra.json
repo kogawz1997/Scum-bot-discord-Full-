@@ -2,7 +2,7 @@
   "dictionary": {
     "shell.player.documentTitle": "SCUM TH Platform | พอร์ทัลผู้เล่น",
     "shell.player.title": "พอร์ทัลผู้เล่น",
-    "shell.player.detail": "ร้านค้า กระเป๋าเงิน คำสั่งซื้อ สถิติ และข่าวสารของชุมชนในจุดเดียว",
+    "shell.player.detail": "ร้านค้า กระเป๋าเงิน คำสั่งซื้อ สถิติ และข่าวสารชุมชนในที่เดียว",
     "shell.player.service": "บริการ",
     "shell.player.status.loading": "กำลังเตรียมพอร์ทัลผู้เล่น",
     "shell.common.refresh": "รีเฟรชข้อมูล",
@@ -10,7 +10,7 @@
     "shell.role.service": "บริการ",
     "player.app.status.loading": "กำลังโหลดข้อมูลผู้เล่น...",
     "player.app.card.loadingTitle": "กำลังเตรียมข้อมูลผู้เล่น",
-    "player.app.card.loadingDetail": "กำลังดึงร้านค้า กระเป๋าเงิน คำสั่งซื้อ สถิติ และข่าวสารของชุมชน",
+    "player.app.card.loadingDetail": "กำลังดึงร้านค้า กระเป๋าเงิน คำสั่งซื้อ สถิติ และข่าวสารชุมชน",
     "player.app.status.ready": "พร้อมใช้งาน",
     "player.app.card.loadFailedTitle": "โหลดพอร์ทัลผู้เล่นไม่สำเร็จ",
     "player.app.status.loadFailed": "โหลดข้อมูลไม่สำเร็จ",

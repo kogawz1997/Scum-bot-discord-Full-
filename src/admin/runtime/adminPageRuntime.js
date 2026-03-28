@@ -15,6 +15,7 @@ function getAssetContentType(ext) {
   const normalized = String(ext || '').toLowerCase();
   if (normalized === '.css') return 'text/css; charset=utf-8';
   if (normalized === '.js') return 'application/javascript; charset=utf-8';
+  if (normalized === '.json') return 'application/json; charset=utf-8';
   if (normalized === '.svg') return 'image/svg+xml; charset=utf-8';
   if (normalized === '.png') return 'image/png';
   if (normalized === '.jpg' || normalized === '.jpeg') return 'image/jpeg';
@@ -81,6 +82,48 @@ function createAdminPageRuntime(options = {}) {
   async function tryServeAdminStaticAsset(req, res, pathname) {
     if (String(req.method || '').toUpperCase() !== 'GET') return false;
     if (!String(pathname || '').startsWith('/admin/assets/')) return false;
+
+    if (String(pathname || '').startsWith('/admin/assets/locales/')) {
+      let relativeName = '';
+      try {
+        relativeName = decodeURIComponent(String(pathname || '').slice('/admin/assets/locales/'.length));
+      } catch {
+        return false;
+      }
+      if (!relativeName || relativeName.includes('..')) {
+        sendText(res, 404, 'Not found');
+        return true;
+      }
+      const ext = path.extname(relativeName).toLowerCase();
+      if (ext !== '.json') {
+        sendText(res, 404, 'Not found');
+        return true;
+      }
+      const localeAssetsDirPath = path.resolve(assetsDirPath, 'locales');
+      const absPath = path.resolve(localeAssetsDirPath, relativeName);
+      if (!absPath.startsWith(localeAssetsDirPath)) {
+        sendText(res, 404, 'Not found');
+        return true;
+      }
+      try {
+        const stat = await fs.promises.stat(absPath);
+        if (!stat.isFile()) {
+          sendText(res, 404, 'Not found');
+          return true;
+        }
+        res.writeHead(200, {
+          ...buildSecurityHeaders({
+            'Content-Type': getAssetContentType(ext),
+            'Cache-Control': 'public, max-age=300',
+          }),
+        });
+        await pipeline(fs.createReadStream(absPath), res);
+        return true;
+      } catch {
+        sendText(res, 404, 'Not found');
+        return true;
+      }
+    }
 
     if (String(pathname || '').startsWith('/admin/assets/visuals/')) {
       let relativeName = '';

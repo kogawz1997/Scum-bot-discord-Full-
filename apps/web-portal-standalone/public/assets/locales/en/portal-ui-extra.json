@@ -10,7 +10,7 @@
     "shell.role.service": "Service",
     "player.app.status.loading": "Loading player data...",
     "player.app.card.loadingTitle": "Preparing player data",
-    "player.app.card.loadingDetail": "Loading wallet, shop, orders, stats, and community updates.",
+    "player.app.card.loadingDetail": "Loading account, store, orders, and community updates.",
     "player.app.status.ready": "Ready",
     "player.app.card.loadFailedTitle": "Could not load player portal",
     "player.app.status.loadFailed": "Load failed",
@@ -19,15 +19,15 @@
     "player.app.page.home": "Home",
     "player.app.page.commerce": "Shop, wallet, and orders",
     "player.app.page.stats": "Stats, events, and support",
-    "player.nav.group.start": "Start",
-    "player.nav.group.commerce": "Shop and wallet",
-    "player.nav.group.community": "Community",
-    "player.nav.home": "Home",
-    "player.nav.commerce": "Shop, Wallet & Orders",
-    "player.nav.commerceLocked": "Shop, Wallet & Orders (Locked)",
+    "player.nav.group.start": "Overview",
+    "player.nav.group.commerce": "Store and wallet",
+    "player.nav.group.community": "Community and stats",
+    "player.nav.home": "Overview",
+    "player.nav.commerce": "Store, Wallet & Orders",
+    "player.nav.commerceLocked": "Store, Wallet & Orders (Locked)",
     "player.nav.stats": "Stats, Events & Support",
     "player.nav.statsLocked": "Stats, Events & Support (Locked)",
     "player.notice.lockedTitle": "This server has not opened this area yet",
-    "player.notice.lockedDetail": "This server package has not opened this page for players yet, so the portal returned you to an available area first."
+    "player.notice.lockedDetail": "This area is not included in the current server package yet, so the portal returned you to a page that is available now."
   }
 }

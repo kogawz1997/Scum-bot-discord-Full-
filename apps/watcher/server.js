@@ -5,16 +5,9 @@ const { startScumServerBotRuntime } = require('../../src/services/scumServerBotR
 
 if (require.main === module) {
   const watcher = startWatcher();
-  const serverBot = startScumServerBotRuntime();
-  void serverBot.start().catch((error) => {
-    console.error('[scum-server-bot] startup failed', error?.message || error);
-  });
 
   const shutdown = async () => {
-    await Promise.allSettled([
-      watcher?.close?.(),
-      serverBot?.close?.(),
-    ]);
+    await Promise.allSettled([watcher?.close?.()]);
     process.exit(0);
   };
 

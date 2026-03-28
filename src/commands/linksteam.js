@@ -84,7 +84,7 @@ module.exports = {
         });
       }
 
-      const result = bindSteamLinkForUser({
+      const result = await bindSteamLinkForUser({
         userId: interaction.user.id,
         steamId,
         inGameName: name || null,
@@ -200,7 +200,7 @@ module.exports = {
         });
       }
 
-      const result = bindSteamLinkForUser({
+      const result = await bindSteamLinkForUser({
         userId: user.id,
         steamId,
         inGameName: name || null,

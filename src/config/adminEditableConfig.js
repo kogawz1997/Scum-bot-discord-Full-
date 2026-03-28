@@ -170,7 +170,7 @@ const CONTROL_PANEL_ENV_FIELDS = Object.freeze([
   defineEnvField({ file: 'root', key: 'ADMIN_WEB_LOGIN_SPIKE_THRESHOLD', type: 'number', description: 'Admin login spike threshold across all sources' }),
   defineEnvField({ file: 'root', key: 'ADMIN_WEB_LOGIN_SPIKE_IP_THRESHOLD', type: 'number', description: 'Admin login spike threshold per IP' }),
   defineEnvField({ file: 'root', key: 'ADMIN_WEB_LOGIN_SPIKE_ALERT_COOLDOWN_MS', type: 'number', description: 'Cooldown for login spike alerts' }),
-  defineEnvField({ file: 'root', key: 'BOT_ENABLE_ADMIN_WEB', type: 'boolean', description: 'Expose embedded admin web runtime' }),
+  defineEnvField({ file: 'root', key: 'BOT_ENABLE_ADMIN_WEB', type: 'boolean', description: 'Enable standalone admin web runtime' }),
   defineEnvField({ file: 'root', key: 'BOT_ENABLE_SCUM_WEBHOOK', type: 'boolean', description: 'Mount SCUM webhook runtime in bot process' }),
   defineEnvField({ file: 'root', key: 'BOT_ENABLE_RENTBIKE_SERVICE', type: 'boolean', description: 'Run rent-bike service in bot process' }),
   defineEnvField({ file: 'root', key: 'BOT_ENABLE_DELIVERY_WORKER', type: 'boolean', description: 'Run delivery worker in bot process' }),

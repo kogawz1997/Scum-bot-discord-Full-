@@ -73,6 +73,8 @@ function createStoreHarness() {
 
 test('public preview service validates signup input and creates preview tenant state', async () => {
   const store = createStoreHarness();
+  const issuedResetTokens = [];
+  const issuedVerificationTokens = [];
   const service = createPublicPreviewService({
     createTenant: async (input) => ({
       ok: true,
@@ -98,6 +100,48 @@ test('public preview service validates signup input and creates preview tenant s
       locale: 'th',
     }),
     getPackageCatalog: () => [{ id: 'BOT_LOG_DELIVERY', title: 'Bot Log + Delivery' }],
+    ensurePlatformUserIdentity: async (input) => ({
+      ok: true,
+      user: { id: `user-${input.providerUserId}` },
+      identities: [{ provider: input.provider }],
+      memberships: input.tenantId ? [{ tenantId: input.tenantId, role: input.role || 'owner', membershipType: 'tenant' }] : [],
+    }),
+    getIdentitySummaryForPreviewAccount: async (account) => ({
+      user: { id: `user-${account.id}` },
+      identities: [{ provider: 'email_preview' }],
+      memberships: account.tenantId ? [{ tenantId: account.tenantId, role: 'owner', membershipType: 'tenant' }] : [],
+    }),
+    issuePasswordResetToken: async (input) => {
+      issuedResetTokens.push(input);
+      return {
+        ok: true,
+        rawToken: 'rst_test.token',
+        token: { id: 'rst-1', email: input.email },
+      };
+    },
+    issueEmailVerificationToken: async (input) => {
+      issuedVerificationTokens.push(input);
+      return {
+        ok: true,
+        rawToken: 'vfy_test.token',
+        token: { id: 'vfy-1', email: input.email },
+      };
+    },
+    completeEmailVerification: async () => ({
+      ok: true,
+      verification: {
+        previewAccountId: 'preview-account-1',
+        email: 'demo@example.com',
+      },
+    }),
+    completePasswordReset: async () => ({
+      ok: true,
+      token: {
+        previewAccountId: 'preview-account-1',
+        email: 'demo@example.com',
+      },
+    }),
+    exposeDebugTokens: true,
     ...store,
   });
 
@@ -131,8 +175,13 @@ test('public preview service validates signup input and creates preview tenant s
   assert.equal(result.ok, true);
   assert.equal(result.account.email, 'demo@example.com');
   assert.equal(result.account.accountState, 'preview');
+  assert.equal(result.account.verificationState, 'pending_email_verification');
+  assert.equal(String(result.account.identity?.userId || ''), 'user-preview-account-1');
+  assert.equal(result.account.verificationQueued, true);
+  assert.equal(result.account.verificationTokenPreview, 'vfy_test.token');
   assert.equal(result.tenant.name, 'Demo Community');
   assert.equal(result.subscription.planId, 'trial-14d');
+  assert.equal(issuedVerificationTokens.length, 1);
 
   const auth = await service.authenticatePreviewAccount({
     email: 'demo@example.com',
@@ -140,11 +189,48 @@ test('public preview service validates signup input and creates preview tenant s
   });
   assert.equal(auth.ok, true);
   assert.ok(auth.account.lastLoginAt);
+  assert.deepEqual(auth.account.identity?.providers, ['email_preview']);
 
   const state = await service.getPreviewState(result.account.id);
   assert.equal(state.ok, true);
   assert.equal(state.state.account.email, 'demo@example.com');
   assert.deepEqual(state.state.entitlements.enabledFeatureKeys, ['bot_log', 'shop_module']);
+  assert.equal(String(state.state.identity?.userId || ''), 'user-preview-account-1');
+
+  const reset = await service.requestPasswordReset({
+    email: 'demo@example.com',
+  });
+  assert.equal(reset.ok, true);
+  assert.equal(reset.requested, true);
+  assert.equal(reset.resetTokenQueued, true);
+  assert.equal(reset.resetTokenPreview, 'rst_test.token');
+  assert.equal(issuedResetTokens.length, 1);
+
+  const verificationRequest = await service.requestEmailVerification({
+    email: 'demo@example.com',
+  });
+  assert.equal(verificationRequest.ok, true);
+  assert.equal(verificationRequest.requested, true);
+  assert.equal(verificationRequest.verificationTokenQueued, true);
+  assert.equal(verificationRequest.verificationTokenPreview, 'vfy_test.token');
+
+  const verified = await service.completeEmailVerification({
+    token: 'vfy_test.token',
+  });
+  assert.equal(verified.ok, true);
+  assert.equal(verified.account.verificationState, 'email_verified');
+
+  const resetComplete = await service.completePasswordReset({
+    token: 'rst_test.token',
+    password: 'new-strong-pass-456',
+  });
+  assert.equal(resetComplete.ok, true);
+
+  const reauth = await service.authenticatePreviewAccount({
+    email: 'demo@example.com',
+    password: 'new-strong-pass-456',
+  });
+  assert.equal(reauth.ok, true);
 });
 
 test('public preview service falls back to lightweight preview state when tenant bootstrap fails', async () => {
@@ -157,6 +243,22 @@ test('public preview service falls back to lightweight preview state when tenant
       throw new Error('subscription-unavailable');
     },
     getPackageCatalog: () => [{ id: 'BOT_LOG_DELIVERY', title: 'Bot Log + Delivery' }],
+    ensurePlatformUserIdentity: async (input) => ({
+      ok: true,
+      user: { id: `user-${input.providerUserId}` },
+      identities: [{ provider: input.provider }],
+      memberships: [],
+    }),
+    issueEmailVerificationToken: async () => ({
+      ok: true,
+      rawToken: 'vfy_fallback.token',
+      token: { id: 'vfy-1', email: 'fallback@example.com' },
+    }),
+    getIdentitySummaryForPreviewAccount: async (account) => ({
+      user: { id: `user-${account.id}` },
+      identities: [{ provider: 'email_preview' }],
+      memberships: [],
+    }),
     ...store,
   });
 
@@ -180,4 +282,5 @@ test('public preview service falls back to lightweight preview state when tenant
   assert.equal(state.state.tenant.status, 'preview');
   assert.ok(state.state.entitlements.enabledFeatureKeys.includes('bot_delivery'));
   assert.ok(state.state.entitlements.enabledFeatureKeys.includes('execute_agent'));
+  assert.equal(String(state.state.identity?.userId || ''), 'user-preview-account-1');
 });

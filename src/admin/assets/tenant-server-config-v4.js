@@ -24,7 +24,7 @@
       ],
     },
     {
-      label: 'รันไทม์',
+      label: 'เครื่องมือ',
       items: [
         { label: 'Delivery Agent', href: '#delivery-agents' },
         { label: 'Server Bot', href: '#server-bots' },
@@ -225,6 +225,49 @@
     if (normalized === 'failed' || normalized === 'error') return 'เกิดข้อผิดพลาด';
     if (normalized === 'offline') return 'ออฟไลน์';
     return normalized ? humanizeIdentifier(normalized) : 'ไม่ทราบสถานะ';
+  }
+
+  function normalizeCapabilities(value) {
+    const raw = Array.isArray(value)
+      ? value
+      : typeof value === 'string'
+        ? value.split(/[,\n]+/g)
+        : [];
+    return raw.map((entry) => String(entry || '').trim().toLowerCase()).filter(Boolean);
+  }
+
+  function isServerBotEntry(row) {
+    const meta = row?.meta && typeof row.meta === 'object' ? row.meta : {};
+    const role = trimText(meta.agentRole || meta.role || row.role, 80).toLowerCase();
+    const scope = trimText(meta.agentScope || meta.scope || row.scope, 80).toLowerCase();
+    if (['sync', 'hybrid'].includes(role) || ['sync_only', 'sync-only', 'synconly', 'sync_execute', 'sync-execute'].includes(scope)) {
+      return true;
+    }
+    const text = [
+      row?.runtimeKey,
+      row?.channel,
+      row?.name,
+      row?.status,
+      row?.role,
+      row?.scope,
+      meta.agentRole,
+      meta.agentScope,
+      ...normalizeCapabilities(meta.capabilities || meta.features),
+    ]
+      .map((entry) => String(entry || '').trim().toLowerCase())
+      .filter(Boolean)
+      .join(' ');
+    return ['sync', 'watcher', 'watch', 'log', 'config', 'restart', 'read', 'monitor'].some((token) => text.includes(token));
+  }
+
+  function buildConfigEmptyState(kind, title, detail, actionLabel, actionHref) {
+    return {
+      kind: trimText(kind, 80) || 'general',
+      title: firstNonEmpty([title], ''),
+      detail: firstNonEmpty([detail], ''),
+      actionLabel: firstNonEmpty([actionLabel], 'ตรวจ Server Bot'),
+      actionHref: firstNonEmpty([actionHref], '#server-bots'),
+    };
   }
 
   function coerceBoolean(value, fallback = false) {
@@ -518,7 +561,19 @@
     const workspace = state.serverConfigWorkspace && typeof state.serverConfigWorkspace === 'object'
       ? state.serverConfigWorkspace
       : {};
+    const activeServerId = trimText(state?.activeServer?.id || state?.servers?.[0]?.id, 160);
+    const hasServers = Array.isArray(state.servers) && state.servers.length > 0;
     const files = Array.isArray(workspace.files) ? workspace.files : [];
+    const serverBotRows = (Array.isArray(state.agents) ? state.agents : []).filter(isServerBotEntry);
+    const serverBotProvisioning = (Array.isArray(state.agentProvisioning) ? state.agentProvisioning : []).filter(isServerBotEntry);
+    const selectedServerBots = serverBotRows.filter((row) => {
+      const rowServerId = firstNonEmpty([row?.meta?.serverId, row?.serverId, row?.tenantServerId], '');
+      return !activeServerId || !rowServerId || rowServerId === activeServerId;
+    });
+    const selectedServerProvisioning = serverBotProvisioning.filter((row) => {
+      const rowServerId = firstNonEmpty([row?.serverId, row?.meta?.serverId, row?.tenantServerId], '');
+      return !activeServerId || !rowServerId || rowServerId === activeServerId;
+    });
     const categories = appendAccessListsToCategories(buildWorkspaceCategories(state), files);
     const backups = Array.isArray(workspace.backups) ? workspace.backups : [];
     const snapshotStatus = firstNonEmpty([workspace.snapshotStatus], 'missing');
@@ -531,6 +586,55 @@
       ? state.tenantConfig.portalEnvPatch
       : {};
     const firstField = categories[0]?.groups?.[0]?.settings?.[0] || null;
+    const emptyState = !hasServers
+      ? buildConfigEmptyState(
+          'missing-server',
+          'ยังไม่มีเซิร์ฟเวอร์',
+          'สร้างหรือเลือกเซิร์ฟเวอร์ก่อน จึงจะโหลดค่าจริงและไฟล์ตั้งค่าของเซิร์ฟเวอร์นี้ได้',
+          'ไปหน้าเซิร์ฟเวอร์',
+          '#server-status',
+        )
+      : selectedServerBots.length === 0 && selectedServerProvisioning.length === 0
+        ? buildConfigEmptyState(
+            'missing-server-bot',
+            'ยังไม่มี Server Bot',
+            'สร้าง Server Bot สำหรับเซิร์ฟเวอร์นี้ก่อน เพื่อให้ระบบอ่านไฟล์ตั้งค่าและส่งค่าจริงกลับมา',
+            'ไปหน้า Server Bot',
+            '#server-bots',
+          )
+        : selectedServerBots.length === 0 && selectedServerProvisioning.length > 0
+          ? buildConfigEmptyState(
+              'pending-server-bot',
+              'กำลังรอติดตั้ง Server Bot',
+              'ตอนนี้มีโทเค็นสำหรับเซิร์ฟเวอร์นี้แล้ว ให้นำคำสั่งติดตั้งไปใช้บนเครื่องเซิร์ฟเวอร์ แล้วรีเฟรชหน้านี้อีกครั้ง',
+              'ไปหน้า Server Bot',
+              '#server-bots',
+            )
+          : snapshotStatus === 'failed' || snapshotStatus === 'error'
+            ? buildConfigEmptyState(
+                'snapshot-error',
+                'อ่านไฟล์ตั้งค่าไม่สำเร็จ',
+                firstNonEmpty([workspace.lastError], 'ให้ตรวจสิทธิ์เข้าถึงโฟลเดอร์ config ของ Server Bot แล้วลองใหม่อีกครั้ง'),
+                'ตรวจ Server Bot',
+                '#server-bots',
+              )
+            : snapshotStatus === 'processing'
+              ? buildConfigEmptyState(
+                  'snapshot-processing',
+                  'กำลังโหลดค่าจริงจาก Server Bot',
+                  'ระบบกำลังรอ snapshot ล่าสุดจากเครื่องเซิร์ฟเวอร์ ให้รอสักครู่แล้วรีเฟรชหน้านี้อีกครั้ง',
+                  'ไปหน้า Server Bot',
+                  '#server-bots',
+                )
+              : buildConfigEmptyState(
+                  'missing-snapshot',
+                  'ยังไม่โหลดค่าจริงจาก Server Bot',
+                  selectedServerBots.length
+                    ? 'Server Bot เชื่อมต่อแล้ว แต่ยังไม่ส่ง snapshot กลับมา ให้ตรวจสิทธิ์เข้าถึงไฟล์ตั้งค่าแล้วลองรีเฟรชอีกครั้ง'
+                    : 'ให้ตรวจว่า Server Bot ออนไลน์ เข้าถึงไฟล์ config ได้ และส่ง snapshot กลับเข้าระบบแล้ว',
+                  'ตรวจ Server Bot',
+                  '#server-bots',
+                );
 
     return {
       shell: {
@@ -547,7 +651,7 @@
       },
       header: {
         title: 'ตั้งค่าเซิร์ฟเวอร์',
-        subtitle: 'จัดการค่าหลักของเซิร์ฟเวอร์ SCUM ผ่าน Server Bot โดยไม่ต้องเปิดไฟล์ .ini เอง',
+        subtitle: 'จัดการค่าหลักของเซิร์ฟเวอร์ SCUM จากหน้าเว็บ โดยไม่ต้องเปิดไฟล์ตั้งค่าเอง',
         serverName: firstNonEmpty([
           state?.activeServer?.name,
           state?.activeServer?.slug,
@@ -632,10 +736,11 @@
         title: 'ยังไม่โหลดค่าจริงจาก Server Bot',
         detail: workspaceReady
           ? ''
-          : 'ให้ตรวจว่า Server Bot ออนไลน์ เข้าถึงไฟล์ config ได้ และส่ง snapshot กลับเข้าระบบแล้ว',
+          : 'ให้ตรวจว่า Server Bot ออนไลน์ เข้าถึงไฟล์ตั้งค่าได้ และส่งค่าล่าสุดกลับเข้าระบบแล้ว',
         actionLabel: 'ตรวจ Server Bot',
         actionHref: '#server-bots',
       },
+      emptyState,
     };
   }
 
@@ -907,10 +1012,10 @@
         '</aside></div></section>',
       ].join('')
       : [
-        '<section class="tdv4-config-layout-panel"><article class="tdv4-panel tdv4-readable-empty">',
+        `<section class="tdv4-config-layout-panel"><article class="tdv4-panel tdv4-readable-empty" data-server-config-empty-kind="${escapeHtml(safe.emptyState.kind || 'general')}">`,
         `<strong>${escapeHtml(safe.emptyState.title)}</strong>`,
         `<p>${escapeHtml(safe.emptyState.detail)}</p>`,
-        `<div class="tdv4-pagehead-actions"><a class="tdv4-button tdv4-button-primary" href="${escapeHtml(safe.emptyState.actionHref)}">${escapeHtml(safe.emptyState.actionLabel)}</a></div>`,
+        `<div class="tdv4-pagehead-actions"><a class="tdv4-button tdv4-button-primary" data-server-config-empty-action href="${escapeHtml(safe.emptyState.actionHref)}">${escapeHtml(safe.emptyState.actionLabel)}</a></div>`,
         '</article></section>',
       ].join('');
 

@@ -139,6 +139,18 @@ body { padding: 24px; }
 .odv4-rail-sticky { padding: 20px; }
 .odv4-sidebar { align-self: start; gap: 24px; }
 
+.odv4-focus-target {
+  scroll-margin-top: 104px;
+}
+
+.odv4-focus-target-active {
+  border-radius: var(--odv4-radius);
+  box-shadow:
+    0 0 0 1px rgba(207, 174, 101, 0.32),
+    0 0 0 8px rgba(207, 174, 101, 0.08);
+  transition: box-shadow 180ms ease;
+}
+
 .odv4-sidebar-copy,
 .odv4-rail-copy,
 .odv4-rail-detail,

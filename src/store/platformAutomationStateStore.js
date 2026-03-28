@@ -1,10 +1,14 @@
 const fs = require('node:fs');
 
-const { atomicWriteJson, getFilePath } = require('./_persist');
+const { prisma } = require('../prisma');
+const { atomicWriteJson, getFilePath, isDbPersistenceEnabled } = require('./_persist');
 
 const FILE_PATH = getFilePath('platform-automation-state.json');
+const STATE_ROW_ID = 'platform-automation-state';
 
 let state = null;
+let initPromise = null;
+let writeQueue = Promise.resolve();
 
 function nowIso() {
   return new Date().toISOString();
@@ -12,7 +16,7 @@ function nowIso() {
 
 function normalizeIso(value) {
   if (!value) return null;
-  const date = new Date(value);
+  const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return null;
   return date.toISOString();
 }
@@ -67,6 +71,20 @@ function normalizeResultMap(value) {
   return out;
 }
 
+function parseJsonMap(value) {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value;
+  }
+  const text = trimText(value, 20000);
+  if (!text) return {};
+  try {
+    const parsed = JSON.parse(text);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 function buildDefaultState() {
   return {
     schemaVersion: 1,
@@ -98,63 +116,205 @@ function normalizeState(next = {}) {
   };
 }
 
+function normalizeStateRecord(row) {
+  if (!row || typeof row !== 'object') {
+    return buildDefaultState();
+  }
+  return normalizeState({
+    updatedAt: row.updatedAt,
+    lastAutomationAt: row.lastAutomationAt,
+    lastForcedMonitoringAt: row.lastForcedMonitoringAt,
+    lastRecoveryAtByKey: parseJsonMap(row.lastRecoveryAtByKeyJson),
+    recoveryWindowStartedAtByKey: parseJsonMap(row.recoveryWindowStartedAtByKeyJson),
+    recoveryAttemptsByKey: parseJsonMap(row.recoveryAttemptsByKeyJson),
+    lastRecoveryResultByKey: parseJsonMap(row.lastRecoveryResultByKeyJson),
+  });
+}
+
+function serializeStateRow(snapshot) {
+  const normalized = normalizeState(snapshot || {});
+  return {
+    id: STATE_ROW_ID,
+    lastAutomationAt: normalized.lastAutomationAt ? new Date(normalized.lastAutomationAt) : null,
+    lastForcedMonitoringAt: normalized.lastForcedMonitoringAt ? new Date(normalized.lastForcedMonitoringAt) : null,
+    lastRecoveryAtByKeyJson: JSON.stringify(normalized.lastRecoveryAtByKey),
+    recoveryWindowStartedAtByKeyJson: JSON.stringify(normalized.recoveryWindowStartedAtByKey),
+    recoveryAttemptsByKeyJson: JSON.stringify(normalized.recoveryAttemptsByKey),
+    lastRecoveryResultByKeyJson: JSON.stringify(normalized.lastRecoveryResultByKey),
+  };
+}
+
+function getAutomationStateDelegate(client = prisma) {
+  if (!client || typeof client !== 'object') return null;
+  const delegate = client.platformAutomationState;
+  if (!delegate || typeof delegate.findUnique !== 'function') return null;
+  return delegate;
+}
+
+function getPersistenceMode() {
+  const explicit = String(process.env.PLATFORM_AUTOMATION_STATE_STORE_MODE || '').trim().toLowerCase();
+  if (explicit === 'file') return 'file';
+  if (explicit === 'db') return 'db';
+  if (
+    typeof isDbPersistenceEnabled === 'function'
+    && isDbPersistenceEnabled()
+    && String(process.env.NODE_ENV || '').trim().toLowerCase() === 'production'
+  ) {
+    return 'db';
+  }
+  return 'auto';
+}
+
+function shouldFallbackToFile(error) {
+  const code = String(error?.code || '').trim().toUpperCase();
+  if (['P2021', 'P2022', 'P1017'].includes(code)) return true;
+  const message = String(error?.message || '').toLowerCase();
+  return message.includes('no such table')
+    || message.includes('does not exist')
+    || message.includes('unknown table')
+    || message.includes('error validating datasource')
+    || message.includes('url must start with the protocol')
+    || message.includes('platformautomationstate');
+}
+
+async function runWithPreferredPersistence(dbWork, fileWork) {
+  const mode = getPersistenceMode();
+  const delegate = getAutomationStateDelegate();
+  if (mode === 'file' || !delegate) {
+    return fileWork();
+  }
+  try {
+    return await dbWork(delegate);
+  } catch (error) {
+    if (mode === 'db' || !shouldFallbackToFile(error)) {
+      throw error;
+    }
+    return fileWork();
+  }
+}
+
+function queueWrite(work, label) {
+  writeQueue = writeQueue
+    .then(async () => {
+      await work();
+    })
+    .catch((error) => {
+      console.error(`[platformAutomationStateStore] ${label} failed:`, error.message);
+    });
+  return writeQueue;
+}
+
 function writeStateToDisk() {
   const snapshot = normalizeState(state || {});
   atomicWriteJson(FILE_PATH, snapshot);
 }
 
-function initPlatformAutomationStateStore() {
-  if (state) return state;
+async function hydrateFromDisk() {
   try {
     if (fs.existsSync(FILE_PATH)) {
       const raw = fs.readFileSync(FILE_PATH, 'utf8');
       if (raw.trim()) {
         state = normalizeState(JSON.parse(raw));
-        return state;
+        return;
       }
     }
   } catch (error) {
     console.error('[platformAutomationStateStore] failed to hydrate:', error.message);
   }
   state = buildDefaultState();
-  return state;
 }
 
-function getPlatformAutomationState() {
-  initPlatformAutomationStateStore();
+async function hydrateFromDatabase(delegate = getAutomationStateDelegate()) {
+  if (!delegate) {
+    state = buildDefaultState();
+    return;
+  }
+  const row = await delegate.findUnique({
+    where: { id: STATE_ROW_ID },
+  });
+  state = normalizeStateRecord(row);
+}
+
+async function persistStateToDatabase(delegate = getAutomationStateDelegate()) {
+  if (!delegate) return;
+  const payload = serializeStateRow(state || buildDefaultState());
+  await delegate.upsert({
+    where: { id: STATE_ROW_ID },
+    create: payload,
+    update: {
+      lastAutomationAt: payload.lastAutomationAt,
+      lastForcedMonitoringAt: payload.lastForcedMonitoringAt,
+      lastRecoveryAtByKeyJson: payload.lastRecoveryAtByKeyJson,
+      recoveryWindowStartedAtByKeyJson: payload.recoveryWindowStartedAtByKeyJson,
+      recoveryAttemptsByKeyJson: payload.recoveryAttemptsByKeyJson,
+      lastRecoveryResultByKeyJson: payload.lastRecoveryResultByKeyJson,
+    },
+  });
+}
+
+function initPlatformAutomationStateStore() {
+  if (!initPromise) {
+    initPromise = runWithPreferredPersistence(
+      (delegate) => hydrateFromDatabase(delegate),
+      () => hydrateFromDisk(),
+    ).catch(async (error) => {
+      if (getPersistenceMode() === 'db' || !shouldFallbackToFile(error)) {
+        throw error;
+      }
+      console.error('[platformAutomationStateStore] failed to hydrate from prisma:', error.message);
+      await hydrateFromDisk();
+    });
+  }
+  return initPromise;
+}
+
+async function getPlatformAutomationState() {
+  await initPlatformAutomationStateStore();
   return normalizeState(state || {});
 }
 
-function updatePlatformAutomationState(patch = {}) {
-  initPlatformAutomationStateStore();
+async function updatePlatformAutomationState(patch = {}) {
+  await initPlatformAutomationStateStore();
   state = normalizeState({
     ...(state || {}),
     ...(patch && typeof patch === 'object' ? patch : {}),
     updatedAt: nowIso(),
   });
-  try {
-    writeStateToDisk();
-  } catch (error) {
-    console.error('[platformAutomationStateStore] failed to persist:', error.message);
-  }
-  return getPlatformAutomationState();
+  queueWrite(
+    () => runWithPreferredPersistence(
+      (delegate) => persistStateToDatabase(delegate),
+      async () => writeStateToDisk(),
+    ),
+    'persist',
+  );
+  return normalizeState(state || {});
 }
 
-function resetPlatformAutomationState() {
+async function resetPlatformAutomationState() {
+  await initPlatformAutomationStateStore();
   state = buildDefaultState();
-  try {
-    writeStateToDisk();
-  } catch (error) {
-    console.error('[platformAutomationStateStore] failed to reset:', error.message);
-  }
-  return getPlatformAutomationState();
+  queueWrite(
+    () => runWithPreferredPersistence(
+      (delegate) => persistStateToDatabase(delegate),
+      async () => writeStateToDisk(),
+    ),
+    'reset',
+  );
+  return normalizeState(state || {});
 }
 
-initPlatformAutomationStateStore();
+function waitForPlatformAutomationStatePersistence() {
+  return writeQueue;
+}
+
+void initPlatformAutomationStateStore().catch((error) => {
+  console.error('[platformAutomationStateStore] init failed:', error.message);
+});
 
 module.exports = {
   getPlatformAutomationState,
   initPlatformAutomationStateStore,
   resetPlatformAutomationState,
   updatePlatformAutomationState,
+  waitForPlatformAutomationStatePersistence,
 };

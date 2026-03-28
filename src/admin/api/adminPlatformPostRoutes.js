@@ -15,6 +15,9 @@ function createAdminPlatformPostRoutes(deps) {
     getCurrentObservabilitySnapshot,
     publishAdminLiveUpdate,
     createTenant,
+    inviteTenantStaff,
+    updateTenantStaffRole,
+    revokeTenantStaffMembership,
     createServer,
     createServerDiscordLink,
     createSubscription,
@@ -229,6 +232,77 @@ function createAdminPlatformPostRoutes(deps) {
         return true;
       }
       sendJson(res, 200, { ok: true, data: result.tenant });
+      return true;
+    }
+
+    if (pathname === '/admin/api/platform/tenant-staff') {
+      const tenantId = resolveScopedTenantId(
+        req,
+        res,
+        auth,
+        requiredString(body, 'tenantId') || getAuthTenantId(auth),
+        { required: true },
+      );
+      if (!tenantId) return true;
+      const result = await inviteTenantStaff?.({
+        tenantId,
+        email: requiredString(body, 'email'),
+        displayName: requiredString(body, 'displayName'),
+        role: requiredString(body, 'role'),
+        locale: requiredString(body, 'locale'),
+      }, `admin-web:${auth?.user || 'unknown'}`);
+      if (!result?.ok) {
+        sendJson(res, 400, { ok: false, error: result?.reason || 'tenant-staff-invite-failed' });
+        return true;
+      }
+      sendJson(res, 200, { ok: true, data: result.staff });
+      return true;
+    }
+
+    if (pathname === '/admin/api/platform/tenant-staff/role') {
+      const tenantId = resolveScopedTenantId(
+        req,
+        res,
+        auth,
+        requiredString(body, 'tenantId') || getAuthTenantId(auth),
+        { required: true },
+      );
+      if (!tenantId) return true;
+      const result = await updateTenantStaffRole?.({
+        tenantId,
+        membershipId: requiredString(body, 'membershipId'),
+        userId: requiredString(body, 'userId'),
+        role: requiredString(body, 'role'),
+        status: requiredString(body, 'status'),
+      }, `admin-web:${auth?.user || 'unknown'}`);
+      if (!result?.ok) {
+        sendJson(res, 400, { ok: false, error: result?.reason || 'tenant-staff-role-failed' });
+        return true;
+      }
+      sendJson(res, 200, { ok: true, data: result.staff });
+      return true;
+    }
+
+    if (pathname === '/admin/api/platform/tenant-staff/revoke') {
+      const tenantId = resolveScopedTenantId(
+        req,
+        res,
+        auth,
+        requiredString(body, 'tenantId') || getAuthTenantId(auth),
+        { required: true },
+      );
+      if (!tenantId) return true;
+      const result = await revokeTenantStaffMembership?.({
+        tenantId,
+        membershipId: requiredString(body, 'membershipId'),
+        userId: requiredString(body, 'userId'),
+        revokeReason: requiredString(body, 'revokeReason'),
+      }, `admin-web:${auth?.user || 'unknown'}`);
+      if (!result?.ok) {
+        sendJson(res, 400, { ok: false, error: result?.reason || 'tenant-staff-revoke-failed' });
+        return true;
+      }
+      sendJson(res, 200, { ok: true, data: result.staff });
       return true;
     }
 

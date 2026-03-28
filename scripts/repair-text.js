@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const dotenv = require('dotenv');
-const { Prisma } = require('@prisma/client');
+const { Prisma } = require('../src/prismaClientLoader');
 const { prisma } = require('../src/prisma');
 const {
   repairMojibakeText,

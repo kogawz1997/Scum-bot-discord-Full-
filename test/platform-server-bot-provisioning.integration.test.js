@@ -7,12 +7,13 @@ const os = require('node:os');
 const path = require('node:path');
 const { once } = require('node:events');
 
-const { prisma } = require('../src/prisma');
+const { cleanupPlatformTenantFixtures } = require('./helpers/platformTestCleanup');
 
 const adminWebServerPath = path.resolve(__dirname, '../src/adminWebServer.js');
 const persistPath = path.resolve(__dirname, '../src/store/_persist.js');
 const runtimeDataDirPath = path.resolve(__dirname, '../src/utils/runtimeDataDir.js');
 const registryPath = path.resolve(__dirname, '../src/data/repositories/controlPlaneRegistryRepository.js');
+const TEST_TENANT_IDS = Object.freeze(['tenant-server-bot-provision']);
 
 function freshAdminWebServerModule() {
   for (const entry of [adminWebServerPath, persistPath, runtimeDataDirPath, registryPath]) {
@@ -26,15 +27,9 @@ function randomPort() {
 }
 
 async function cleanupPlatformTables() {
-  await prisma.$transaction([
-    prisma.platformMarketplaceOffer.deleteMany({}),
-    prisma.platformAgentRuntime.deleteMany({}),
-    prisma.platformWebhookEndpoint.deleteMany({}),
-    prisma.platformApiKey.deleteMany({}),
-    prisma.platformLicense.deleteMany({}),
-    prisma.platformSubscription.deleteMany({}),
-    prisma.platformTenant.deleteMany({}),
-  ]);
+  await cleanupPlatformTenantFixtures({
+    tenantIds: TEST_TENANT_IDS,
+  });
 }
 
 test('platform provisioning brings a server bot online with setup token, register, and session heartbeat', async (t) => {

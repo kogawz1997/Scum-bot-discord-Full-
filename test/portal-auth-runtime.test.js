@@ -30,6 +30,7 @@ function createRuntime(overrides = {}) {
       return payload;
     },
     upsertPlayerAccount: async () => {},
+    ensurePlatformPlayerIdentity: async () => ({ ok: true, user: { id: 'platform-user-1' }, profile: { id: 'player-profile-1' } }),
     buildDiscordAvatarUrl: () => null,
     normalizeText(value) {
       return String(value || '').trim();
@@ -142,4 +143,93 @@ test('portal auth runtime builds local-safe cookie for loopback hosts', () => {
   assert.match(cookie, /portal_session=session-1/);
   assert.doesNotMatch(cookie, /Domain=/);
   assert.doesNotMatch(cookie, /Secure/);
+});
+
+test('portal auth runtime syncs platform identity during discord callback', async () => {
+  const calls = [];
+  const runtime = createRuntime({
+    upsertPlayerAccount: async () => {},
+    ensurePlatformPlayerIdentity: async (payload) => {
+      calls.push(payload);
+      return {
+        ok: true,
+        user: { id: 'platform-user-42' },
+        profile: { id: 'platform-profile-42' },
+      };
+    },
+  });
+
+  const startRes = {
+    statusCode: 200,
+    headers: {},
+    writeHead(statusCode, headers = {}) {
+      this.statusCode = statusCode;
+      this.headers = { ...this.headers, ...headers };
+    },
+    end() {},
+  };
+  await runtime.handleDiscordStart({}, startRes);
+  const location = String(startRes.headers.Location || '');
+  const state = new URL(location).searchParams.get('state');
+
+  const originalFetch = global.fetch;
+  global.fetch = async (url) => {
+    const target = String(url || '');
+    if (target.includes('/oauth2/token')) {
+      return {
+        ok: true,
+        json: async () => ({ access_token: 'discord-token' }),
+      };
+    }
+    if (target.includes('/users/@me')) {
+      return {
+        ok: true,
+        json: async () => ({
+          id: '123456789012345678',
+          username: 'tester',
+          global_name: 'Tester',
+        }),
+      };
+    }
+    throw new Error(`Unexpected fetch ${target}`);
+  };
+
+  try {
+    const callbackRes = {
+      statusCode: 200,
+      headers: {},
+      writeHead(statusCode, headers = {}) {
+        this.statusCode = statusCode;
+        this.headers = { ...this.headers, ...headers };
+      },
+      end() {},
+    };
+    await runtime.handleDiscordCallback(
+      {
+        headers: {
+          host: 'player.example.com',
+        },
+      },
+      callbackRes,
+      new URL(`https://player.example.com/auth/discord/callback?state=${encodeURIComponent(state)}&code=oauth-code`),
+    );
+
+    assert.equal(callbackRes.statusCode, 302);
+    assert.equal(callbackRes.headers.Location, '/player');
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].provider, 'discord');
+    assert.equal(calls[0].providerUserId, '123456789012345678');
+
+    const cookieHeader = String(callbackRes.headers['Set-Cookie'] || '');
+    const sessionCookie = cookieHeader.split(';')[0];
+    const session = runtime.getSession({
+      headers: {
+        cookie: sessionCookie,
+      },
+    });
+    assert.equal(session.platformUserId, 'platform-user-42');
+    assert.equal(session.platformProfileId, 'platform-profile-42');
+  } finally {
+    global.fetch = originalFetch;
+  }
 });

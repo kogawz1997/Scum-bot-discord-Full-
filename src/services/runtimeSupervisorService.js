@@ -90,7 +90,7 @@ function buildRuntimeTargets() {
     .trim()
     .toLowerCase();
   const botEnabled =
-    envFlag(process.env.BOT_ENABLE_ADMIN_WEB, true)
+    asPort(process.env.BOT_HEALTH_PORT) > 0
     || envFlag(process.env.BOT_ENABLE_SCUM_WEBHOOK, true)
     || envFlag(process.env.BOT_ENABLE_RESTART_SCHEDULER, true)
     || envFlag(process.env.BOT_ENABLE_RENTBIKE_SERVICE, false)
@@ -108,6 +108,22 @@ function buildRuntimeTargets() {
   const watcherRequired = envFlag(
     process.env.SCUM_WATCHER_REQUIRED,
     watcherConfigured,
+  );
+  const serverBotConfigured =
+    String(
+      process.env.SCUM_SERVER_CONFIG_ROOT
+      || process.env.SCUM_SERVER_SETTINGS_DIR
+      || process.env.SCUM_SERVER_DIR
+      || '',
+    ).trim().length > 0;
+  const serverBotEnabledRaw = String(process.env.SCUM_SERVER_BOT_ENABLED || '').trim();
+  const serverBotEnabled =
+    serverBotEnabledRaw
+      ? envFlag(serverBotEnabledRaw, false)
+      : serverBotConfigured || asPort(process.env.SCUM_SERVER_BOT_HEALTH_PORT) > 0;
+  const serverBotRequired = envFlag(
+    process.env.SCUM_SERVER_BOT_REQUIRED,
+    serverBotEnabled,
   );
   const adminEnabled =
     envFlag(process.env.BOT_ENABLE_ADMIN_WEB, true)
@@ -148,6 +164,16 @@ function buildRuntimeTargets() {
     url: buildHttpBaseUrl(
       process.env.SCUM_WATCHER_HEALTH_HOST,
       process.env.SCUM_WATCHER_HEALTH_PORT,
+    ),
+  });
+  targets.push({
+    key: 'server-bot',
+    label: 'Server Bot',
+    enabled: serverBotEnabled,
+    required: serverBotEnabled && serverBotRequired,
+    url: buildHttpBaseUrl(
+      process.env.SCUM_SERVER_BOT_HEALTH_HOST,
+      process.env.SCUM_SERVER_BOT_HEALTH_PORT,
     ),
   });
   targets.push({

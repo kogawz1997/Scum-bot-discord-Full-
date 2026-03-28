@@ -1,1 +1,6 @@
 @import url("./tenant-delivery-agents-v4.css");
+
+.tdv4-list-grid {
+  display: grid;
+  gap: 12px;
+}

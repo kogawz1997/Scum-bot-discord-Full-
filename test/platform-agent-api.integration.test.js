@@ -7,12 +7,13 @@ const os = require('node:os');
 const path = require('node:path');
 const { once } = require('node:events');
 
-const { prisma } = require('../src/prisma');
+const { cleanupPlatformTenantFixtures } = require('./helpers/platformTestCleanup');
 
 const adminWebServerPath = path.resolve(__dirname, '../src/adminWebServer.js');
 const persistPath = path.resolve(__dirname, '../src/store/_persist.js');
 const runtimeDataDirPath = path.resolve(__dirname, '../src/utils/runtimeDataDir.js');
 const registryPath = path.resolve(__dirname, '../src/data/repositories/controlPlaneRegistryRepository.js');
+const TEST_TENANT_IDS = Object.freeze(['tenant-agent-api']);
 
 function freshAdminWebServerModule() {
   for (const entry of [adminWebServerPath, persistPath, runtimeDataDirPath, registryPath]) {
@@ -43,15 +44,9 @@ function setScopedEnv(overrides) {
 }
 
 async function cleanupPlatformTables() {
-  await prisma.$transaction([
-    prisma.platformMarketplaceOffer.deleteMany({}),
-    prisma.platformAgentRuntime.deleteMany({}),
-    prisma.platformWebhookEndpoint.deleteMany({}),
-    prisma.platformApiKey.deleteMany({}),
-    prisma.platformLicense.deleteMany({}),
-    prisma.platformSubscription.deleteMany({}),
-    prisma.platformTenant.deleteMany({}),
-  ]);
+  await cleanupPlatformTenantFixtures({
+    tenantIds: TEST_TENANT_IDS,
+  });
 }
 
 test('platform agent routes register scoped agents and ingest sync through the control plane', async (t) => {

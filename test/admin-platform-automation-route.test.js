@@ -93,6 +93,8 @@ function buildGetRoutes(overrides = {}) {
     getPlatformAutomationState: () => ({ lastAutomationAt: '2026-03-19T00:01:00.000Z' }),
     getPlatformAutomationConfig: () => ({ enabled: true, maxActionsPerCycle: 1, restartServices: ['worker'] }),
     getPlatformTenantConfig: async () => null,
+    listRestartPlans: async () => [],
+    listRestartExecutions: async () => [],
     listAdminNotifications: () => [],
     getRuntimeSupervisorSnapshot: async () => null,
     getAdminRestoreState: () => ({}),
@@ -190,4 +192,61 @@ test('admin platform ops-state route includes automation details', async () => {
   assert.equal(payload.ok, true);
   assert.equal(typeof payload.data?.automation, 'object');
   assert.equal(typeof payload.data?.automationConfig, 'object');
+});
+
+test('admin platform restart plan route exposes filtered restart plans', async () => {
+  const handler = buildGetRoutes({
+    listRestartPlans: async (filters) => ([{
+      id: 'rplan-1',
+      tenantId: filters.tenantId,
+      serverId: filters.serverId,
+      status: filters.status || 'scheduled',
+    }]),
+  });
+  const res = createMockRes();
+
+  const handled = await handler({
+    client: null,
+    req: { method: 'GET', headers: {} },
+    res,
+    urlObj: new URL('https://admin.example.com/admin/api/platform/restart-plans?tenantId=tenant-1&serverId=server-1&status=scheduled'),
+    pathname: '/admin/api/platform/restart-plans',
+  });
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 200);
+  const payload = JSON.parse(String(res.body || '{}'));
+  assert.equal(payload.ok, true);
+  assert.equal(payload.data.length, 1);
+  assert.equal(payload.data[0].tenantId, 'tenant-1');
+  assert.equal(payload.data[0].serverId, 'server-1');
+});
+
+test('admin platform restart execution route exposes filtered execution history', async () => {
+  const handler = buildGetRoutes({
+    listRestartExecutions: async (filters) => ([{
+      id: 'rexec-1',
+      planId: filters.planId || 'rplan-1',
+      tenantId: filters.tenantId,
+      serverId: filters.serverId,
+      resultStatus: filters.status || 'succeeded',
+    }]),
+  });
+  const res = createMockRes();
+
+  const handled = await handler({
+    client: null,
+    req: { method: 'GET', headers: {} },
+    res,
+    urlObj: new URL('https://admin.example.com/admin/api/platform/restart-executions?tenantId=tenant-1&serverId=server-1&planId=rplan-1&status=succeeded'),
+    pathname: '/admin/api/platform/restart-executions',
+  });
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 200);
+  const payload = JSON.parse(String(res.body || '{}'));
+  assert.equal(payload.ok, true);
+  assert.equal(payload.data.length, 1);
+  assert.equal(payload.data[0].planId, 'rplan-1');
+  assert.equal(payload.data[0].resultStatus, 'succeeded');
 });

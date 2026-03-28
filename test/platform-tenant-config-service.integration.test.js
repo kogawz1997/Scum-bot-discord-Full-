@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 const { prisma, getTenantScopedPrismaClient } = require('../src/prisma');
 const { getTenantDatabaseTopologyMode } = require('../src/utils/tenantDatabaseTopology');
+const { resolveTenantDatabaseTarget } = require('../src/utils/tenantDatabaseTopology');
 const {
   getPlatformTenantConfig,
   listPlatformTenantConfigs,
@@ -83,7 +84,10 @@ test('platform tenant config service stores and scopes tenant config rows', asyn
     ['tenant-config-a', 'tenant-config-b'],
   );
 
-  if (getTenantDatabaseTopologyMode() !== 'shared') {
+  const tenantTarget = resolveTenantDatabaseTarget({
+    tenantId: 'tenant-config-a',
+  });
+  if (getTenantDatabaseTopologyMode() !== 'shared' && tenantTarget.supported && tenantTarget.datasourceUrl !== process.env.DATABASE_URL) {
     await prisma.$executeRaw`
       INSERT INTO platform_tenant_configs (
         tenant_id,

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SCUM TH Platform | ยืนยันอีเมล</title>
+  <title>SCUM TH Platform | Verify Email</title>
   <link rel="stylesheet" href="/player/assets/ui/platform-site-v3.css?v=20260327-live-1">
 </head>
 <body class="public-v3">
@@ -14,22 +14,41 @@
           <span class="site-brand-mark">SCUM</span>
           <span class="site-brand-copy">
             <strong class="site-brand-title">SCUM TH Platform</strong>
-            <span class="site-brand-detail">ยืนยันบัญชีก่อนเปิดใช้ฟีเจอร์ที่ต้องอาศัยความน่าเชื่อถือของบัญชี</span>
+            <span class="site-brand-detail">Verify your email before turning on commercial and operator-facing flows.</span>
           </span>
         </a>
       </div>
     </header>
     <main class="site-main">
-      <section class="site-panel">
-        <span class="site-kicker">Verify Email</span>
-        <h1 class="site-page-title">ยืนยันอีเมลของคุณ</h1>
-        <p class="site-page-copy">หากได้รับอีเมลยืนยันแล้ว ให้เปิดจากลิงก์ในอีเมลเพื่อยืนยันสถานะบัญชี จากนั้นจึงกลับมาเข้าสู่ระบบหรือไปต่อที่พื้นที่ทำงานของคุณ</p>
-        <div class="site-tool-cluster">
-          <a class="site-button site-button-primary" href="/login">กลับไปเข้าสู่ระบบ</a>
-          <a class="site-button" href="/signup">สร้างบัญชีใหม่</a>
-        </div>
+      <section class="site-grid-2">
+        <article class="site-auth-card site-stack">
+          <span class="site-kicker">Verify Email</span>
+          <h1 id="publicEmailVerificationTitle" class="site-page-title">Request a verification link</h1>
+          <p id="publicEmailVerificationCopy" class="site-page-copy">Enter your workspace email to queue a fresh verification link, or open this page from the link in your email to complete verification.</p>
+          <form id="publicEmailVerificationForm" class="site-form-grid">
+            <label id="publicEmailVerificationEmailRow" class="site-field site-field-span">
+              <span>Email</span>
+              <input id="publicEmailVerificationEmail" class="auth-input" type="email" placeholder="name@example.com">
+            </label>
+            <div class="site-field site-field-span">
+              <button id="publicEmailVerificationSubmit" class="button button-primary" type="submit">Send verification link</button>
+              <div id="publicEmailVerificationStatus" class="form-status" aria-live="polite"></div>
+            </div>
+          </form>
+          <div class="site-tool-cluster">
+            <a class="site-button site-button-primary" href="/login">Back to login</a>
+            <a class="site-button" href="/signup">Create a new workspace</a>
+          </div>
+        </article>
+        <article class="site-panel site-help-panel">
+          <span class="site-kicker">Tip</span>
+          <h2 class="site-card-title">Checking the right inbox helps</h2>
+          <p>Look for the inbox that received your signup or onboarding messages first. When you open the verification link, this page will complete the flow for you.</p>
+        </article>
       </section>
     </main>
   </div>
+  <script src="/player/assets/ui/portal-i18n.js?v=20260327-live-1"></script>
+  <script src="/player/assets/ui/public-auth-v2.js?v=20260327-live-1"></script>
 </body>
 </html>

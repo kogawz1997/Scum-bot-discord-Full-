@@ -153,3 +153,43 @@ test('tenant server config preview html points to the live asset pair', () => {
   assert.match(html, /tenantServerConfigV4PreviewRoot/);
   assert.match(html, /serverConfigWorkspace/);
 });
+
+test('tenant server config empty state points to server setup when no server exists', () => {
+  const model = createTenantServerConfigV4Model({
+    tenantLabel: 'Codex Test Community',
+    servers: [],
+    serverConfigWorkspace: { snapshotStatus: 'missing', categories: [], files: [] },
+  });
+  const html = buildTenantServerConfigV4Html(model);
+
+  assert.equal(model.workspace.available, false);
+  assert.equal(model.emptyState.kind, 'missing-server');
+  assert.match(html, /data-server-config-empty-kind="missing-server"/);
+  assert.match(html, /#server-status/);
+});
+
+test('tenant server config empty state points to server bot install when token already exists', () => {
+  const model = createTenantServerConfigV4Model({
+    tenantLabel: 'Codex Test Community',
+    activeServer: { id: 'server-alpha', name: 'Alpha Server' },
+    servers: [{ id: 'server-alpha', name: 'Alpha Server' }],
+    agents: [],
+    agentProvisioning: [
+      {
+        id: 'token-1',
+        serverId: 'server-alpha',
+        runtimeKey: 'watcher-1',
+        role: 'sync',
+        scope: 'sync_only',
+        displayName: 'Server Bot Alpha',
+        status: 'pending_activation',
+      },
+    ],
+    serverConfigWorkspace: { snapshotStatus: 'missing', categories: [], files: [] },
+  });
+  const html = buildTenantServerConfigV4Html(model);
+
+  assert.equal(model.emptyState.kind, 'pending-server-bot');
+  assert.match(html, /data-server-config-empty-kind="pending-server-bot"/);
+  assert.match(html, /#server-bots/);
+});

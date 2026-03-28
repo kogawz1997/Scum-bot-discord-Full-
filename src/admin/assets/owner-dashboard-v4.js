@@ -29,22 +29,54 @@
   ];
 
   const ACTION_GROUPS = [
-    { tone: 'warning', tag: 'งานด่วน', title: 'ซัพพอร์ตและเหตุการณ์', detail: 'ใช้เมื่อมีผู้เช่าแจ้งปัญหาหรือมีสัญญาณผิดปกติ', actions: [
+    { tone: 'warning', tag: 'งานด่วน', title: 'ซัพพอร์ตและเหตุการณ์', detail: 'เริ่มจากเรื่องที่กระทบผู้เช่าก่อน', actions: [
       { label: 'เปิดกล่องเหตุการณ์', href: '#incidents', primary: true },
       { label: 'เปิดคิวซัพพอร์ต', href: '#support' },
-      { label: 'ตรวจเส้นทางการส่งของ', href: '#jobs' },
+      { label: 'ดูงานรอและบอท', href: '#jobs' },
     ] },
-    { tone: 'info', tag: 'หลักฐาน', title: 'ความปลอดภัยและออดิท', detail: 'ใช้เมื่ออยากย้อนดูหลักฐานหรือเช็กสิทธิ์การเข้าถึง', actions: [
+    { tone: 'info', tag: 'หลักฐาน', title: 'ความปลอดภัยและบันทึก', detail: 'ใช้เมื่ออยากยืนยันสิทธิ์หรือย้อนดูหลักฐาน', actions: [
       { label: 'เปิดบันทึกออดิท', href: '#audit', primary: true },
       { label: 'ดูเซสชันและสิทธิ์', href: '#security' },
-      { label: 'ดูสุขภาพรันไทม์', href: '#runtime-health' },
+      { label: 'ดูสถานะบริการ', href: '#runtime-health' },
     ] },
-    { tone: 'success', tag: 'ธุรกิจ', title: 'รายได้และสถานะการขาย', detail: 'ใช้ดูการต่ออายุ โควตา และแพ็กเกจของผู้เช่า', actions: [
+    { tone: 'success', tag: 'ธุรกิจ', title: 'รายได้และสถานะการขาย', detail: 'ใช้ดูการต่ออายุ โควตา และแผนของผู้เช่า', actions: [
       { label: 'ดูผู้เช่า', href: '#tenants', primary: true },
       { label: 'เช็กการต่ออายุ', href: '#subscriptions' },
       { label: 'เปิดหน้าแพ็กเกจ', href: '#packages' },
     ] },
   ];
+
+  const SETTINGS_ACTION_GROUPS = [
+    { tone: 'info', tag: 'นโยบาย', title: 'ตั้งค่าและมาตรฐานกลาง', detail: 'ใช้เมื่อต้องตั้งกติกาที่มีผลกับผู้เช่าหลายราย', actions: [
+      { label: 'เปิดหน้าตั้งค่า', href: '#settings', primary: true },
+      { label: 'ดูความปลอดภัย', href: '#security' },
+      { label: 'เปิดบันทึกออดิท', href: '#audit' },
+    ] },
+    { tone: 'warning', tag: 'สิทธิ์', title: 'สิทธิ์และการเข้าถึง', detail: 'ใช้ตรวจสิทธิ์ เซสชัน และหลักฐานก่อนเปลี่ยนนโยบาย', actions: [
+      { label: 'เปิดความปลอดภัย', href: '#security', primary: true },
+      { label: 'เปิดออดิท', href: '#audit' },
+      { label: 'ดูสถานะบริการ', href: '#runtime-health' },
+    ] },
+    { tone: 'success', tag: 'ผลกระทบ', title: 'ผู้เช่าและแพ็กเกจที่เกี่ยวข้อง', detail: 'ใช้ดูว่าการเปลี่ยนนโยบายจะกระทบผู้เช่ารายใดหรือแผนใดก่อนลงมือ', actions: [
+      { label: 'ดูผู้เช่า', href: '#tenants', primary: true },
+      { label: 'ดูแพ็กเกจ', href: '#packages' },
+      { label: 'ดูการสมัครใช้', href: '#subscriptions' },
+    ] },
+  ];
+
+  function cloneNavGroups(groups, currentRoute) {
+    const route = String(currentRoute || 'overview').trim().toLowerCase() || 'overview';
+    return (Array.isArray(groups) ? groups : []).map((group) => ({
+      ...group,
+      items: (Array.isArray(group.items) ? group.items : []).map((item) => {
+        const itemRoute = String(item && item.href || '').replace(/^#/, '').trim().toLowerCase();
+        return {
+          ...item,
+          current: itemRoute === route,
+        };
+      }),
+    }));
+  }
 
   function escapeHtml(value) {
     return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -231,8 +263,9 @@
       : null;
   }
 
-  function createOwnerDashboardV4Model(source) {
+  function createOwnerDashboardV4Model(source, options = {}) {
     const state = source && typeof source === 'object' ? source : {};
+    const currentRoute = String(options.currentRoute || 'overview').trim().toLowerCase() || 'overview';
     const runtimeRows = normalizeRuntimeRows(state.runtimeSupervisor);
     const readyRuntimes = runtimeRows.filter((row) => toneForStatus(row.status) === 'success').length;
     const analytics = state.overview && state.overview.analytics ? state.overview.analytics : {};
@@ -248,12 +281,13 @@
     }).length;
     const degradedRuntimeCount = Math.max(runtimeRows.length - readyRuntimes, 0);
     const openSignalCount = listCount(state.notifications) + listCount(state.incidentInbox) + listCount(state.securityEvents);
+    const settingsRoute = currentRoute === 'settings';
     const primaryAction = expiringCount > 0
       ? { label: 'ดูรายการใกล้ต่ออายุ (แนะนำ)', href: '#subscriptions' }
       : feed.length > 0
         ? { label: 'เปิดกล่องเหตุการณ์ (แนะนำ)', href: '#incidents' }
         : { label: 'เปิดรายชื่อผู้เช่า', href: '#tenants' };
-    const decisionPanel = expiringCount > 0
+    let decisionPanel = expiringCount > 0
       ? {
           title: 'เริ่มจากรายการใกล้ต่ออายุ',
           detail: 'ตรวจรายการที่ใกล้หมดอายุก่อน เพื่อไม่ให้บริการสะดุดและไม่ให้เคสซัพพอร์ตเพิ่ม',
@@ -300,13 +334,30 @@
               { label: 'สัญญาณใหม่', value: `${formatNumber(openSignalCount, '0')} รายการ`, detail: 'ถ้าไม่มี ให้เดินงานต่อได้', tone: openSignalCount > 0 ? 'warning' : 'success' },
             ],
           };
+    if (settingsRoute) {
+      decisionPanel = {
+        title: 'เริ่มจากนโยบายและค่าที่ต้องคุมให้ตรงกัน',
+        detail: 'ใช้หน้าตั้งค่าเมื่อต้องกำหนดกติกากลาง สิทธิ์ และมาตรฐานที่กระทบผู้เช่าหลายรายพร้อมกัน ไม่ใช่แก้เคสเฉพาะราย',
+        primaryAction: { label: 'เปิดหน้าตั้งค่า (แนะนำ)', href: '#settings' },
+        secondaryActions: [
+          { label: 'ดูความปลอดภัย', href: '#security' },
+          { label: 'เปิดออดิท', href: '#audit' },
+          { label: 'ดูกลุ่มผู้เช่าที่ได้รับผล', href: '#tenants' },
+        ],
+        checkpoints: [
+          { label: 'นโยบายที่ต้องทบทวน', value: `${formatNumber(openSignalCount, '0')} ประเด็น`, detail: 'รวมสัญญาณที่ควรยืนยันก่อนเปลี่ยนนโยบาย', tone: openSignalCount > 0 ? 'warning' : 'muted' },
+          { label: 'ผู้เช่าที่อาจได้รับผล', value: `${formatNumber(attentionRows.length, '0')} ราย`, detail: 'ใช้ดูผลกระทบก่อนเปลี่ยนค่าแบบกว้าง', tone: attentionRows.length > 0 ? 'info' : 'muted' },
+          { label: 'รันไทม์ที่ต้องระวัง', value: `${formatNumber(degradedRuntimeCount, '0')} บริการ`, detail: 'ยืนยันสุขภาพบริการก่อนใช้การเปลี่ยนแปลงกับทั้งระบบ', tone: degradedRuntimeCount > 0 ? 'warning' : 'success' },
+        ],
+      };
+    }
     return {
       shell: {
         brand: 'SCUM TH',
         surfaceLabel: 'แผงเจ้าของระบบ',
         workspaceLabel: 'ศูนย์ควบคุมแพลตฟอร์ม',
         environmentLabel: 'ระดับแพลตฟอร์ม',
-        navGroups: NAV_GROUPS,
+        navGroups: cloneNavGroups(NAV_GROUPS, currentRoute),
       },
       header: {
         title: 'ภาพรวมเจ้าของระบบ',
@@ -328,7 +379,7 @@
         { label: 'อัตราส่งของสำเร็จ', value: `${formatNumber(delivery.successRate, '0')}%`, detail: `${formatNumber(delivery.purchaseCount30d, '0')} คำสั่งซื้อในช่วง 30 วัน`, tone: 'success' },
       ],
       decisionPanel,
-      actionGroups: ACTION_GROUPS,
+      actionGroups: settingsRoute ? SETTINGS_ACTION_GROUPS : ACTION_GROUPS,
       attentionRows,
       incidentFeed: feed,
       railCards: [
@@ -452,13 +503,17 @@
       '<div class="odv4-shell"><aside class="odv4-sidebar"><div class="odv4-stack"><span class="odv4-sidebar-title">เมนูเจ้าของระบบ</span><p class="odv4-sidebar-copy">ใช้หน้านี้เพื่อตัดสินใจเรื่องผู้เช่า รายได้ ความปลอดภัย และความพร้อมของรันไทม์ โดยไม่ต้องไล่เปิดหลายส่วนของระบบ</p></div>',
       renderNavGroups(safeModel.shell.navGroups),
       '</aside><main class="odv4-main">',
+      '<div id="overview" class="odv4-focus-target" data-owner-focus-route="overview dashboard">',
       '<section class="odv4-pagehead"><div class="odv4-stack"><span class="odv4-section-kicker">ศูนย์ควบคุมเจ้าของระบบ</span>',
       `<h1 class="odv4-page-title">${escapeHtml(safeModel.header.title || '')}</h1><p class="odv4-page-subtitle">${escapeHtml(safeModel.header.subtitle || '')}</p><div class="odv4-chip-row">${renderChips(safeModel.header.statusChips)}</div></div>`,
       `<div class="odv4-pagehead-actions"><a class="odv4-button odv4-button-secondary" href="${escapeHtml(safeModel.header.primaryAction.href || '#')}">${escapeHtml(safeModel.header.primaryAction.label || 'Open')}</a></div></section>`,
+      '</div>',
       `<section class="odv4-kpi-strip">${renderKpis(safeModel.kpis)}</section>`,
       renderDecisionPanel(safeModel.decisionPanel),
+      '<div id="settings" class="odv4-focus-target" data-owner-focus-route="settings">',
       '<section class="odv4-panel"><div class="odv4-section-head"><span class="odv4-section-kicker">ตัวเลือกอื่น</span><h2 class="odv4-section-title">เลือกงานที่ต้องทำต่อ</h2><p class="odv4-section-copy">เลือกเส้นทางที่ตรงกับงานที่กำลังทำได้เลย</p></div>',
       `<div class="odv4-task-grid">${renderActionGroups(safeModel.actionGroups)}</div></section>`,
+      '</div>',
       '<div class="odv4-split-grid"><section class="odv4-panel"><div class="odv4-section-head"><span class="odv4-section-kicker">ต้องดูต่อ</span><h2 class="odv4-section-title">ผู้เช่าที่ควรเปิดดูก่อน</h2><p class="odv4-section-copy">ลิสต์สั้นสำหรับเปิดงานต่อทันที</p></div>',
       `<div class="odv4-list">${renderAttentionRows(safeModel.attentionRows)}</div></section>`,
       '<section class="odv4-panel"><div class="odv4-section-head"><span class="odv4-section-kicker">สัญญาณล่าสุด</span><h2 class="odv4-section-title">เหตุการณ์และการแจ้งเตือนล่าสุด</h2><p class="odv4-section-copy">รวมสัญญาณหลักที่ควรรู้ก่อน</p></div>',
@@ -468,9 +523,9 @@
     ].join('');
   }
 
-  function renderOwnerDashboardV4(target, source) {
+  function renderOwnerDashboardV4(target, source, options) {
     if (!target) throw new Error('Owner dashboard V4 target is required');
-    target.innerHTML = buildOwnerDashboardV4Html(createOwnerDashboardV4Model(source));
+    target.innerHTML = buildOwnerDashboardV4Html(createOwnerDashboardV4Model(source, options));
     return target;
   }
 

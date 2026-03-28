@@ -1,6 +1,7 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 
+const { prisma } = require('../prisma');
 const { atomicWriteJson, getFilePath } = require('./_persist');
 
 const MAX_NOTIFICATIONS = 500;
@@ -50,6 +51,81 @@ function normalizeNotification(entry = {}) {
   };
 }
 
+function parseDataJson(value) {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value;
+  }
+  const text = trimText(value, 5000);
+  if (!text) return null;
+  try {
+    const parsed = JSON.parse(text);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function serializeNotificationRow(row) {
+  const normalized = normalizeNotification(row);
+  if (!normalized) return null;
+  return {
+    id: normalized.id,
+    type: normalized.type,
+    source: normalized.source,
+    kind: normalized.kind,
+    severity: normalized.severity,
+    title: normalized.title,
+    message: normalized.message,
+    entityKey: normalized.entityKey,
+    dataJson: normalized.data ? JSON.stringify(normalized.data) : null,
+    acknowledgedAt: normalized.acknowledgedAt || null,
+    acknowledgedBy: normalized.acknowledgedBy || null,
+    createdAt: normalized.createdAt,
+  };
+}
+
+function getNotificationDelegate(client = prisma) {
+  if (!client || typeof client !== 'object') return null;
+  const delegate = client.platformAdminNotification;
+  if (!delegate || typeof delegate.findMany !== 'function') return null;
+  return delegate;
+}
+
+function getPersistenceMode() {
+  const explicit = String(process.env.ADMIN_NOTIFICATION_STORE_MODE || '').trim().toLowerCase();
+  if (explicit === 'file') return 'file';
+  if (explicit === 'db') return 'db';
+  return 'auto';
+}
+
+function shouldFallbackToFile(error) {
+  const code = String(error?.code || '').trim().toUpperCase();
+  if (['P2021', 'P2022', 'P1017'].includes(code)) return true;
+  const message = String(error?.message || '').toLowerCase();
+  return message.includes('no such table')
+    || message.includes('does not exist')
+    || message.includes('unknown table')
+    || message.includes('error validating datasource')
+    || message.includes('url must start with the protocol')
+    || message.includes('platformadminnotification');
+}
+
+async function runWithPreferredPersistence(dbWork, fileWork) {
+  const mode = getPersistenceMode();
+  const delegate = getNotificationDelegate();
+  if (mode === 'file' || !delegate) {
+    return fileWork();
+  }
+  try {
+    return await dbWork(delegate);
+  } catch (error) {
+    if (mode === 'db' || !shouldFallbackToFile(error)) {
+      throw error;
+    }
+    return fileWork();
+  }
+}
+
 function queueWrite(work, label) {
   writeQueue = writeQueue
     .then(async () => {
@@ -63,6 +139,24 @@ function queueWrite(work, label) {
 
 function writeSnapshotToDisk() {
   atomicWriteJson(FILE_PATH, notifications);
+}
+
+async function writeSnapshotToDatabase(delegate = getNotificationDelegate()) {
+  if (!delegate) return;
+  const rows = notifications
+    .map(serializeNotificationRow)
+    .filter(Boolean);
+  await delegate.deleteMany({});
+  if (rows.length > 0) {
+    await delegate.createMany({ data: rows });
+  }
+}
+
+async function writeSnapshot() {
+  return runWithPreferredPersistence(
+    (delegate) => writeSnapshotToDatabase(delegate),
+    async () => writeSnapshotToDisk(),
+  );
 }
 
 async function hydrateFromDisk() {
@@ -86,9 +180,35 @@ async function hydrateFromDisk() {
   }
 }
 
+async function hydrateFromDatabase(delegate = getNotificationDelegate()) {
+  if (!delegate) return;
+  const rows = await delegate.findMany({
+    orderBy: { createdAt: 'asc' },
+    take: MAX_NOTIFICATIONS,
+  });
+  notifications.length = 0;
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const normalized = normalizeNotification({
+      ...row,
+      data: parseDataJson(row.dataJson),
+    });
+    if (!normalized) continue;
+    notifications.push(normalized);
+  }
+}
+
 function initAdminNotificationStore() {
   if (!initPromise) {
-    initPromise = hydrateFromDisk();
+    initPromise = runWithPreferredPersistence(
+      (delegate) => hydrateFromDatabase(delegate),
+      () => hydrateFromDisk(),
+    ).catch(async (error) => {
+      if (getPersistenceMode() === 'db' || !shouldFallbackToFile(error)) {
+        throw error;
+      }
+      console.error('[adminNotificationStore] failed to hydrate from prisma:', error.message);
+      await hydrateFromDisk();
+    });
   }
   return initPromise;
 }
@@ -101,7 +221,7 @@ function addAdminNotification(entry = {}) {
   if (notifications.length > MAX_NOTIFICATIONS) {
     notifications.splice(0, notifications.length - MAX_NOTIFICATIONS);
   }
-  queueWrite(writeSnapshotToDisk, 'add');
+  queueWrite(writeSnapshot, 'add');
   return { ...normalized };
 }
 
@@ -165,7 +285,7 @@ function acknowledgeAdminNotifications(ids = [], actor = 'admin-web') {
     });
   }
   if (updated.length > 0) {
-    queueWrite(writeSnapshotToDisk, 'acknowledge');
+    queueWrite(writeSnapshot, 'acknowledge');
   }
   return {
     total: wanted.size,
@@ -185,7 +305,7 @@ function clearAdminNotifications(options = {}) {
     notifications.length = 0;
   }
   const removed = Math.max(0, before - notifications.length);
-  queueWrite(writeSnapshotToDisk, 'clear');
+  queueWrite(writeSnapshot, 'clear');
   return { removed, remaining: notifications.length };
 }
 
@@ -200,8 +320,12 @@ function replaceAdminNotifications(nextRows = []) {
   if (notifications.length > MAX_NOTIFICATIONS) {
     notifications.splice(0, notifications.length - MAX_NOTIFICATIONS);
   }
-  queueWrite(writeSnapshotToDisk, 'replace');
+  queueWrite(writeSnapshot, 'replace');
   return notifications.length;
+}
+
+function waitForAdminNotificationPersistence() {
+  return writeQueue;
 }
 
 function buildNotificationFromLiveEvent(type, payload = {}) {
@@ -491,4 +615,5 @@ module.exports = {
   listAdminNotifications,
   persistAdminLiveEvent,
   replaceAdminNotifications,
+  waitForAdminNotificationPersistence,
 };

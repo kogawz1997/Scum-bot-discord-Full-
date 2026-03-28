@@ -49,7 +49,10 @@ test('public platform routes set preview session cookie on signup and clear it o
     }),
     authenticatePreviewAccount: async () => ({ ok: false, reason: 'invalid-credentials' }),
     getPreviewState: async () => ({ ok: true, state: { account: { id: 'preview-1' } }, packageCatalog: [] }),
+    requestEmailVerification: async () => ({ ok: true, requested: true, verificationTokenQueued: true }),
+    completeEmailVerification: async () => ({ ok: true, nextUrl: '/login' }),
     requestPasswordReset: async () => ({ ok: true }),
+    completePasswordReset: async () => ({ ok: true, nextUrl: '/login' }),
     createPreviewSession: () => 'preview-session-1',
     getPreviewSession: () => null,
     buildPreviewSessionCookie: () => 'preview_cookie=session; Path=/; HttpOnly',
@@ -105,4 +108,174 @@ test('public platform routes set preview session cookie on signup and clear it o
   assert.equal(handledLogout, true);
   assert.equal(logoutRes.statusCode, 200);
   assert.equal(logoutRes.headers['Set-Cookie'], 'preview_cookie=; Path=/; Max-Age=0');
+
+  const verificationRequestRes = createResponse();
+  const handledVerificationRequest = await route({
+    req: {},
+    res: verificationRequestRes,
+    pathname: '/api/public/email-verification-request',
+    method: 'POST',
+  });
+  assert.equal(handledVerificationRequest, true);
+  assert.equal(verificationRequestRes.statusCode, 200);
+  assert.equal(verificationRequestRes.payload.data.verificationTokenQueued, true);
+
+  const verificationCompleteRes = createResponse();
+  const handledVerificationComplete = await route({
+    req: {},
+    res: verificationCompleteRes,
+    pathname: '/api/public/email-verification-complete',
+    method: 'POST',
+  });
+  assert.equal(handledVerificationComplete, true);
+  assert.equal(verificationCompleteRes.statusCode, 200);
+
+  const resetCompleteRes = createResponse();
+  const handledResetComplete = await route({
+    req: {},
+    res: resetCompleteRes,
+    pathname: '/api/public/password-reset-complete',
+    method: 'POST',
+  });
+  assert.equal(handledResetComplete, true);
+  assert.equal(resetCompleteRes.statusCode, 200);
+});
+
+test('public platform routes create and finalize checkout sessions for preview users', async () => {
+  const route = createPublicPlatformRoutes({
+    sendJson: createSendJson(),
+    readJsonBody: async () => ({
+      planId: 'platform-starter',
+      action: 'paid',
+      sessionToken: 'chk_test.token',
+    }),
+    getPlatformPublicOverview: async () => ({
+      billing: {
+        currency: 'THB',
+        packages: [{ id: 'BOT_LOG_DELIVERY', title: 'Bot Log + Delivery' }],
+        features: [],
+        plans: [{ id: 'platform-starter', billingCycle: 'monthly', amountCents: 490000 }],
+      },
+    }),
+    registerPreviewAccount: async () => ({ ok: false }),
+    authenticatePreviewAccount: async () => ({ ok: false }),
+    getPreviewState: async () => ({
+      ok: true,
+      state: {
+        account: {
+          id: 'preview-1',
+          email: 'demo@example.com',
+          tenantId: 'tenant-1',
+          subscriptionId: 'sub-1',
+          packageId: 'BOT_LOG_DELIVERY',
+        },
+        tenant: { tenantId: 'tenant-1' },
+      },
+      packageCatalog: [],
+    }),
+    requestEmailVerification: async () => ({ ok: true }),
+    completeEmailVerification: async () => ({ ok: true }),
+    requestPasswordReset: async () => ({ ok: true }),
+    completePasswordReset: async () => ({ ok: true }),
+    createCheckoutSession: async () => ({
+      ok: true,
+      session: { sessionToken: 'chk_test.token', status: 'requires_action' },
+      invoice: { id: 'inv-1' },
+    }),
+    getCheckoutSessionByToken: async () => ({
+      sessionToken: 'chk_test.token',
+      invoiceId: 'inv-1',
+      status: 'requires_action',
+    }),
+    finalizeCheckoutSession: async () => ({
+      ok: true,
+      invoice: { id: 'inv-1', status: 'paid' },
+      subscription: { id: 'sub-1', status: 'active' },
+    }),
+    processBillingWebhookEvent: async () => ({ ok: true }),
+    billingWebhookSecret: 'secret',
+    createPreviewSession: () => 'preview-session-1',
+    getPreviewSession: () => ({ accountId: 'preview-1', tenantId: 'tenant-1' }),
+    buildPreviewSessionCookie: () => 'preview_cookie=session; Path=/; HttpOnly',
+    buildClearPreviewSessionCookie: () => 'preview_cookie=; Path=/; Max-Age=0',
+    removePreviewSession: () => {},
+  });
+
+  const createRes = createResponse();
+  const handledCreate = await route({
+    req: { url: '/api/public/checkout/session' },
+    res: createRes,
+    pathname: '/api/public/checkout/session',
+    method: 'POST',
+  });
+  assert.equal(handledCreate, true);
+  assert.equal(createRes.statusCode, 200);
+  assert.equal(createRes.payload.data.session.sessionToken, 'chk_test.token');
+
+  const getRes = createResponse();
+  const handledGet = await route({
+    req: { url: '/api/public/checkout/session?token=chk_test.token' },
+    res: getRes,
+    pathname: '/api/public/checkout/session',
+    method: 'GET',
+  });
+  assert.equal(handledGet, true);
+  assert.equal(getRes.statusCode, 200);
+  assert.equal(getRes.payload.data.session.invoiceId, 'inv-1');
+
+  const completeRes = createResponse();
+  const handledComplete = await route({
+    req: { url: '/api/public/checkout/complete' },
+    res: completeRes,
+    pathname: '/api/public/checkout/complete',
+    method: 'POST',
+  });
+  assert.equal(handledComplete, true);
+  assert.equal(completeRes.statusCode, 200);
+  assert.equal(completeRes.payload.data.invoice.status, 'paid');
+
+  const webhookRoute = createPublicPlatformRoutes({
+    sendJson: createSendJson(),
+    readJsonBody: async () => ({}),
+    readRawBody: async () => Buffer.from('{"eventType":"invoice.paid"}', 'utf8'),
+    getPlatformPublicOverview: async () => ({
+      billing: {
+        currency: 'THB',
+        packages: [],
+        features: [],
+        plans: [],
+      },
+    }),
+    registerPreviewAccount: async () => ({ ok: false }),
+    authenticatePreviewAccount: async () => ({ ok: false }),
+    getPreviewState: async () => ({ ok: false }),
+    requestEmailVerification: async () => ({ ok: true }),
+    completeEmailVerification: async () => ({ ok: true }),
+    requestPasswordReset: async () => ({ ok: true }),
+    completePasswordReset: async () => ({ ok: true }),
+    createCheckoutSession: async () => ({ ok: false }),
+    getCheckoutSessionByToken: async () => null,
+    finalizeCheckoutSession: async () => ({ ok: false }),
+    processBillingWebhookEvent: async (input) => ({ ok: true, rawPayload: input.rawPayload, eventType: input.eventType }),
+    billingWebhookSecret: 'secret',
+    createPreviewSession: () => 'preview-session-1',
+    getPreviewSession: () => ({ accountId: 'preview-1', tenantId: 'tenant-1' }),
+    buildPreviewSessionCookie: () => 'preview_cookie=session; Path=/; HttpOnly',
+    buildClearPreviewSessionCookie: () => 'preview_cookie=; Path=/; Max-Age=0',
+    removePreviewSession: () => {},
+  });
+  const webhookRes = createResponse();
+  const handledWebhook = await webhookRoute({
+    req: {
+      headers: {
+        'x-platform-billing-signature': 'sig',
+      },
+    },
+    res: webhookRes,
+    pathname: '/api/public/billing/webhook',
+    method: 'POST',
+  });
+  assert.equal(handledWebhook, true);
+  assert.equal(webhookRes.statusCode, 200);
+  assert.equal(webhookRes.payload.data.eventType, 'invoice.paid');
 });

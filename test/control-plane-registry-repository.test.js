@@ -10,6 +10,7 @@ const runtimeDataDirPath = path.resolve(__dirname, '../src/utils/runtimeDataDir.
 
 function freshRepository(tempDir) {
   process.env.BOT_DATA_DIR = tempDir;
+  process.env.CONTROL_PLANE_REGISTRY_STORE_MODE = 'file';
   delete require.cache[repositoryPath];
   delete require.cache[persistPath];
   delete require.cache[runtimeDataDirPath];
@@ -97,6 +98,7 @@ test('control plane registry persists servers, links, agents, sessions, and sync
     assert.equal(repository.listSyncEvents({ tenantId: 'tenant-a', serverId: 'server-a' }).length, 1);
   } finally {
     process.env.BOT_DATA_DIR = previousDir;
+    delete process.env.CONTROL_PLANE_REGISTRY_STORE_MODE;
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });

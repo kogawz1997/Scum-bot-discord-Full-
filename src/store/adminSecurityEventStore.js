@@ -2,9 +2,9 @@
 
 const crypto = require('node:crypto');
 const fs = require('node:fs');
-const path = require('node:path');
 
-const { atomicWriteJson, getFilePath } = require('./_persist');
+const { prisma } = require('../prisma');
+const { atomicWriteJson, getFilePath, isDbPersistenceEnabled } = require('./_persist');
 
 const FILE_PATH = getFilePath('admin-security-events.json');
 const MAX_ENTRIES = Math.max(
@@ -12,12 +12,9 @@ const MAX_ENTRIES = Math.max(
   Math.min(5000, Math.trunc(Number(process.env.ADMIN_WEB_SECURITY_EVENT_MAX || 1200) || 1200)),
 );
 
-let events = null;
-let persistTimer = null;
-
-function ensureParentDir() {
-  fs.mkdirSync(path.dirname(FILE_PATH), { recursive: true });
-}
+let events = [];
+let initPromise = null;
+let writeQueue = Promise.resolve();
 
 function nowIso() {
   return new Date().toISOString();
@@ -43,12 +40,26 @@ function normalizeSeverity(value) {
   return 'info';
 }
 
+function parseDataJson(value) {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value;
+  }
+  const text = normalizeText(value, 10000);
+  if (!text) return null;
+  try {
+    const parsed = JSON.parse(text);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 function normalizeEvent(entry = {}) {
   return {
     id:
       normalizeText(entry.id, 120)
       || `admin-sec-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`,
-    at: normalizeIso(entry.at),
+    at: normalizeIso(entry.at || entry.occurredAt),
     type: normalizeText(entry.type, 120) || 'security-event',
     severity: normalizeSeverity(entry.severity),
     actor: normalizeText(entry.actor, 180),
@@ -60,60 +71,176 @@ function normalizeEvent(entry = {}) {
     path: normalizeText(entry.path, 240),
     reason: normalizeText(entry.reason, 240),
     detail: normalizeText(entry.detail, 500),
-    data: entry.data && typeof entry.data === 'object' ? entry.data : null,
+    data: entry.data && typeof entry.data === 'object' ? entry.data : parseDataJson(entry.dataJson),
   };
 }
 
-function buildDefaultEvents() {
-  return [];
+function serializeEventRow(entry = {}) {
+  const normalized = normalizeEvent(entry);
+  return {
+    id: normalized.id,
+    occurredAt: new Date(normalized.at),
+    type: normalized.type,
+    severity: normalized.severity,
+    actor: normalized.actor,
+    targetUser: normalized.targetUser,
+    role: normalized.role,
+    authMethod: normalized.authMethod,
+    sessionId: normalized.sessionId,
+    ip: normalized.ip,
+    path: normalized.path,
+    reason: normalized.reason,
+    detail: normalized.detail,
+    dataJson: normalized.data ? JSON.stringify(normalized.data) : null,
+  };
 }
 
-function schedulePersist() {
-  if (persistTimer) clearTimeout(persistTimer);
-  persistTimer = setTimeout(() => {
-    persistTimer = null;
-    ensureParentDir();
-    try {
-      atomicWriteJson(FILE_PATH, events || []);
-    } catch (error) {
-      console.error('[adminSecurityEventStore] failed to persist:', error.message);
+function getSecurityEventDelegate(client = prisma) {
+  if (!client || typeof client !== 'object') return null;
+  const delegate = client.platformAdminSecurityEvent;
+  if (!delegate || typeof delegate.findMany !== 'function') return null;
+  return delegate;
+}
+
+function getPersistenceMode() {
+  const explicit = String(process.env.ADMIN_SECURITY_EVENT_STORE_MODE || '').trim().toLowerCase();
+  if (explicit === 'file') return 'file';
+  if (explicit === 'db') return 'db';
+  if (
+    typeof isDbPersistenceEnabled === 'function'
+    && isDbPersistenceEnabled()
+    && String(process.env.NODE_ENV || '').trim().toLowerCase() === 'production'
+  ) {
+    return 'db';
+  }
+  return 'auto';
+}
+
+function shouldFallbackToFile(error) {
+  const code = String(error?.code || '').trim().toUpperCase();
+  if (['P2021', 'P2022', 'P1017'].includes(code)) return true;
+  const message = String(error?.message || '').toLowerCase();
+  return message.includes('no such table')
+    || message.includes('does not exist')
+    || message.includes('unknown table')
+    || message.includes('error validating datasource')
+    || message.includes('url must start with the protocol')
+    || message.includes('platformadminsecurityevent');
+}
+
+async function runWithPreferredPersistence(dbWork, fileWork) {
+  const mode = getPersistenceMode();
+  const delegate = getSecurityEventDelegate();
+  if (mode === 'file' || !delegate) {
+    return fileWork();
+  }
+  try {
+    return await dbWork(delegate);
+  } catch (error) {
+    if (mode === 'db' || !shouldFallbackToFile(error)) {
+      throw error;
     }
-  }, 250);
-  if (typeof persistTimer.unref === 'function') {
-    persistTimer.unref();
+    return fileWork();
   }
 }
 
-function initAdminSecurityEventStore() {
-  if (events) return events;
+function queueWrite(work, label) {
+  writeQueue = writeQueue
+    .then(async () => {
+      await work();
+    })
+    .catch((error) => {
+      console.error(`[adminSecurityEventStore] ${label} failed:`, error.message);
+    });
+  return writeQueue;
+}
+
+function trimEvents(nextRows = []) {
+  const normalized = [];
+  for (const row of Array.isArray(nextRows) ? nextRows : []) {
+    normalized.push(normalizeEvent(row));
+  }
+  normalized.sort((left, right) => {
+    return String(left.at || '').localeCompare(String(right.at || ''));
+  });
+  if (normalized.length > MAX_ENTRIES) {
+    normalized.splice(0, normalized.length - MAX_ENTRIES);
+  }
+  return normalized;
+}
+
+function writeEventsToDisk() {
+  atomicWriteJson(FILE_PATH, events);
+}
+
+async function hydrateFromDisk() {
   try {
     if (fs.existsSync(FILE_PATH)) {
       const raw = fs.readFileSync(FILE_PATH, 'utf8');
       if (raw.trim()) {
-        const parsed = JSON.parse(raw);
-        events = Array.isArray(parsed) ? parsed.map((entry) => normalizeEvent(entry)) : [];
-        return events;
+        events = trimEvents(JSON.parse(raw));
+        return;
       }
     }
   } catch (error) {
     console.error('[adminSecurityEventStore] failed to hydrate:', error.message);
   }
-  events = buildDefaultEvents();
-  return events;
+  events = [];
+}
+
+async function hydrateFromDatabase(delegate = getSecurityEventDelegate()) {
+  if (!delegate) {
+    events = [];
+    return;
+  }
+  const rows = await delegate.findMany({
+    orderBy: { occurredAt: 'asc' },
+    take: MAX_ENTRIES,
+  });
+  events = trimEvents(Array.isArray(rows) ? rows : []);
+}
+
+async function writeEventsToDatabase(delegate = getSecurityEventDelegate()) {
+  if (!delegate) return;
+  const rows = trimEvents(events).map(serializeEventRow);
+  await delegate.deleteMany({});
+  if (rows.length > 0) {
+    await delegate.createMany({ data: rows });
+  }
+}
+
+function initAdminSecurityEventStore() {
+  if (!initPromise) {
+    initPromise = runWithPreferredPersistence(
+      (delegate) => hydrateFromDatabase(delegate),
+      () => hydrateFromDisk(),
+    ).catch(async (error) => {
+      if (getPersistenceMode() === 'db' || !shouldFallbackToFile(error)) {
+        throw error;
+      }
+      console.error('[adminSecurityEventStore] failed to hydrate from prisma:', error.message);
+      await hydrateFromDisk();
+    });
+  }
+  return initPromise;
 }
 
 function recordAdminSecurityEvent(entry = {}) {
-  initAdminSecurityEventStore();
-  events.push(normalizeEvent(entry));
-  if (events.length > MAX_ENTRIES) {
-    events.splice(0, events.length - MAX_ENTRIES);
-  }
-  schedulePersist();
-  return { ...events[events.length - 1] };
+  const normalized = normalizeEvent(entry);
+  events.push(normalized);
+  events = trimEvents(events);
+  queueWrite(
+    () => runWithPreferredPersistence(
+      (delegate) => writeEventsToDatabase(delegate),
+      async () => writeEventsToDisk(),
+    ),
+    'record',
+  );
+  return { ...normalized };
 }
 
-function listAdminSecurityEvents(options = {}) {
-  initAdminSecurityEventStore();
+async function listAdminSecurityEvents(options = {}) {
+  await initAdminSecurityEventStore();
   const limit = Math.max(1, Math.min(MAX_ENTRIES, Math.trunc(Number(options.limit || 200) || 200)));
   const type = normalizeText(options.type, 120);
   const severity = normalizeText(options.severity, 16)?.toLowerCase() || null;
@@ -134,25 +261,39 @@ function listAdminSecurityEvents(options = {}) {
     .map((event) => ({ ...event }));
 }
 
-function replaceAdminSecurityEvents(nextRows = []) {
-  events = buildDefaultEvents();
-  for (const row of Array.isArray(nextRows) ? nextRows : []) {
-    events.push(normalizeEvent(row));
-  }
-  if (events.length > MAX_ENTRIES) {
-    events.splice(0, events.length - MAX_ENTRIES);
-  }
-  schedulePersist();
+async function replaceAdminSecurityEvents(nextRows = []) {
+  await initAdminSecurityEventStore();
+  events = trimEvents(nextRows);
+  queueWrite(
+    () => runWithPreferredPersistence(
+      (delegate) => writeEventsToDatabase(delegate),
+      async () => writeEventsToDisk(),
+    ),
+    'replace',
+  );
   return events.length;
 }
 
-function clearAdminSecurityEvents() {
-  events = buildDefaultEvents();
-  schedulePersist();
+async function clearAdminSecurityEvents() {
+  await initAdminSecurityEventStore();
+  events = [];
+  queueWrite(
+    () => runWithPreferredPersistence(
+      (delegate) => writeEventsToDatabase(delegate),
+      async () => writeEventsToDisk(),
+    ),
+    'clear',
+  );
   return [];
 }
 
-initAdminSecurityEventStore();
+function waitForAdminSecurityEventPersistence() {
+  return writeQueue;
+}
+
+void initAdminSecurityEventStore().catch((error) => {
+  console.error('[adminSecurityEventStore] init failed:', error.message);
+});
 
 module.exports = {
   clearAdminSecurityEvents,
@@ -160,4 +301,5 @@ module.exports = {
   listAdminSecurityEvents,
   recordAdminSecurityEvent,
   replaceAdminSecurityEvents,
+  waitForAdminSecurityEventPersistence,
 };

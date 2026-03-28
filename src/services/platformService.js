@@ -29,6 +29,11 @@ const {
 const {
   getPlatformTenantConfig,
 } = require('./platformTenantConfigService');
+const {
+  createInvoiceDraft,
+  ensureBillingCustomer,
+  recordSubscriptionEvent,
+} = require('./platformBillingLifecycleService');
 
 const PLATFORM_SCOPE_GROUPS = Object.freeze([
   {
@@ -1262,7 +1267,7 @@ async function createSubscription(input = {}, actor = 'system') {
   if (!tenantId) return { ok: false, reason: 'tenant-required' };
   const tenant = await getSharedTenantRegistryRow(tenantId);
   if (!tenant) return { ok: false, reason: 'tenant-not-found' };
-  const row = await runWithOptionalTenantDbIsolation(tenantId, async (db) => {
+  const outcome = await runWithOptionalTenantDbIsolation(tenantId, async (db) => {
     const plan = findPlanById(input.planId);
     const baseMetadata = input.metadata && typeof input.metadata === 'object' && !Array.isArray(input.metadata)
       ? input.metadata
@@ -1280,7 +1285,7 @@ async function createSubscription(input = {}, actor = 'system') {
       1,
     );
     const renewsAt = parseDateOrNull(input.renewsAt) || new Date(startedAt.getTime() + intervalDays * 24 * 60 * 60 * 1000);
-    return db.platformSubscription.create({
+    const row = await db.platformSubscription.create({
       data: {
         id: trimText(input.id, 120) || createId('sub'),
         tenantId,
@@ -1296,15 +1301,100 @@ async function createSubscription(input = {}, actor = 'system') {
         metadataJson: stringifyMeta(metadata),
       },
     });
+    const tenantProfile = await db.platformTenant.findUnique({
+      where: { id: tenantId },
+      select: {
+        id: true,
+        ownerEmail: true,
+        ownerName: true,
+      },
+    }).catch(() => null);
+    const billingCustomer = await ensureBillingCustomer({
+      tenantId,
+      email: tenantProfile?.ownerEmail || null,
+      displayName: tenantProfile?.ownerName || null,
+      metadata: {
+        source: 'create-subscription',
+        actor,
+        subscriptionId: row.id,
+      },
+    }, db).catch(() => null);
+    await recordSubscriptionEvent({
+      tenantId,
+      subscriptionId: row.id,
+      eventType: String(row.status || '').trim().toLowerCase() === 'trialing'
+        ? 'subscription.trial-created'
+        : 'subscription.created',
+      billingStatus: row.status,
+      actor,
+      payload: {
+        planId: row.planId,
+        billingCycle: row.billingCycle,
+        amountCents: row.amountCents,
+        currency: row.currency,
+        renewsAt: row.renewsAt ? new Date(row.renewsAt).toISOString() : null,
+      },
+    }, db).catch(() => null);
+    let invoice = null;
+    if (Number(row.amountCents || 0) > 0 && String(row.billingCycle || '').trim().toLowerCase() !== 'trial') {
+      const invoiceStatus = String(row.status || '').trim().toLowerCase() === 'active' ? 'open' : 'draft';
+      invoice = await createInvoiceDraft({
+        tenantId,
+        subscriptionId: row.id,
+        customerId: billingCustomer?.customer?.id || null,
+        status: invoiceStatus,
+        currency: row.currency,
+        amountCents: row.amountCents,
+        dueAt: row.renewsAt || null,
+        metadata: {
+          source: 'create-subscription',
+          actor,
+          planId: row.planId,
+        },
+      }, db).catch(() => null);
+      if (!invoice?.invoice) {
+        invoice = {
+          invoice: {
+            id: null,
+            tenantId,
+            subscriptionId: row.id,
+            customerId: billingCustomer?.customer?.id || null,
+            status: invoiceStatus,
+            currency: row.currency,
+            amountCents: row.amountCents,
+            dueAt: row.renewsAt ? new Date(row.renewsAt).toISOString() : null,
+            paidAt: null,
+            externalRef: null,
+            metadata: {
+              source: 'create-subscription-fallback',
+              actor,
+              planId: row.planId,
+            },
+          },
+        };
+      }
+    }
+    return {
+      row,
+      billing: {
+        customer: billingCustomer?.customer || null,
+        invoice: invoice?.invoice || null,
+      },
+    };
   });
-  if (!row) return { ok: false, reason: 'tenant-not-found' };
+  if (!outcome?.row) return { ok: false, reason: 'tenant-not-found' };
+  const row = outcome.row;
   await emitPlatformEvent('platform.subscription.created', {
     tenantId,
     subscriptionId: row.id,
     planId: row.planId,
     actor,
   }, { tenantId });
-  return { ok: true, subscription: sanitizeSubscriptionRow(row) };
+  return {
+    ok: true,
+    subscription: sanitizeSubscriptionRow(row),
+    billing: outcome.billing || { customer: null, invoice: null },
+  };
 }
 
 async function listPlatformSubscriptions(options = {}) {

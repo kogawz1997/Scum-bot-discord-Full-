@@ -9,28 +9,28 @@
 
   const NAV_GROUPS = [
     {
-      label: 'ภาพรวมงานหลัก',
+      label: 'Overview',
       items: [
-        { label: 'แดชบอร์ด', href: '#dashboard' },
-        { label: 'สถานะเซิร์ฟเวอร์', href: '#server-status' },
-        { label: 'ควบคุมการรีสตาร์ต', href: '#restart-control' },
+        { label: 'Dashboard', href: '#dashboard' },
+        { label: 'Server status', href: '#server-status' },
+        { label: 'Restart control', href: '#restart-control' },
       ],
     },
     {
-      label: 'คำสั่งซื้อและผู้เล่น',
+      label: 'Commerce and players',
       items: [
-        { label: 'คำสั่งซื้อ', href: '#orders' },
-        { label: 'การส่งของ', href: '#delivery' },
-        { label: 'ผู้เล่น', href: '#players', current: true },
+        { label: 'Orders', href: '#orders' },
+        { label: 'Delivery', href: '#delivery' },
+        { label: 'Players', href: '#players', current: true },
       ],
     },
     {
-      label: 'ระบบและหลักฐาน',
+      label: 'Runtime and evidence',
       items: [
-        { label: 'ตั้งค่าเซิร์ฟเวอร์', href: '#server-config' },
+        { label: 'Server config', href: '#server-config' },
         { label: 'Server Bot', href: '#server-bots' },
         { label: 'Delivery Agent', href: '#delivery-agents' },
-        { label: 'บันทึกและหลักฐาน', href: '#audit' },
+        { label: 'Audit', href: '#audit' },
       ],
     },
   ];
@@ -47,14 +47,14 @@
   function formatNumber(value, fallback = '0') {
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) return fallback;
-    return new Intl.NumberFormat('th-TH').format(numeric);
+    return new Intl.NumberFormat('en-US').format(numeric);
   }
 
   function formatDateTime(value) {
-    if (!value) return 'ยังไม่มีข้อมูล';
+    if (!value) return 'No data yet';
     const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return 'ยังไม่มีข้อมูล';
-    return new Intl.DateTimeFormat('th-TH', {
+    if (Number.isNaN(date.getTime())) return 'No data yet';
+    return new Intl.DateTimeFormat('en-US', {
       dateStyle: 'medium',
       timeStyle: 'short',
     }).format(date);
@@ -68,10 +68,6 @@
     return fallback;
   }
 
-  function listCount(list) {
-    return Array.isArray(list) ? list.length : 0;
-  }
-
   function playerStatusLabel(player) {
     if (player?.isActive === false) return 'inactive';
     return 'active';
@@ -80,8 +76,8 @@
   function toneForStatus(status) {
     const normalized = String(status || '').trim().toLowerCase();
     if (['active', 'linked', 'verified'].includes(normalized)) return 'success';
-    if (['warning', 'needs-support', 'missing-steam'].includes(normalized)) return 'warning';
-    if (['inactive', 'failed', 'error'].includes(normalized)) return 'danger';
+    if (['warning', 'needs-support', 'missing-steam', 'invited'].includes(normalized)) return 'warning';
+    if (['inactive', 'failed', 'error', 'revoked', 'disabled'].includes(normalized)) return 'danger';
     return 'muted';
   }
 
@@ -92,7 +88,7 @@
       player?.user,
       player?.discordName,
       player?.discordId,
-      'ไม่ทราบชื่อผู้เล่น',
+      'Unknown player',
     ]);
   }
 
@@ -101,7 +97,7 @@
       state?.tenantConfig?.name,
       state?.overview?.tenantName,
       state?.me?.tenantId,
-      'Tenant Workspace',
+      'Tenant workspace',
     ]);
   }
 
@@ -126,8 +122,40 @@
       linked: Boolean(selected?.steamId || selected?.steam?.id),
       lastPurchase,
       recentDeliveryIssue: state?.deliveryCase && String(state.deliveryCase?.purchase?.userId || '').trim() === userId
-        ? firstNonEmpty([state.deliveryCase?.deadLetter?.reason, state.deliveryCase?.latestCommandSummary, 'มีเคสส่งของที่เกี่ยวข้อง'])
+        ? firstNonEmpty([state.deliveryCase?.deadLetter?.reason, state.deliveryCase?.latestCommandSummary, 'Open delivery case'])
         : '',
+    };
+  }
+
+  function buildStaffMemberships(state) {
+    const memberships = Array.isArray(state?.staffMemberships) ? state.staffMemberships : [];
+    return memberships.map((membership) => ({
+      membershipId: firstNonEmpty([membership?.membershipId, membership?.id]),
+      userId: firstNonEmpty([membership?.userId, membership?.user?.id]),
+      displayName: firstNonEmpty([
+        membership?.user?.displayName,
+        membership?.displayName,
+        membership?.user?.email,
+        membership?.email,
+        'Unknown teammate',
+      ]),
+      email: firstNonEmpty([membership?.user?.email, membership?.email, '-']),
+      role: firstNonEmpty([membership?.role, 'member']),
+      status: firstNonEmpty([membership?.status, 'active']),
+      locale: firstNonEmpty([membership?.user?.locale, membership?.locale, 'en']),
+      invitedAt: formatDateTime(membership?.invitedAt || membership?.createdAt),
+      updatedAt: formatDateTime(membership?.updatedAt || membership?.acceptedAt || membership?.createdAt),
+      isPrimary: Boolean(membership?.isPrimary),
+    }));
+  }
+
+  function createStaffSummary(memberships) {
+    const rows = Array.isArray(memberships) ? memberships : [];
+    return {
+      total: rows.length,
+      active: rows.filter((item) => String(item?.status || '').trim().toLowerCase() === 'active').length,
+      invited: rows.filter((item) => String(item?.status || '').trim().toLowerCase() === 'invited').length,
+      revoked: rows.filter((item) => String(item?.status || '').trim().toLowerCase() === 'revoked').length,
     };
   }
 
@@ -135,36 +163,48 @@
     const state = source && typeof source === 'object' ? source : {};
     const tenantName = extractTenantName(state);
     const players = Array.isArray(state?.players) ? state.players : [];
+    const staffMemberships = buildStaffMemberships(state);
+    const staffSummary = createStaffSummary(staffMemberships);
     const linkedCount = players.filter((item) => item?.steamId || item?.steam?.id).length;
     const activeCount = players.filter((item) => item?.isActive !== false).length;
-    const needsSupportCount = players.filter((item) => !item?.steamId || state?.deliveryCase && String(state.deliveryCase?.purchase?.userId || '').trim() === String(item?.discordId || item?.userId || '').trim()).length;
+    const needsSupportCount = players.filter((item) => (
+      !item?.steamId
+      || (state?.deliveryCase && String(state.deliveryCase?.purchase?.userId || '').trim() === String(item?.discordId || item?.userId || '').trim())
+    )).length;
     const selected = buildSelectedPlayer(state);
+    const previewMode = Boolean(
+      state?.tenantConfig?.previewMode
+      || state?.overview?.tenantConfig?.previewMode
+      || state?.overview?.opsState?.previewMode
+    );
+    const actorRole = String(state?.me?.role || '').trim().toLowerCase();
+    const canManageStaff = !previewMode && !['viewer', 'member'].includes(actorRole);
 
     return {
       shell: {
         brand: 'SCUM TH',
-      surfaceLabel: 'แผงผู้เช่า',
+        surfaceLabel: 'Tenant admin',
         workspaceLabel: tenantName,
-      environmentLabel: 'พื้นที่ผู้เช่า',
+        environmentLabel: 'Tenant workspace',
         navGroups: Array.isArray(state?.__surfaceShell?.navGroups)
           ? state.__surfaceShell.navGroups
           : NAV_GROUPS,
       },
       header: {
-        title: 'ผู้เล่น',
-        subtitle: 'ค้นหาผู้เล่น ดูการเชื่อมบัญชี และเปิดงานซัพพอร์ตที่เกี่ยวข้องจากหน้าเดียว',
+        title: 'Players',
+        subtitle: 'Search player identity, inspect linked accounts, and keep support context nearby.',
         statusChips: [
-          { label: `${formatNumber(players.length, '0')} ผู้เล่นในระบบ`, tone: 'info' },
-          { label: `${formatNumber(linkedCount, '0')} คนผูก Steam แล้ว`, tone: 'success' },
-          { label: `${formatNumber(needsSupportCount, '0')} คนอาจต้องช่วยเหลือ`, tone: needsSupportCount > 0 ? 'warning' : 'muted' },
+          { label: `${formatNumber(players.length, '0')} players known`, tone: 'info' },
+          { label: `${formatNumber(linkedCount, '0')} linked to Steam`, tone: 'success' },
+          { label: `${formatNumber(needsSupportCount, '0')} may need support`, tone: needsSupportCount > 0 ? 'warning' : 'muted' },
         ],
-        primaryAction: { label: 'ค้นหาผู้เล่น', href: '#player-search' },
+        primaryAction: { label: 'Search players', href: '#player-search' },
       },
       summaryStrip: [
-        { label: 'ผู้เล่นที่รู้จัก', value: formatNumber(players.length, '0'), detail: 'รายชื่อที่ระบบ tenant นี้รู้จัก', tone: 'info' },
-        { label: 'ผูก Steam แล้ว', value: formatNumber(linkedCount, '0'), detail: 'ใช้ยืนยันตัวตนก่อนดูคำสั่งซื้อหรือ delivery', tone: 'success' },
-        { label: 'ยัง active', value: formatNumber(activeCount, '0'), detail: 'สถานะ player ที่ระบบมองว่ายังใช้งานอยู่', tone: 'success' },
-        { label: 'อาจต้องช่วยเหลือ', value: formatNumber(needsSupportCount, '0'), detail: 'ยังไม่ผูกบัญชีหรือมีสัญญาณปัญหาค้างอยู่', tone: needsSupportCount > 0 ? 'warning' : 'muted' },
+        { label: 'Players known', value: formatNumber(players.length, '0'), detail: 'Accounts visible inside this tenant workspace', tone: 'info' },
+        { label: 'Steam linked', value: formatNumber(linkedCount, '0'), detail: 'Useful before looking at orders or delivery evidence', tone: 'success' },
+        { label: 'Still active', value: formatNumber(activeCount, '0'), detail: 'Players the workspace still sees as active', tone: 'success' },
+        { label: 'Need support', value: formatNumber(needsSupportCount, '0'), detail: 'Missing Steam link or still attached to a delivery issue', tone: needsSupportCount > 0 ? 'warning' : 'muted' },
       ],
       players: players.map((row) => ({
         name: extractPlayerName(row),
@@ -173,22 +213,30 @@
         status: playerStatusLabel(row),
         updatedAt: formatDateTime(row?.updatedAt || row?.createdAt),
       })),
+      staff: {
+        memberships: staffMemberships,
+        summary: staffSummary,
+        canManage: canManageStaff,
+        previewMode,
+        roleOptions: ['admin', 'manager', 'support', 'moderator', 'editor', 'viewer', 'member'],
+        statusOptions: ['active', 'invited', 'disabled', 'revoked'],
+      },
       selected,
       railCards: [
         {
-          title: 'ทางลัดซัพพอร์ต',
-          body: 'Wallet · Steam · Orders · Delivery',
-          meta: 'ใช้พาผู้ดูแลไปหน้าที่เกี่ยวข้องทันที เมื่อเจอปัญหาผู้เล่นด้าน identity, เงิน, คำสั่งซื้อ หรือการส่งของ',
+          title: 'Support shortcuts',
+          body: 'Wallet, Steam, orders, and delivery evidence stay one click away.',
+          meta: 'Use this page as the starting point when identity, commerce, or delivery signals disagree.',
           tone: 'info',
         },
         {
-          title: 'สิ่งที่ควรดูต่อ',
+          title: 'Next best action',
           body: selected
-            ? `${selected.name} · ${selected.linked ? 'ผูกบัญชีแล้ว' : 'ยังไม่ผูก Steam'}`
-            : 'เลือกผู้เล่นจากตารางก่อน',
+            ? `${selected.name} · ${selected.linked ? 'linked already' : 'still missing Steam'}`
+            : 'Choose a player from the table first',
           meta: selected?.recentDeliveryIssue
-            ? `มีสัญญาณที่เกี่ยวข้องกับ delivery: ${selected.recentDeliveryIssue}`
-            : 'ถัดไปให้เปิดดู order history หรือ wallet support ของผู้เล่นที่เลือก',
+            ? `Delivery signal: ${selected.recentDeliveryIssue}`
+            : 'Open order history or wallet support for the selected player next.',
           tone: selected?.recentDeliveryIssue ? 'warning' : 'muted',
         },
       ],
@@ -246,6 +294,43 @@
     ].join('');
   }
 
+  function renderOptionList(values, selectedValue) {
+    const normalizedSelected = String(selectedValue || '').trim().toLowerCase();
+    return (Array.isArray(values) ? values : []).map((value) => {
+      const normalizedValue = String(value || '').trim();
+      const selected = normalizedValue.toLowerCase() === normalizedSelected ? ' selected' : '';
+      return `<option value="${escapeHtml(normalizedValue)}"${selected}>${escapeHtml(normalizedValue)}</option>`;
+    }).join('');
+  }
+
+  function renderStaffCard(entry, staffConfig) {
+    const canManage = Boolean(staffConfig?.canManage);
+    const revoked = String(entry?.status || '').trim().toLowerCase() === 'revoked';
+    const disabled = !canManage || revoked ? ' disabled' : '';
+    return [
+      `<article class="tdv4-panel tdv4-staff-card" data-tenant-staff-card data-membership-id="${escapeHtml(entry.membershipId)}" data-user-id="${escapeHtml(entry.userId)}">`,
+      '<div class="tdv4-staff-card-head">',
+      `<div class="tdv4-data-main"><strong>${escapeHtml(entry.displayName)}</strong><span class="tdv4-kpi-detail">${escapeHtml(entry.email)}</span></div>`,
+      `<div class="tdv4-chip-row">${renderBadge(entry.role, 'info')}${renderBadge(entry.status, toneForStatus(entry.status))}${entry.isPrimary ? renderBadge('primary', 'success') : ''}</div>`,
+      '</div>',
+      `<div class="tdv4-kpi-detail">Invited ${escapeHtml(entry.invitedAt)} · Updated ${escapeHtml(entry.updatedAt)} · Locale ${escapeHtml(entry.locale)}</div>`,
+      '<div class="tdv4-staff-controls">',
+      '<label class="tdv4-form-field"><span class="tdv4-mini-stat-label">Role</span>',
+      `<select class="tdv4-basic-input" data-tenant-staff-role${disabled}>${renderOptionList(staffConfig?.roleOptions, entry.role)}</select>`,
+      '</label>',
+      '<label class="tdv4-form-field"><span class="tdv4-mini-stat-label">Status</span>',
+      `<select class="tdv4-basic-input" data-tenant-staff-status${disabled}>${renderOptionList(staffConfig?.statusOptions, entry.status)}</select>`,
+      '</label>',
+      '<label class="tdv4-form-field tdv4-form-field-span"><span class="tdv4-mini-stat-label">Revoke reason</span>',
+      `<input class="tdv4-basic-input" type="text" placeholder="Optional note for audit log" data-tenant-staff-revoke-reason${disabled}>`,
+      '</label>',
+      `<button class="tdv4-button tdv4-button-secondary" type="button" data-tenant-staff-role-update${disabled}>Save access</button>`,
+      `<button class="tdv4-button tdv4-button-primary" type="button" data-tenant-staff-revoke${disabled}>Revoke</button>`,
+      '</div>',
+      '</article>',
+    ].join('');
+  }
+
   function buildTenantPlayersV4Html(model) {
     const safeModel = model || createTenantPlayersV4Model({});
     return [
@@ -266,7 +351,7 @@
       '<div class="tdv4-shell tdv4-players-shell">',
       '<aside class="tdv4-sidebar">',
       `<div class="tdv4-sidebar-title">${escapeHtml(safeModel.shell.workspaceLabel)}</div>`,
-      '<div class="tdv4-sidebar-copy">ศูนย์กลางงานดูแลผู้เล่น ใช้ค้นหาตัวตน เช็กการเชื่อมบัญชี และพาไปงานซัพพอร์ตที่เกี่ยวข้องเร็วที่สุด</div>',
+      '<div class="tdv4-sidebar-copy">Player support starts here: identity, orders, delivery evidence, and staff access in one workspace.</div>',
       ...(Array.isArray(safeModel.shell.navGroups) ? safeModel.shell.navGroups.map(renderNavGroup) : []),
       '</aside>',
       '<main class="tdv4-main">',
@@ -287,47 +372,72 @@
       '</section>',
       '<section class="tdv4-dual-grid tdv4-players-main-grid">',
       '<section class="tdv4-panel">',
-      '<div class="tdv4-section-kicker">รายชื่อผู้เล่น</div>',
-      '<h2 class="tdv4-section-title">ตารางผู้เล่น</h2>',
+      '<div class="tdv4-section-kicker">Player registry</div>',
+      '<h2 class="tdv4-section-title">Known players</h2>',
       '<div class="tdv4-data-header"><span>Player</span><span>Discord</span><span>Steam / In-game</span><span>Status</span><span>Updated</span></div>',
       '<div class="tdv4-data-table">',
       ...(Array.isArray(safeModel.players) && safeModel.players.length
         ? safeModel.players.map((row) => renderPlayerRow(row, safeModel.selected?.discordId))
-        : ['<div class="tdv4-empty-state">ยังไม่พบผู้เล่นใน tenant นี้</div>']),
+        : ['<div class="tdv4-empty-state">No players found for this tenant yet.</div>']),
       '</div>',
       '</section>',
       '<section class="tdv4-panel">',
-      '<div class="tdv4-section-kicker">ผู้เล่นที่เลือก</div>',
-      '<h2 class="tdv4-section-title">สรุปตัวตนและบริบท</h2>',
+      '<div class="tdv4-section-kicker">Selected player</div>',
+      '<h2 class="tdv4-section-title">Identity and support context</h2>',
       (safeModel.selected
         ? [
             '<div class="tdv4-selected-player">',
             `<strong>${escapeHtml(safeModel.selected.name)}</strong>`,
             `<div>${renderBadge(safeModel.selected.status, toneForStatus(safeModel.selected.status))}</div>`,
             `<div class="tdv4-kpi-detail">Discord ${escapeHtml(safeModel.selected.discordId)} · Steam ${escapeHtml(safeModel.selected.steamId)} · In-game ${escapeHtml(safeModel.selected.inGameName)}</div>`,
-            `<div class="tdv4-kpi-detail">อัปเดตล่าสุด ${escapeHtml(safeModel.selected.updatedAt)}</div>`,
-            `<div class="tdv4-chip-row">${renderBadge(safeModel.selected.linked ? 'ผูกบัญชีแล้ว' : 'ยังไม่ผูก Steam', safeModel.selected.linked ? 'success' : 'warning')}${safeModel.selected.recentDeliveryIssue ? renderBadge('มีประเด็น delivery', 'warning') : ''}</div>`,
-            safeModel.selected.lastPurchase ? `<div class="tdv4-kpi-detail">คำสั่งซื้อล่าสุด ${escapeHtml(firstNonEmpty([safeModel.selected.lastPurchase.code, safeModel.selected.lastPurchase.purchaseCode, '-']))} · ${escapeHtml(firstNonEmpty([safeModel.selected.lastPurchase.status, '-']))}</div>` : '<div class="tdv4-kpi-detail">ยังไม่พบคำสั่งซื้อที่โยงกับผู้เล่นคนนี้ในมุมมองปัจจุบัน</div>',
+            `<div class="tdv4-kpi-detail">Updated ${escapeHtml(safeModel.selected.updatedAt)}</div>`,
+            `<div class="tdv4-chip-row">${renderBadge(safeModel.selected.linked ? 'linked already' : 'missing Steam link', safeModel.selected.linked ? 'success' : 'warning')}${safeModel.selected.recentDeliveryIssue ? renderBadge('delivery issue open', 'warning') : ''}</div>`,
+            safeModel.selected.lastPurchase
+              ? `<div class="tdv4-kpi-detail">Latest order ${escapeHtml(firstNonEmpty([safeModel.selected.lastPurchase.code, safeModel.selected.lastPurchase.purchaseCode, '-']))} · ${escapeHtml(firstNonEmpty([safeModel.selected.lastPurchase.status, '-']))}</div>`
+              : '<div class="tdv4-kpi-detail">No linked order visible for this player yet.</div>',
             '</div>',
           ].join('')
-        : '<div class="tdv4-empty-state">เลือกผู้เล่นจากตารางก่อน</div>'),
+        : '<div class="tdv4-empty-state">Choose a player from the table first.</div>'),
       '</section>',
       '</section>',
       '<section class="tdv4-panel">',
-      '<div class="tdv4-section-kicker">บริบทและงานซัพพอร์ต</div>',
-      '<h2 class="tdv4-section-title">ใช้หน้านี้เป็นจุดเริ่มก่อนเปิดงานต่อ</h2>',
+      '<div class="tdv4-section-kicker">Support context</div>',
+      '<h2 class="tdv4-section-title">Use this page as the support handoff starting point</h2>',
       '<div class="tdv4-support-grid">',
-      '<article class="tdv4-mini-stat"><div class="tdv4-mini-stat-label">บัญชี Discord</div><div class="tdv4-mini-stat-value">' + escapeHtml(safeModel.selected ? safeModel.selected.discordId : '-') + '</div></article>',
-      '<article class="tdv4-mini-stat"><div class="tdv4-mini-stat-label">บัญชี Steam</div><div class="tdv4-mini-stat-value">' + escapeHtml(safeModel.selected ? safeModel.selected.steamId : '-') + '</div></article>',
-      '<article class="tdv4-mini-stat"><div class="tdv4-mini-stat-label">ประเด็นล่าสุด</div><div class="tdv4-mini-stat-value">' + escapeHtml(safeModel.selected?.recentDeliveryIssue || 'ยังไม่พบประเด็นที่ค้างอยู่') + '</div></article>',
-      '<article class="tdv4-mini-stat"><div class="tdv4-mini-stat-label">ทางต่อที่แนะนำ</div><div class="tdv4-mini-stat-value">' + escapeHtml(safeModel.selected?.lastPurchase ? 'เปิด order history หรือ delivery case' : 'เริ่มที่ Steam support หรือค้นหา order') + '</div></article>',
+      `<article class="tdv4-mini-stat"><div class="tdv4-mini-stat-label">Discord</div><div class="tdv4-mini-stat-value">${escapeHtml(safeModel.selected ? safeModel.selected.discordId : '-')}</div></article>`,
+      `<article class="tdv4-mini-stat"><div class="tdv4-mini-stat-label">Steam</div><div class="tdv4-mini-stat-value">${escapeHtml(safeModel.selected ? safeModel.selected.steamId : '-')}</div></article>`,
+      `<article class="tdv4-mini-stat"><div class="tdv4-mini-stat-label">Latest issue</div><div class="tdv4-mini-stat-value">${escapeHtml(safeModel.selected?.recentDeliveryIssue || 'No active issue recorded')}</div></article>`,
+      `<article class="tdv4-mini-stat"><div class="tdv4-mini-stat-label">Recommended next step</div><div class="tdv4-mini-stat-value">${escapeHtml(safeModel.selected?.lastPurchase ? 'Open order history or delivery case' : 'Start with identity or Steam linking support')}</div></article>`,
+      '</div>',
+      '</section>',
+      '<section class="tdv4-panel tdv4-staff-panel">',
+      '<div class="tdv4-section-kicker">Team access</div>',
+      '<h2 class="tdv4-section-title">Tenant staff and permissions</h2>',
+      `<p class="tdv4-page-subtitle">${escapeHtml(safeModel.staff.previewMode ? 'Preview tenants can review access layout, but invites and edits stay disabled until activation.' : 'Invite operators, update roles, and revoke access without leaving the players workspace.')}</p>`,
+      '<div class="tdv4-support-grid">',
+      `<article class="tdv4-mini-stat"><div class="tdv4-mini-stat-label">Total staff</div><div class="tdv4-mini-stat-value">${escapeHtml(formatNumber(safeModel.staff.summary.total, '0'))}</div></article>`,
+      `<article class="tdv4-mini-stat"><div class="tdv4-mini-stat-label">Active</div><div class="tdv4-mini-stat-value">${escapeHtml(formatNumber(safeModel.staff.summary.active, '0'))}</div></article>`,
+      `<article class="tdv4-mini-stat"><div class="tdv4-mini-stat-label">Invited</div><div class="tdv4-mini-stat-value">${escapeHtml(formatNumber(safeModel.staff.summary.invited, '0'))}</div></article>`,
+      `<article class="tdv4-mini-stat"><div class="tdv4-mini-stat-label">Revoked</div><div class="tdv4-mini-stat-value">${escapeHtml(formatNumber(safeModel.staff.summary.revoked, '0'))}</div></article>`,
+      '</div>',
+      '<form class="tdv4-staff-form" data-tenant-staff-invite-form>',
+      `<label class="tdv4-form-field"><span class="tdv4-mini-stat-label">Email</span><input class="tdv4-basic-input" type="email" name="email" placeholder="operator@example.com"${safeModel.staff.canManage ? '' : ' disabled'}></label>`,
+      `<label class="tdv4-form-field"><span class="tdv4-mini-stat-label">Display name</span><input class="tdv4-basic-input" type="text" name="displayName" placeholder="Ops teammate"${safeModel.staff.canManage ? '' : ' disabled'}></label>`,
+      `<label class="tdv4-form-field"><span class="tdv4-mini-stat-label">Role</span><select class="tdv4-basic-input" name="role"${safeModel.staff.canManage ? '' : ' disabled'}>${renderOptionList(safeModel.staff.roleOptions, 'support')}</select></label>`,
+      `<label class="tdv4-form-field"><span class="tdv4-mini-stat-label">Locale</span><select class="tdv4-basic-input" name="locale"${safeModel.staff.canManage ? '' : ' disabled'}><option value="en">en</option><option value="th">th</option></select></label>`,
+      `<div class="tdv4-form-actions"><button class="tdv4-button tdv4-button-primary" type="submit" data-tenant-staff-invite-submit${safeModel.staff.canManage ? '' : ' disabled'}>Invite teammate</button></div>`,
+      '</form>',
+      '<div class="tdv4-staff-list">',
+      ...(Array.isArray(safeModel.staff.memberships) && safeModel.staff.memberships.length
+        ? safeModel.staff.memberships.map((entry) => renderStaffCard(entry, safeModel.staff))
+        : ['<div class="tdv4-empty-state">No tenant staff yet. Invite your first operator to start sharing support and moderation work.</div>']),
       '</div>',
       '</section>',
       '</main>',
       '<aside class="tdv4-rail">',
       '<div class="tdv4-rail-sticky">',
       `<div class="tdv4-rail-header">${escapeHtml(safeModel.shell.workspaceLabel)}</div>`,
-      '<div class="tdv4-rail-copy">ทางลัดช่วยตัดสินใจว่าเคสนี้ควรเปิดต่อที่ wallet, Steam, orders หรือ delivery</div>',
+      '<div class="tdv4-rail-copy">Keep player support, identity context, and team access close together so escalations do not lose context.</div>',
       ...(Array.isArray(safeModel.railCards) ? safeModel.railCards.map(renderRailCard) : []),
       '</div>',
       '</aside>',

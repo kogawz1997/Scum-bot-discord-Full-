@@ -2,6 +2,7 @@
 
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { resolveClientModulePath } = require('../prismaClientLoader');
 
 const {
   buildTenantDatabaseAdminUrl,
@@ -46,6 +47,14 @@ function runNodeSnippet(source, env = {}) {
   }
 }
 
+function buildPrismaClientSnippet() {
+  const generatedClientPath = resolveClientModulePath();
+  if (generatedClientPath) {
+    return `require(${JSON.stringify(generatedClientPath)})`;
+  }
+  return `require('@prisma/client')`;
+}
+
 function runDbPush(databaseUrl) {
   const scriptPath = path.resolve(projectRoot(), 'scripts', 'prisma-with-provider.js');
   const result = spawnSync(
@@ -88,7 +97,7 @@ function ensureTenantSchema(target, env = {}) {
   const sql = `CREATE SCHEMA IF NOT EXISTS ${quoteIdentifier(target.schemaName)};`;
   runNodeSnippet(
     `
-      const { PrismaClient } = require('@prisma/client');
+      const { PrismaClient } = ${buildPrismaClientSnippet()};
       const prisma = new PrismaClient({
         datasources: {
           db: {
@@ -122,7 +131,7 @@ function ensureTenantDatabase(target, env = {}) {
   }
   runNodeSnippet(
     `
-      const { PrismaClient } = require('@prisma/client');
+      const { PrismaClient } = ${buildPrismaClientSnippet()};
       const prisma = new PrismaClient({
         datasources: {
           db: {

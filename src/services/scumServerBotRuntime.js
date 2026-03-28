@@ -5,6 +5,7 @@ const path = require('node:path');
 
 const { executeCommandTemplate } = require('../utils/commandTemplate');
 const { createPlatformAgentPresenceService } = require('./platformAgentPresenceService');
+const { startRuntimeHealthServer } = require('./runtimeHealthServer');
 const {
   getConfigFileDefinitions,
   getConfigSettingDefinitions,
@@ -148,6 +149,8 @@ function startScumServerBotRuntime(options = {}) {
   const pollIntervalMs = asInt(env.SCUM_SERVER_CONFIG_JOB_POLL_MS, 15000, 3000);
   const applyTemplate = trimText(env.SCUM_SERVER_APPLY_TEMPLATE, 1200);
   const restartTemplate = trimText(env.SCUM_SERVER_RESTART_TEMPLATE, 1200);
+  const healthHost = trimText(env.SCUM_SERVER_BOT_HEALTH_HOST, 120) || '127.0.0.1';
+  const healthPort = asInt(env.SCUM_SERVER_BOT_HEALTH_PORT, 0, 0);
   const presence = createPlatformAgentPresenceService({
     env,
     role: 'sync',
@@ -159,11 +162,45 @@ function startScumServerBotRuntime(options = {}) {
 
   let syncTimer = null;
   let pollTimer = null;
+  let healthServer = null;
+  let startedAt = null;
+  let ready = false;
+  let lastSnapshotAt = null;
+  let lastJobPollAt = null;
+  let lastJobClaimAt = null;
+  let lastJobCompletedAt = null;
+  let lastJobStatus = null;
+  let lastError = null;
+
+  function getHealthPayload() {
+    return {
+      ready,
+      status: ready ? (lastError ? 'degraded' : 'ready') : 'starting',
+      role: 'sync',
+      scope: 'sync_only',
+      configRoot: configRoot || null,
+      backupRoot: backupRoot || null,
+      startedAt,
+      lastSnapshotAt,
+      lastJobPollAt,
+      lastJobClaimAt,
+      lastJobCompletedAt,
+      lastJobStatus,
+      lastError,
+    };
+  }
 
   async function publishSnapshot() {
     if (!configRoot) return { ok: false, error: 'server-config-root-missing' };
     const snapshot = createServerConfigSnapshot(configRoot);
-    return presence.uploadServerConfigSnapshot(snapshot);
+    const result = await presence.uploadServerConfigSnapshot(snapshot);
+    if (result?.ok) {
+      lastSnapshotAt = new Date().toISOString();
+      lastError = null;
+    } else if (result?.error) {
+      lastError = trimText(result.error, 1000);
+    }
+    return result;
   }
 
   async function processJob(job) {
@@ -236,6 +273,9 @@ function startScumServerBotRuntime(options = {}) {
         result: { applyMode: job.applyMode, jobType: job.jobType },
         snapshot,
       });
+      lastJobCompletedAt = new Date().toISOString();
+      lastJobStatus = 'succeeded';
+      lastError = null;
     } catch (error) {
       await presence.reportServerConfigJobResult({
         jobId: job.id,
@@ -245,20 +285,35 @@ function startScumServerBotRuntime(options = {}) {
         result: { applyMode: job.applyMode, jobType: job.jobType },
         snapshot: configRoot ? createServerConfigSnapshot(configRoot) : null,
       }).catch(() => null);
+      lastJobCompletedAt = new Date().toISOString();
+      lastJobStatus = 'failed';
+      lastError = trimText(error?.message || error, 1000);
     }
   }
 
   async function pollJobs() {
+    lastJobPollAt = new Date().toISOString();
     const claimed = await presence.claimNextServerConfigJob();
     if (!claimed.ok || !claimed.data) return;
     const job = claimed.data.job || claimed.data;
     if (job) {
+      lastJobClaimAt = new Date().toISOString();
+      lastJobStatus = 'processing';
       await processJob(job);
     }
   }
 
   async function start() {
+    if (!healthServer && healthPort > 0) {
+      healthServer = startRuntimeHealthServer({
+        name: 'scum-server-bot',
+        host: healthHost,
+        port: healthPort,
+        getPayload: getHealthPayload,
+      });
+    }
     if (!configRoot) {
+      lastError = 'server-config-root-missing';
       return { ok: false, error: 'server-config-root-missing' };
     }
     ensureDirectory(backupRoot);
@@ -269,6 +324,9 @@ function startScumServerBotRuntime(options = {}) {
       }),
     });
     if (!started.ok) return started;
+    startedAt = new Date().toISOString();
+    ready = true;
+    lastError = null;
     await publishSnapshot().catch(() => null);
     syncTimer = setInterval(() => {
       void publishSnapshot().catch(() => null);
@@ -280,8 +338,13 @@ function startScumServerBotRuntime(options = {}) {
   }
 
   async function close() {
+    ready = false;
     if (syncTimer) clearInterval(syncTimer);
     if (pollTimer) clearInterval(pollTimer);
+    if (healthServer) {
+      await new Promise((resolve) => healthServer.close(resolve));
+      healthServer = null;
+    }
     await presence.close().catch(() => null);
   }
 

@@ -879,7 +879,7 @@ async function restoreAdminSnapshotData(snapshot = {}) {
   replaceAdminNotifications(
     Array.isArray(snapshot.adminNotifications) ? snapshot.adminNotifications : [],
   );
-  replaceAdminSecurityEvents(
+  await replaceAdminSecurityEvents(
     Array.isArray(snapshot.adminSecurityEvents) ? snapshot.adminSecurityEvents : [],
   );
   replaceAdminCommandCapabilityPresets(
@@ -1332,13 +1332,13 @@ async function buildAdminSnapshot(options = {}) {
     platformWebhookEndpoints,
     platformAgentRuntimes,
     platformMarketplaceOffers,
-    platformOpsState: getPlatformOpsState(),
+    platformOpsState: await getPlatformOpsState(),
     backupRestore: getAdminRestoreState(),
     deliveryQueue: listDeliveryQueue(500),
     deliveryDeadLetters: listDeliveryDeadLetters(1000),
     deliveryAudit: listDeliveryAudit(1000),
     adminNotifications: listAdminNotifications({ limit: 300 }),
-    adminSecurityEvents: listAdminSecurityEvents({ limit: 300 }),
+    adminSecurityEvents: await listAdminSecurityEvents({ limit: 300 }),
     adminRequestLogs: listAdminRequestLogs({ limit: 300 }),
     adminCommandCapabilityPresets: listAdminCommandCapabilityPresets(300),
     observability: observabilitySnapshot || {},

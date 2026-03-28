@@ -36,6 +36,11 @@
     return String(url.searchParams.get('package') || '').trim().toUpperCase() || 'BOT_LOG_DELIVERY';
   }
 
+  function getQueryParam(key) {
+    const url = new URL(window.location.href);
+    return String(url.searchParams.get(key) || '').trim();
+  }
+
   function buildPackageOptions(select, packages, selectedPackageId) {
     if (!select) return;
     const rows = Array.isArray(packages) ? packages : [];
@@ -131,21 +136,130 @@
     if (!form) return;
     const submit = $('publicPasswordResetSubmit');
     const status = $('publicPasswordResetStatus');
+    const title = $('publicPasswordResetTitle');
+    const copy = $('publicPasswordResetCopy');
+    const passwordRow = $('publicPasswordResetPasswordRow');
+    const confirmRow = $('publicPasswordResetPasswordConfirmRow');
+    const emailField = $('publicPasswordResetEmail');
+    const passwordField = $('publicPasswordResetPassword');
+    const confirmField = $('publicPasswordResetPasswordConfirm');
+    const token = getQueryParam('token');
+    const completeMode = Boolean(token);
+
+    if (completeMode) {
+      if (title) title.textContent = t('public.accountRecovery.completeTitle', 'Set your new password');
+      if (copy) copy.textContent = t('public.accountRecovery.completeCopy', 'This reset link is ready. Choose a new password for your workspace account.');
+      if (submit) submit.textContent = t('public.accountRecovery.completeAction', 'Save new password');
+      if (passwordRow) passwordRow.hidden = false;
+      if (confirmRow) confirmRow.hidden = false;
+    }
 
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       if (submit) submit.disabled = true;
-      setStatus(status, t('public.accountRecovery.working', 'กำลังส่งคำขอรีเซ็ตรหัสผ่าน...'));
+      setStatus(
+        status,
+        completeMode
+          ? t('public.accountRecovery.completeWorking', 'Saving your new password...')
+          : t('public.accountRecovery.working', 'กำลังส่งคำขอรีเซ็ตรหัสผ่าน...'),
+      );
       try {
-        await requestJson('/api/public/password-reset-request', {
-          method: 'POST',
-          body: JSON.stringify({
-            email: $('publicPasswordResetEmail')?.value || '',
-          }),
-        });
-        setStatus(status, t('public.accountRecovery.sent', 'หากพบบัญชีนี้ในระบบ ระบบได้เตรียมขั้นตอนรีเซ็ตรหัสผ่านไว้แล้ว'), 'success');
+        if (completeMode) {
+          const password = passwordField?.value || '';
+          const confirmPassword = confirmField?.value || '';
+          if (password !== confirmPassword) {
+            throw new Error(t('public.accountRecovery.passwordMismatch', 'Passwords do not match.'));
+          }
+          await requestJson('/api/public/password-reset-complete', {
+            method: 'POST',
+            body: JSON.stringify({
+              token,
+              email: emailField?.value || '',
+              password,
+            }),
+          });
+          setStatus(status, t('public.accountRecovery.completeSuccess', 'Password updated. Redirecting you back to login...'), 'success');
+          window.setTimeout(() => {
+            window.location.href = '/login';
+          }, 900);
+        } else {
+          await requestJson('/api/public/password-reset-request', {
+            method: 'POST',
+            body: JSON.stringify({
+              email: emailField?.value || '',
+            }),
+          });
+          setStatus(status, t('public.accountRecovery.sent', 'หากพบบัญชีนี้ในระบบ ระบบได้เตรียมขั้นตอนรีเซ็ตรหัสผ่านไว้แล้ว'), 'success');
+        }
       } catch (error) {
-        setStatus(status, error?.message || t('public.accountRecovery.error', 'ส่งคำขอรีเซ็ตรหัสผ่านไม่สำเร็จ'), 'error');
+        setStatus(
+          status,
+          error?.message || (completeMode
+            ? t('public.accountRecovery.completeError', 'Could not update the password.')
+            : t('public.accountRecovery.error', 'ส่งคำขอรีเซ็ตรหัสผ่านไม่สำเร็จ')),
+          'error',
+        );
+      } finally {
+        if (submit) submit.disabled = false;
+      }
+    });
+  }
+
+  async function initVerifyEmailPage() {
+    const form = $('publicEmailVerificationForm');
+    if (!form) return;
+    const title = $('publicEmailVerificationTitle');
+    const copy = $('publicEmailVerificationCopy');
+    const emailField = $('publicEmailVerificationEmail');
+    const emailRow = $('publicEmailVerificationEmailRow');
+    const submit = $('publicEmailVerificationSubmit');
+    const status = $('publicEmailVerificationStatus');
+    const token = getQueryParam('token');
+    const completeMode = Boolean(token);
+
+    if (completeMode) {
+      if (title) title.textContent = t('public.verifyEmail.completeTitle', 'Complete email verification');
+      if (copy) copy.textContent = t('public.verifyEmail.completeCopy', 'This link is ready. Confirm the email now to finish account verification.');
+      if (submit) submit.textContent = t('public.verifyEmail.completeAction', 'Verify email now');
+      if (emailRow) emailRow.hidden = true;
+    }
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (submit) submit.disabled = true;
+      setStatus(
+        status,
+        completeMode
+          ? t('public.verifyEmail.completeWorking', 'Completing your verification...')
+          : t('public.verifyEmail.requestWorking', 'Queueing a fresh verification link...'),
+      );
+      try {
+        if (completeMode) {
+          await requestJson('/api/public/email-verification-complete', {
+            method: 'POST',
+            body: JSON.stringify({ token }),
+          });
+          setStatus(status, t('public.verifyEmail.completeSuccess', 'Email verified. Redirecting you back to login...'), 'success');
+          window.setTimeout(() => {
+            window.location.href = '/login';
+          }, 900);
+        } else {
+          await requestJson('/api/public/email-verification-request', {
+            method: 'POST',
+            body: JSON.stringify({
+              email: emailField?.value || '',
+            }),
+          });
+          setStatus(status, t('public.verifyEmail.requestSuccess', 'If the account exists, a fresh verification link has been queued.'), 'success');
+        }
+      } catch (error) {
+        setStatus(
+          status,
+          error?.message || (completeMode
+            ? t('public.verifyEmail.completeError', 'Could not complete email verification.')
+            : t('public.verifyEmail.requestError', 'Could not queue a new verification link.')),
+          'error',
+        );
       } finally {
         if (submit) submit.disabled = false;
       }
@@ -336,8 +450,103 @@
     const packageId = getRequestedPackage();
     $('checkoutSelectedPackage').textContent = packageId;
     const signupCta = $('checkoutSignupCta');
+    const status = $('checkoutStatus');
     if (signupCta) {
       signupCta.href = `/signup?package=${encodeURIComponent(packageId)}`;
+      requestJson('/api/public/session')
+        .then((data) => {
+          if (!data?.session || !data?.preview?.account) {
+            setStatus(status, t('public.checkout.signupFirst', 'Create a preview workspace first to open checkout.'));
+            return;
+          }
+          signupCta.textContent = t('public.checkout.open', 'Open checkout');
+          signupCta.addEventListener('click', async (event) => {
+            event.preventDefault();
+            if (signupCta.getAttribute('aria-busy') === 'true') return;
+            signupCta.setAttribute('aria-busy', 'true');
+            setStatus(status, t('public.checkout.working', 'Creating your checkout session...'));
+            try {
+              const data = await requestJson('/api/public/checkout/session', {
+                method: 'POST',
+                body: JSON.stringify({
+                  packageId,
+                  successUrl: '/payment-result',
+                  cancelUrl: '/checkout',
+                }),
+              });
+              window.location.href = data?.session?.checkoutUrl
+                || `/payment-result?session=${encodeURIComponent(data?.session?.sessionToken || '')}`;
+            } catch (error) {
+              setStatus(status, error?.message || t('public.checkout.error', 'Could not create checkout session.'), 'error');
+            } finally {
+              signupCta.removeAttribute('aria-busy');
+            }
+          });
+        })
+        .catch(() => {
+          setStatus(status, t('public.checkout.signupFirst', 'Create a preview workspace first to open checkout.'));
+        });
+    }
+  }
+
+  async function initPaymentResultPage() {
+    const title = $('paymentResultTitle');
+    if (!title) return;
+    const copy = $('paymentResultCopy');
+    const primary = $('paymentResultPrimary');
+    const secondary = $('paymentResultSecondary');
+    const sessionToken = getQueryParam('session');
+    const stripeSessionId = getQueryParam('stripe_session_id') || getQueryParam('session_id');
+    if (!sessionToken) return;
+    const action = getQueryParam('status') || 'paid';
+    title.textContent = t('public.payment.confirmingTitle', 'Confirming your payment...');
+    if (copy) {
+      copy.textContent = t('public.payment.confirmingCopy', 'We are applying your package and updating the workspace now.');
+    }
+    try {
+      await requestJson(`/api/public/checkout/session?token=${encodeURIComponent(sessionToken)}`);
+      const result = await requestJson('/api/public/checkout/complete', {
+        method: 'POST',
+        body: JSON.stringify({
+          sessionToken,
+          action,
+          stripeSessionId,
+        }),
+      });
+      const isPaid = String(result?.invoice?.status || '').trim().toLowerCase() === 'paid';
+      title.textContent = isPaid
+        ? t('public.payment.successTitle', 'Package activated')
+        : t('public.payment.pendingTitle', 'Checkout updated');
+      if (copy) {
+        copy.textContent = isPaid
+          ? t('public.payment.successCopy', 'Your workspace is ready to continue with the updated package.')
+          : t('public.payment.pendingCopy', 'The checkout was updated. You can review the workspace status or return to checkout.');
+      }
+      if (primary) {
+        primary.href = result?.nextUrl || '/preview';
+        primary.textContent = isPaid
+          ? t('public.payment.primaryWorkspace', 'Open your workspace')
+          : t('public.payment.primaryReview', 'Review workspace');
+      }
+      if (secondary) {
+        secondary.href = action === 'canceled' ? '/checkout' : '/login';
+        secondary.textContent = action === 'canceled'
+          ? t('public.payment.secondaryCheckout', 'Back to checkout')
+          : t('public.payment.secondaryLogin', 'Back to login');
+      }
+    } catch (error) {
+      title.textContent = t('public.payment.errorTitle', 'Payment could not be confirmed');
+      if (copy) {
+        copy.textContent = error?.message || t('public.payment.errorCopy', 'Please try the checkout again or return to your workspace.');
+      }
+      if (primary) {
+        primary.href = '/checkout';
+        primary.textContent = t('public.payment.retry', 'Retry checkout');
+      }
+      if (secondary) {
+        secondary.href = '/preview';
+        secondary.textContent = t('public.payment.secondaryWorkspace', 'Open workspace');
+      }
     }
   }
 
@@ -359,8 +568,10 @@
     initSignupPage();
     initLoginPage();
     initForgotPasswordPage();
+    initVerifyEmailPage();
     initCheckoutPage();
     initPreviewPage();
     initPreviewLogout();
+    initPaymentResultPage();
   });
 })();

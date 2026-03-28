@@ -225,7 +225,7 @@ function createAdminEntityPostRoutes(deps) {
         sendJson(res, 400, { ok: false, error: 'Invalid request payload' });
         return true;
       }
-      const result = bindSteamLinkForUser({
+      const result = await bindSteamLinkForUser({
         steamId,
         userId,
         inGameName: inGameName || null,
