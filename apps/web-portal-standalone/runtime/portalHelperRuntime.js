@@ -378,6 +378,7 @@ function createPortalHelperRuntime(options = {}) {
     getFrameSrcOrigins,
     getMapPortalConfig,
     getPortalRuntimeSettings,
+    normalizeHttpUrl,
     printStartupHints,
     readJsonBody,
     readRawBody,
