@@ -222,7 +222,7 @@ function createAdminUserStoreRuntime(options = {}) {
     return secureEqual(actual.toString('hex'), expected.toString('hex'));
   }
 
-  async function ensureAdminUsersTable() {
+  async function ensureAdminUsersLegacyTable() {
     const engine = getAdminUsersDatabaseEngine();
     try {
       if (engine === 'postgresql') {
@@ -285,13 +285,14 @@ function createAdminUserStoreRuntime(options = {}) {
             },
           });
         }
-        return;
+        return { mode: 'delegate' };
       } catch (error) {
         if (!shouldFallbackToLegacyAdminUserPersistence(error)) {
           throw error;
         }
       }
     }
+    await ensureAdminUsersLegacyTable();
     for (const user of users) {
       await prisma.$executeRaw`
         INSERT INTO admin_web_users (
@@ -315,6 +316,7 @@ function createAdminUserStoreRuntime(options = {}) {
         ON CONFLICT (username) DO NOTHING
       `;
     }
+    return { mode: 'legacy' };
   }
 
   async function listAdminUsersFromDb(limit = 100, options = {}) {
@@ -588,7 +590,6 @@ function createAdminUserStoreRuntime(options = {}) {
 
     adminUsersReadyPromise = (async () => {
       try {
-        await ensureAdminUsersTable();
         await seedAdminUsersFromEnv();
         envFallbackMode = false;
         const users = await listAdminUsersFromDb(1);

@@ -298,3 +298,60 @@ test('public platform routes create and finalize checkout sessions for preview u
   assert.equal(webhookRes.statusCode, 200);
   assert.equal(webhookRes.payload.data.eventType, 'invoice.paid');
 });
+
+test('public platform routes expose tenant-scoped public server overview by slug', async () => {
+  const route = createPublicPlatformRoutes({
+    sendJson: createSendJson(),
+    readJsonBody: async () => ({}),
+    getPlatformPublicOverview: async () => ({
+      billing: {
+        packages: [],
+        features: [],
+        plans: [],
+      },
+    }),
+    getPublicServerPortalSnapshot: async (slug) => ({
+      tenant: {
+        id: 'tenant-1',
+        slug,
+        name: 'SCUM TH Frontier',
+      },
+      generatedAt: '2026-04-02T10:00:00.000Z',
+      featureAccess: { sections: { stats: { enabled: true } } },
+      servers: [{ id: 'server-main', name: 'Frontier Main' }],
+      leaderboard: [],
+      shopItems: [],
+      killfeed: [],
+      raidWindows: [],
+      raidSummaries: [],
+      donations: { summary: { activeSupporters30d: 0 }, topPackages: [] },
+      supporters: [],
+    }),
+    registerPreviewAccount: async () => ({ ok: false }),
+    authenticatePreviewAccount: async () => ({ ok: false }),
+    getPreviewState: async () => ({ ok: false }),
+    requestEmailVerification: async () => ({ ok: true }),
+    completeEmailVerification: async () => ({ ok: true }),
+    requestPasswordReset: async () => ({ ok: true }),
+    completePasswordReset: async () => ({ ok: true }),
+    createPreviewSession: () => 'preview-session-1',
+    getPreviewSession: () => null,
+    buildPreviewSessionCookie: () => 'preview_cookie=session; Path=/; HttpOnly',
+    buildClearPreviewSessionCookie: () => 'preview_cookie=; Path=/; Max-Age=0',
+    removePreviewSession: () => {},
+  });
+
+  const res = createResponse();
+  const handled = await route({
+    req: {},
+    res,
+    pathname: '/api/public/servers/frontier/overview',
+    method: 'GET',
+  });
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.ok, true);
+  assert.equal(res.payload.data.tenant.slug, 'frontier');
+  assert.equal(res.payload.data.tenant.name, 'SCUM TH Frontier');
+});

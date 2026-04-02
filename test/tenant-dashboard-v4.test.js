@@ -57,7 +57,7 @@ test('tenant dashboard v4 html includes shell, decision panel, and issue center'
   assert.match(html, /สร้าง Server Bot/);
   assert.match(html, /สร้าง Delivery Agent/);
   assert.match(html, /เปิดหน้าตั้งค่าเซิร์ฟเวอร์/);
-  assert.match(html, /เปิดหน้าควบคุมการรีสตาร์ต/);
+  assert.match(html, /รีสตาร์ตเซิร์ฟเวอร์/);
   assert.match(html, /ทำแล้ว 0\/7 ขั้น/);
   assert.match(html, /ไปทำขั้นนี้/);
 });

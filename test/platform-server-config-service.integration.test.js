@@ -10,6 +10,11 @@ process.env.PRISMA_SCHEMA_PROVIDER = 'sqlite';
 
 const { getTenantScopedPrismaClient } = require('../src/prisma');
 const {
+  listAdminNotifications,
+  replaceAdminNotifications,
+  waitForAdminNotificationPersistence,
+} = require('../src/store/adminNotificationStore');
+const {
   createPlatformServerConfigService,
 } = require('../src/services/platformServerConfigService');
 
@@ -54,10 +59,17 @@ async function cleanupServerConfigRows() {
   }).catch(() => null);
 }
 
+async function cleanupNotifications() {
+  replaceAdminNotifications([]);
+  await waitForAdminNotificationPersistence();
+}
+
 test('platform server config service persists snapshots, jobs, and backups through prisma delegates', async (t) => {
   await cleanupServerConfigRows();
+  await cleanupNotifications();
   t.after(async () => {
     await cleanupServerConfigRows();
+    await cleanupNotifications();
   });
 
   const service = createService();
@@ -172,4 +184,93 @@ test('platform server config service persists snapshots, jobs, and backups throu
   assert.equal(workspace.snapshotStatus, 'ready');
   assert.equal(workspace.backups.length, 1);
   assert.equal(workspace.serverId, SERVER_ID);
+});
+
+test('platform server config service lists jobs with normalized queue status and retries failed jobs', async (t) => {
+  await cleanupServerConfigRows();
+  await cleanupNotifications();
+  t.after(async () => {
+    await cleanupServerConfigRows();
+    await cleanupNotifications();
+  });
+
+  const service = createService();
+
+  const saveJob = await service.createServerConfigSaveJob({
+    tenantId: TENANT_ID,
+    serverId: SERVER_ID,
+    changes: [
+      {
+        file: 'ServerSettings.ini',
+        section: 'General',
+        key: 'ServerName',
+        value: 'Alpha Retry',
+      },
+    ],
+    applyMode: 'save_restart',
+    runtimeKey: 'server-bot-alpha',
+  }, 'owner');
+  assert.equal(saveJob.ok, true);
+
+  const claimed = await service.claimNextServerConfigJob({
+    tenantId: TENANT_ID,
+    serverId: SERVER_ID,
+    runtimeKey: 'server-bot-alpha',
+  });
+  assert.equal(claimed.ok, true);
+
+  const failed = await service.completeServerConfigJob({
+    tenantId: TENANT_ID,
+    serverId: SERVER_ID,
+    jobId: claimed.job.id,
+    runtimeKey: 'server-bot-alpha',
+    status: 'failed',
+    error: 'Config apply failed',
+    result: {
+      detail: 'Config apply failed.',
+    },
+  }, 'server-bot');
+  assert.equal(failed.ok, true);
+  assert.equal(failed.job?.queueStatus, 'failed');
+  assert.equal(failed.job?.retryable, true);
+  await waitForAdminNotificationPersistence();
+
+  const notifications = listAdminNotifications({
+    limit: 10,
+    tenantId: TENANT_ID,
+    kind: 'config-job-failed',
+  });
+  assert.equal(notifications.length, 1);
+  assert.equal(String(notifications[0]?.entityKey || ''), String(claimed.job.id || ''));
+
+  const failedJobs = await service.listServerConfigJobs({
+    tenantId: TENANT_ID,
+    serverId: SERVER_ID,
+    queueStatus: 'failed',
+    limit: 10,
+  });
+  assert.equal(failedJobs.length, 1);
+  assert.equal(failedJobs[0].id, claimed.job.id);
+  assert.equal(failedJobs[0].queueStatus, 'failed');
+
+  const retried = await service.retryServerConfigJob({
+    tenantId: TENANT_ID,
+    serverId: SERVER_ID,
+    jobId: claimed.job.id,
+  }, 'owner');
+  assert.equal(retried.ok, true);
+  assert.equal(retried.sourceJob?.id, claimed.job.id);
+  assert.equal(retried.job?.status, 'queued');
+  assert.equal(retried.job?.queueStatus, 'pending');
+  assert.equal(retried.job?.meta?.retryOfJobId, claimed.job.id);
+  assert.equal(retried.job?.meta?.retryAttempt, 1);
+
+  const allJobs = await service.listServerConfigJobs({
+    tenantId: TENANT_ID,
+    serverId: SERVER_ID,
+    limit: 10,
+  });
+  assert.equal(allJobs.length, 2);
+  assert.ok(allJobs.some((row) => row.id === claimed.job.id && row.queueStatus === 'failed'));
+  assert.ok(allJobs.some((row) => row.id === retried.job.id && row.queueStatus === 'pending'));
 });

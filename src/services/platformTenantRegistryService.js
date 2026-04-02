@@ -95,10 +95,21 @@ function createPlatformTenantRegistryService(deps) {
     return sanitizeTenantRow(row);
   }
 
+  async function getPlatformTenantBySlug(slugValue) {
+    const slug = normalizeSlug(slugValue);
+    if (!slug) return null;
+    const row = await prisma.platformTenant.findFirst({
+      where: { slug },
+      orderBy: { updatedAt: 'desc' },
+    });
+    return sanitizeTenantRow(row);
+  }
+
   return {
     createTenant,
     listPlatformTenants,
     getPlatformTenantById,
+    getPlatformTenantBySlug,
   };
 }
 

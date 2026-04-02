@@ -67,12 +67,21 @@ function toDateValue(value) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function isPrismaClientLike(db) {
+  return Boolean(
+    db
+    && typeof db === 'object'
+    && typeof db.$transaction === 'function'
+    && typeof db.$disconnect === 'function',
+  );
+}
+
 function getPlatformIdentityDelegates(db = prisma, env = process.env) {
   const runtime = resolveDatabaseRuntime({
     databaseUrl: env.DATABASE_URL,
     provider: env.PRISMA_SCHEMA_PROVIDER || env.DATABASE_PROVIDER,
   });
-  if (!runtime.isServerEngine || !db || typeof db !== 'object') {
+  if (!db || typeof db !== 'object') {
     return null;
   }
   const delegates = {
@@ -84,7 +93,13 @@ function getPlatformIdentityDelegates(db = prisma, env = process.env) {
     passwordResetTokens: db.platformPasswordResetToken,
   };
   if (Object.values(delegates).every((delegate) => delegate && typeof delegate === 'object')) {
+    if (!runtime.isServerEngine && isPrismaClientLike(db)) {
+      return null;
+    }
     return delegates;
+  }
+  if (!runtime.isServerEngine) {
+    return null;
   }
   const error = new Error(
     'Platform identity delegates are unavailable for the active server-engine runtime. Run Prisma generate and database migrations before using identity flows.',

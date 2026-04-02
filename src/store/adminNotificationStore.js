@@ -51,6 +51,15 @@ function normalizeNotification(entry = {}) {
   };
 }
 
+function getNotificationTenantId(entry = {}) {
+  return trimText(
+    entry?.tenantId
+      || entry?.data?.tenantId
+      || entry?.data?.tenant?.id,
+    160,
+  ) || null;
+}
+
 function parseDataJson(value) {
   if (value && typeof value === 'object' && !Array.isArray(value)) {
     return value;
@@ -257,6 +266,7 @@ function listAdminNotifications(options = {}) {
   const kindFilter = String(options.kind || '').trim().toLowerCase();
   const severityFilter = String(options.severity || '').trim().toLowerCase();
   const entityKeyFilter = String(options.entityKey || '').trim().toLowerCase();
+  const tenantIdFilter = trimText(options.tenantId, 160).toLowerCase();
   const acknowledgedFilter =
     typeof options.acknowledged === 'boolean' ? options.acknowledged : null;
 
@@ -273,6 +283,12 @@ function listAdminNotifications(options = {}) {
       ) {
         return false;
       }
+      if (
+        tenantIdFilter
+        && String(getNotificationTenantId(row) || '').toLowerCase() !== tenantIdFilter
+      ) {
+        return false;
+      }
       if (acknowledgedFilter === true && !row.acknowledgedAt) return false;
       if (acknowledgedFilter === false && row.acknowledgedAt) return false;
       return true;
@@ -280,6 +296,7 @@ function listAdminNotifications(options = {}) {
     .slice(0, limit)
     .map((row) => ({
       ...row,
+      tenantId: getNotificationTenantId(row),
       createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : row.createdAt,
       acknowledgedAt:
         row.acknowledgedAt instanceof Date
@@ -565,6 +582,62 @@ function buildNotificationFromLiveEvent(type, payload = {}) {
       message:
         `backup=${String(data.backup || '-')} actor=${String(data.actor || 'unknown')}`,
       entityKey: String(data.backup || '').trim() || null,
+      data,
+    };
+  }
+
+  if (eventType === 'server-config-job-result') {
+    const failed = ['failed', 'cancelled', 'error'].includes(String(data.status || '').trim().toLowerCase());
+    const title = failed ? 'Server Settings Apply Failed' : 'Server Settings Applied';
+    return {
+      type: 'server-config',
+      source: String(data.source || 'server-bot').trim() || 'server-bot',
+      kind: failed ? 'config-job-failed' : 'config-job-succeeded',
+      severity: failed ? 'error' : 'info',
+      title,
+      message: [
+        String(data.serverName || data.serverId || 'server'),
+        data.jobLabel ? `| ${String(data.jobLabel)}` : '',
+        data.detail ? `| ${trimText(data.detail, 220)}` : '',
+      ].join(' ').trim(),
+      entityKey: String(data.jobId || data.serverId || '').trim() || null,
+      data,
+    };
+  }
+
+  if (eventType === 'restart-execution-result') {
+    const failed = ['failed', 'error', 'cancelled'].includes(String(data.resultStatus || '').trim().toLowerCase());
+    return {
+      type: 'restart',
+      source: String(data.source || 'server-bot').trim() || 'server-bot',
+      kind: failed ? 'restart-failed' : 'restart-succeeded',
+      severity: failed ? 'error' : 'info',
+      title: failed ? 'Restart Failed' : 'Restart Completed',
+      message: [
+        String(data.serverName || data.serverId || 'server'),
+        data.action ? `| ${String(data.action)}` : '',
+        data.detail ? `| ${trimText(data.detail, 220)}` : '',
+      ].join(' ').trim(),
+      entityKey: String(data.executionId || data.planId || data.serverId || '').trim() || null,
+      data,
+    };
+  }
+
+  if (eventType === 'subscription-expiring') {
+    const expiresAt = trimText(data.currentPeriodEnd || data.trialEndsAt, 160) || null;
+    return {
+      type: 'billing',
+      source: String(data.source || 'platform-monitor').trim() || 'platform-monitor',
+      kind: 'subscription-expiring',
+      severity: 'warn',
+      title: 'Subscription Expiring Soon',
+      message: [
+        String(data.tenantLabel || data.tenantSlug || data.tenantId || 'tenant'),
+        data.packageName ? `| ${String(data.packageName)}` : '',
+        expiresAt ? `| ends ${expiresAt}` : '',
+        Number.isFinite(Number(data.daysRemaining)) ? `| ${Number(data.daysRemaining).toFixed(1)} days left` : '',
+      ].join(' ').trim(),
+      entityKey: String(data.subscriptionId || data.tenantId || '').trim() || null,
       data,
     };
   }

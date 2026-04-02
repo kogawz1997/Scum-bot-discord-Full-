@@ -214,3 +214,31 @@ test('raid service requires prisma delegates on server-engine runtimes', async (
     (error) => String(error?.code || '') === 'PLATFORM_RAID_SCHEMA_REQUIRED',
   );
 });
+
+test('raid service uses prisma delegates when sqlite runtimes expose generated delegates', async () => {
+  const harness = createDelegateHarness();
+  const service = loadService({
+    runtime: { isServerEngine: false, engine: 'sqlite', provider: 'sqlite' },
+    scope: {
+      tenantId: 'tenant-raid',
+      datasourceKey: 'tenant-raid',
+      db: harness.delegates,
+    },
+  });
+
+  const createdRequest = await service.createRaidRequest({
+    tenantId: 'tenant-raid',
+    requesterUserId: 'discord-2',
+    requesterName: 'Nina',
+    requestText: 'North bunker push',
+    serverId: 'server-2',
+  });
+  assert.equal(createdRequest.ok, true);
+
+  const snapshot = await service.listRaidActivitySnapshot({
+    tenantId: 'tenant-raid',
+    serverId: 'server-2',
+  });
+  assert.equal(snapshot.requests.length, 1);
+  assert.equal(harness.calls.some((entry) => entry.method === 'create'), true);
+});

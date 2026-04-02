@@ -60,7 +60,12 @@ function escapeCsvCell(value) {
 function filterRowsByTenant(rows, tenantId) {
   const scopedTenantId = trimText(tenantId, 120);
   return (Array.isArray(rows) ? rows : []).filter((row) => {
-    return trimText(row?.tenantId, 120) === scopedTenantId;
+    return trimText(
+      row?.tenantId
+      || row?.data?.tenantId
+      || row?.data?.tenant?.id,
+      120,
+    ) === scopedTenantId;
   });
 }
 
@@ -186,7 +191,11 @@ async function buildTenantDiagnosticsBundle(tenantId, options = {}) {
   ]);
 
   const notificationRows = filterRowsByTenant(
-    deps.listAdminNotifications({ limit: sampleLimit * 4, acknowledged: false }),
+    deps.listAdminNotifications({
+      limit: sampleLimit * 4,
+      acknowledged: false,
+      tenantId: scopedTenantId,
+    }),
     scopedTenantId,
   ).slice(0, sampleLimit);
 

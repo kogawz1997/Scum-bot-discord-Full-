@@ -15,6 +15,7 @@ const {
   recordRestartExecution,
   scheduleRestartPlan,
 } = require('./platformRestartOrchestrationService');
+const { publishAdminLiveUpdate } = require('./adminLiveBus');
 
 function trimText(value, maxLen = 400) {
   const text = String(value || '').trim();
@@ -73,6 +74,29 @@ function normalizeJobStatus(value, fallback = 'queued') {
     return normalized;
   }
   return fallback;
+}
+
+function normalizeQueueJobStatus(value, fallback = 'pending') {
+  const normalized = normalizeJobStatus(value, '');
+  if (normalized === 'processing') return 'running';
+  if (normalized === 'succeeded') return 'done';
+  if (normalized === 'failed' || normalized === 'cancelled') return 'failed';
+  if (normalized === 'queued') return 'pending';
+  return fallback;
+}
+
+function expandQueueStatusFilter(value) {
+  const normalized = trimText(value, 40).toLowerCase();
+  if (normalized === 'pending') return ['queued'];
+  if (normalized === 'running') return ['processing'];
+  if (normalized === 'done') return ['succeeded'];
+  if (normalized === 'failed') return ['failed', 'cancelled'];
+  return [];
+}
+
+function isRetryableJobStatus(value) {
+  const normalized = normalizeJobStatus(value, '');
+  return normalized === 'failed' || normalized === 'cancelled';
 }
 
 function normalizeJobType(value, fallback = 'config_update') {
@@ -402,13 +426,17 @@ function normalizeChangeEntry(change = {}) {
 
 function normalizeJobRow(row) {
   if (!row) return null;
+  const status = normalizeJobStatus(row.status, 'queued');
+  const jobType = normalizeJobType(row.jobType, 'config_update');
+  const applyMode = normalizeApplyMode(row.applyMode, 'save_only');
   return {
     id: trimText(row.id, 160),
     tenantId: normalizeTenantId(row.tenantId) || '',
     serverId: normalizeServerId(row.serverId) || '',
-    jobType: normalizeJobType(row.jobType, 'config_update'),
-    applyMode: normalizeApplyMode(row.applyMode, 'save_only'),
-    status: normalizeJobStatus(row.status, 'queued'),
+    jobType,
+    applyMode,
+    status,
+    queueStatus: normalizeQueueJobStatus(status, 'pending'),
     requestedBy: trimText(row.requestedBy, 200) || null,
     requestedAt: row.requestedAt ? new Date(row.requestedAt).toISOString() : null,
     claimedByRuntimeKey: normalizeRuntimeKey(row.claimedByRuntimeKey) || null,
@@ -418,6 +446,7 @@ function normalizeJobRow(row) {
     result: parseJsonObject(row.resultJson, {}),
     error: trimText(row.errorText, 1000) || null,
     meta: parseJsonObject(row.metaJson, {}),
+    retryable: isRetryableJobStatus(status),
   };
 }
 
@@ -666,6 +695,34 @@ function createPlatformServerConfigService(deps = {}) {
     return normalizeJobRow(row);
   }
 
+  async function readJobRows(db, options = {}) {
+    await ensurePlatformServerConfigTables(db);
+    const { job } = getServerConfigDelegatesOrThrow(db);
+    const serverId = normalizeServerId(options.serverId);
+    const jobId = trimText(options.jobId, 160) || null;
+    const rawStatus = normalizeJobStatus(options.status, '');
+    const queueStatuses = expandQueueStatusFilter(options.queueStatus);
+    const rawStatuses = queueStatuses.length
+      ? queueStatuses
+      : (rawStatus ? [rawStatus] : []);
+    const jobType = normalizeJobType(options.jobType, '');
+    const limit = Math.max(1, Math.min(100, Number(options.limit || 20) || 20));
+    const rows = await job.findMany({
+      where: {
+        ...(serverId ? { serverId } : {}),
+        ...(jobId ? { id: jobId } : {}),
+        ...(rawStatuses.length ? { status: { in: rawStatuses } } : {}),
+        ...(jobType ? { jobType } : {}),
+      },
+      orderBy: [
+        { requestedAt: 'desc' },
+        { id: 'desc' },
+      ],
+      take: limit,
+    });
+    return Array.isArray(rows) ? rows.map(normalizeJobRow).filter(Boolean) : [];
+  }
+
   async function getServerConfigWorkspace(options = {}) {
     const tenantId = normalizeTenantId(options.tenantId);
     const serverId = normalizeServerId(options.serverId);
@@ -715,6 +772,36 @@ function createPlatformServerConfigService(deps = {}) {
       serverId,
       Math.max(1, Math.min(100, Number(options.limit || 30) || 30)),
     ));
+  }
+
+  async function getServerConfigJob(options = {}) {
+    const tenantId = normalizeTenantId(options.tenantId);
+    const serverId = normalizeServerId(options.serverId);
+    const jobId = trimText(options.jobId, 160);
+    if (!tenantId || !serverId || !jobId) {
+      throw new Error('tenantId, serverId, and jobId are required');
+    }
+    return withTenantConfigDb(tenantId, async (db) => {
+      const row = await readJobRow(db, jobId);
+      if (!row || row.serverId !== serverId) return null;
+      return row;
+    });
+  }
+
+  async function listServerConfigJobs(options = {}) {
+    const tenantId = normalizeTenantId(options.tenantId);
+    const serverId = normalizeServerId(options.serverId);
+    if (!tenantId || !serverId) {
+      throw new Error('tenantId and serverId are required');
+    }
+    return withTenantConfigDb(tenantId, (db) => readJobRows(db, {
+      serverId,
+      jobId: options.jobId,
+      status: options.status,
+      queueStatus: options.queueStatus,
+      jobType: options.jobType,
+      limit: options.limit,
+    }));
   }
 
   async function upsertServerConfigSnapshot(input = {}, actor = 'server-bot') {
@@ -984,6 +1071,61 @@ function createPlatformServerConfigService(deps = {}) {
     });
   }
 
+  async function retryServerConfigJob(input = {}, actor = 'admin-web') {
+    const tenantId = normalizeTenantId(input.tenantId);
+    const serverId = normalizeServerId(input.serverId);
+    const jobId = trimText(input.jobId, 160);
+    if (!tenantId || !serverId || !jobId) {
+      return { ok: false, reason: 'server-config-retry-invalid' };
+    }
+    return withTenantConfigDb(tenantId, async (db) => {
+      await ensurePlatformServerConfigTables(db);
+      const sourceJob = await readJobRow(db, jobId);
+      if (!sourceJob || sourceJob.serverId !== serverId) {
+        return { ok: false, reason: 'server-config-job-not-found' };
+      }
+      if (!isRetryableJobStatus(sourceJob.status)) {
+        return { ok: false, reason: 'server-config-job-not-retryable', job: sourceJob };
+      }
+      const retryJobId = trimText(input.nextJobId, 160) || createId('cfgjob');
+      const requestedBy = trimText(actor, 200) || 'admin-web';
+      const priorRetryAttempt = Number(sourceJob?.meta?.retryAttempt || sourceJob?.meta?.retryCount || 0);
+      const retryAttempt = Number.isFinite(priorRetryAttempt)
+        ? Math.max(1, priorRetryAttempt + 1)
+        : 1;
+      const meta = {
+        ...(sourceJob.meta && typeof sourceJob.meta === 'object' && !Array.isArray(sourceJob.meta)
+          ? sourceJob.meta
+          : {}),
+        retryOfJobId: sourceJob.id,
+        retryRequestedBy: requestedBy,
+        retryRequestedAt: new Date().toISOString(),
+        retryAttempt,
+      };
+      const { job: jobDelegate } = getServerConfigDelegatesOrThrow(db);
+      await jobDelegate.create({
+        data: {
+          id: retryJobId,
+          tenantId,
+          serverId,
+          jobType: sourceJob.jobType,
+          applyMode: sourceJob.applyMode,
+          status: 'queued',
+          requestedBy,
+          changesJson: JSON.stringify(Array.isArray(sourceJob.changes) ? sourceJob.changes : []),
+          resultJson: JSON.stringify({}),
+          errorText: null,
+          metaJson: JSON.stringify(meta),
+        },
+      });
+      return {
+        ok: true,
+        sourceJob,
+        job: await readJobRow(db, retryJobId),
+      };
+    });
+  }
+
   async function claimNextServerConfigJob(input = {}, actor = 'server-bot') {
     const tenantId = normalizeTenantId(input.tenantId);
     const serverId = normalizeServerId(input.serverId);
@@ -1154,6 +1296,21 @@ function createPlatformServerConfigService(deps = {}) {
         }).catch(() => null);
       }
 
+      if (jobStatus === 'failed') {
+        publishAdminLiveUpdate('server-config-job-result', {
+          source: trimText(actor, 120) || 'server-bot',
+          tenantId,
+          serverId,
+          runtimeKey,
+          jobId,
+          jobType: completion.currentJob?.jobType || null,
+          jobLabel: completion.currentJob?.meta?.displayName || completion.currentJob?.jobType || 'config job',
+          applyMode: completion.currentJob?.applyMode || null,
+          status: jobStatus,
+          detail: lastError || trimText(result.detail, 240) || 'Config apply failed',
+        });
+      }
+
       return {
         ok: true,
         job: completion.updatedJob,
@@ -1166,7 +1323,9 @@ function createPlatformServerConfigService(deps = {}) {
   return {
     ensurePlatformServerConfigTables,
     getServerConfigCategory,
+    getServerConfigJob,
     getServerConfigWorkspace,
+    listServerConfigJobs,
     listServerConfigBackups,
     createServerConfigSaveJob,
     createServerConfigApplyJob,
@@ -1174,6 +1333,7 @@ function createPlatformServerConfigService(deps = {}) {
     createServerBotActionJob,
     claimNextServerConfigJob,
     completeServerConfigJob,
+    retryServerConfigJob,
     upsertServerConfigSnapshot,
   };
 }

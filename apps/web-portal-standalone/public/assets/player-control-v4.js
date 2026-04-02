@@ -327,6 +327,10 @@
     const raidWindows = Array.isArray(raids?.windows) ? raids.windows : [];
     const raidSummaries = Array.isArray(raids?.summaries) ? raids.summaries : [];
     const killfeed = Array.isArray(state?.killfeed) ? state.killfeed : [];
+    const supporters = Array.isArray(state?.supporters?.items)
+      ? state.supporters.items
+      : (Array.isArray(state?.supporters) ? state.supporters : []);
+    const supporterSummary = state?.supporters?.summary || null;
     const steamLink = state?.steamLink || {};
     const identitySummary = state?.profile?.identitySummary || {};
     const stats = state?.stats || {};
@@ -380,6 +384,8 @@
       raidWindows,
       raidSummaries,
       killfeed,
+      supporters,
+      supporterSummary,
       steamLink,
       identitySummary,
       stats,
@@ -748,6 +754,38 @@
       ],
       rows,
       'ยังไม่มีประวัติการซื้อผู้สนับสนุน',
+    );
+  }
+
+  function buildSupporterCommunityTable(rows) {
+    return renderTable(
+      [
+        {
+          label: 'ผู้สนับสนุน',
+          render: (row) => escapeHtml(firstNonEmpty([row.label], 'Supporter')),
+        },
+        {
+          label: 'แพ็กเกจล่าสุด',
+          render: (row) => escapeHtml(firstNonEmpty([row.latestPackage], '-')),
+        },
+        {
+          label: 'สถานะล่าสุด',
+          render: (row) => badge(
+            localizePlayerStatus(firstNonEmpty([row.latestStatus], 'unknown')),
+            toneForStatus(row.latestStatus),
+          ),
+        },
+        {
+          label: 'ล่าสุดเมื่อ',
+          render: (row) => escapeHtml(formatDateTime(row.lastPurchaseAt)),
+        },
+        {
+          label: 'รวม',
+          render: (row) => escapeHtml(`${formatNumber(row.totalPurchases, '0')} รายการ`),
+        },
+      ],
+      rows,
+      'ตอนนี้ยังไม่มีรายชื่อผู้สนับสนุนที่แสดงได้',
     );
   }
 
@@ -1755,7 +1793,7 @@
         { label: 'แพ็กเกจผู้สนับสนุน', value: formatNumber(supporterOffers.length, '0'), detail: 'VIP หรือแพ็กเกจผู้สนับสนุนที่ผู้เล่นเลือกได้ตอนนี้', tone: supporterOffers.length > 0 ? 'info' : 'muted' },
         { label: 'ประวัติการสนับสนุน', value: formatNumber(donationOrders.length, '0'), detail: 'รายการสนับสนุนที่บัญชีนี้เคยซื้อไว้แล้ว', tone: donationOrders.length > 0 ? 'success' : 'muted' },
         { label: 'แพ็กเกจที่ใช้อยู่', value: activeSupporterOrder ? firstNonEmpty([activeSupporterOrder.itemName, activeSupporterOrder.itemId], '-') : 'ยังไม่มี', detail: activeSupporterOrder ? localizePlayerStatus(orderStatusLabel(activeSupporterOrder.statusText || activeSupporterOrder.status)) : 'ตอนนี้ยังไม่มีคำสั่งซื้อผู้สนับสนุนที่กำลังใช้งานอยู่', tone: activeSupporterOrder ? 'success' : 'muted' },
-        { label: 'ผู้เล่นออนไลน์ในชุมชน', value: formatNumber(facts.serverStatus.onlinePlayers, '0'), detail: 'ใช้งานสิทธิ์ผู้สนับสนุนและกิจกรรมได้โดยไม่ต้องออกจากพอร์ทัลนี้', tone: 'info' },
+        { label: 'ผู้สนับสนุนที่ใช้งานอยู่', value: formatNumber(facts.supporterSummary?.activeSupporters30d, '0'), detail: 'นับจากการซื้อแพ็กเกจผู้สนับสนุนที่ส่งสำเร็จในช่วงล่าสุด', tone: (Number(facts.supporterSummary?.activeSupporters30d || 0) > 0) ? 'info' : 'muted' },
       ],
       railCards: buildRailCommon(facts),
       mainHtml: [
@@ -1799,6 +1837,9 @@
         '</article>',
         '</section>',
         '<section class="plv4-content-grid plv4-content-grid-two">',
+        '<article class="plv4-panel" data-player-supporter-community><div class="plv4-panel-head"><div class="plv4-stack"><span class="plv4-section-kicker">ชุมชนผู้สนับสนุน</span><h2 class="plv4-section-title">คนที่ช่วยพยุงเซิร์ฟเวอร์อยู่ตอนนี้</h2><p class="plv4-section-copy">ให้ผู้เล่นเห็นว่าการสนับสนุนไม่ใช่แค่การจ่ายเงิน แต่เป็นส่วนหนึ่งของชุมชนที่กำลังช่วยให้เซิร์ฟเวอร์เดินต่อได้</p></div></div>',
+        buildSupporterCommunityTable(facts.supporters.slice(0, 8)),
+        '</article>',
         '<article class="plv4-panel" data-player-supporter-readiness><div class="plv4-panel-head"><div class="plv4-stack"><span class="plv4-section-kicker">ขั้นถัดไป</span><h2 class="plv4-section-title">เช็กลิสต์ความพร้อมของผู้สนับสนุน</h2><p class="plv4-section-copy">ระบบจะดันสิ่งที่ยังติดอยู่ขึ้นมาให้เห็นทันที เพื่อให้ผู้เล่นเดิน flow ผู้สนับสนุนได้เองโดยไม่ต้องรอทีมงานบอกทุกครั้ง</p></div></div>',
         `<div class="plv4-task-grid">${renderTaskGroups(readinessItems)}</div>`,
         '</article>',

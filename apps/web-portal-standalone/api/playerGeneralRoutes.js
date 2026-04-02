@@ -76,6 +76,8 @@ function createPlayerGeneralRoutes(deps) {
     listRaidWindows,
     listRaidSummaries,
     listKillFeedEntries,
+    listPlayerAccounts,
+    buildTenantDonationOverview,
   } = deps;
   const safeNormalizeText = typeof normalizeText === 'function'
     ? normalizeText
@@ -155,6 +157,71 @@ function createPlayerGeneralRoutes(deps) {
       embedUrl: normalizeText(raw?.embedUrl) || null,
       externalUrl: normalizeText(raw?.externalUrl) || null,
     };
+  }
+
+  function buildSupporterDisplayLabel(account, userId, index) {
+    const displayName = safeNormalizeText(account?.displayName || account?.username);
+    if (displayName) return displayName;
+    const normalizedUserId = safeNormalizeText(userId);
+    if (normalizedUserId && /^\d{6,25}$/.test(normalizedUserId)) {
+      return `Supporter ${normalizedUserId.slice(-4)}`;
+    }
+    if (normalizedUserId) {
+      return normalizedUserId.length > 18 ? `${normalizedUserId.slice(0, 18)}...` : normalizedUserId;
+    }
+    return `Supporter #${index}`;
+  }
+
+  function buildSupporterCommunityPayload(overview, playerAccounts, limit) {
+    const recentActivity = Array.isArray(overview?.recentActivity) ? overview.recentActivity : [];
+    const accountRows = Array.isArray(playerAccounts) ? playerAccounts : [];
+    const accountMap = new Map(
+      accountRows
+        .map((row) => [safeNormalizeText(row?.discordId), row])
+        .filter(([discordId]) => Boolean(discordId)),
+    );
+    const grouped = new Map();
+    for (const row of recentActivity) {
+      if (!row?.isSupporter) continue;
+      const userId = safeNormalizeText(row?.userId) || `supporter-${grouped.size + 1}`;
+      if (!grouped.has(userId)) {
+        grouped.set(userId, {
+          userId,
+          label: buildSupporterDisplayLabel(accountMap.get(userId), userId, grouped.size + 1),
+          latestPackage: safeNormalizeText(row?.itemName || row?.itemId) || 'Supporter package',
+          latestStatus: safeNormalizeText(row?.status || row?.latestTransition) || 'unknown',
+          lastPurchaseAt: row?.createdAt || null,
+          totalPurchases: 0,
+          totalCoins: 0,
+        });
+      }
+      const entry = grouped.get(userId);
+      entry.totalPurchases += 1;
+      entry.totalCoins += safeNormalizeAmount(row?.price, 0);
+      if (!entry.lastPurchaseAt || new Date(entry.lastPurchaseAt).getTime() < new Date(row?.createdAt || 0).getTime()) {
+        entry.lastPurchaseAt = row?.createdAt || entry.lastPurchaseAt;
+        entry.latestPackage = safeNormalizeText(row?.itemName || row?.itemId) || entry.latestPackage;
+        entry.latestStatus = safeNormalizeText(row?.status || row?.latestTransition) || entry.latestStatus;
+      }
+    }
+    const max = Math.max(1, Math.min(24, safeAsInt(limit, 8) || 8));
+    return Array.from(grouped.values())
+      .sort((left, right) => {
+        const leftTime = new Date(left.lastPurchaseAt || 0).getTime();
+        const rightTime = new Date(right.lastPurchaseAt || 0).getTime();
+        if (rightTime !== leftTime) return rightTime - leftTime;
+        if (right.totalPurchases !== left.totalPurchases) return right.totalPurchases - left.totalPurchases;
+        return right.totalCoins - left.totalCoins;
+      })
+      .slice(0, max)
+      .map((row) => ({
+        label: row.label,
+        latestPackage: row.latestPackage,
+        latestStatus: row.latestStatus,
+        lastPurchaseAt: row.lastPurchaseAt,
+        totalPurchases: row.totalPurchases,
+        totalCoins: row.totalCoins,
+      }));
   }
 
   function buildFallbackWheelState(wheelConfig) {
@@ -386,6 +453,43 @@ function createPlayerGeneralRoutes(deps) {
       sendJson(res, 200, {
         ok: true,
         data: buildPlayerPortalFeatureAccess(featureAccess),
+      });
+      return true;
+    }
+
+    if (pathname === '/player/api/supporters' && method === 'GET') {
+      const featureAccess = await getFeatureAccess(session);
+      if (!hasFeatureAccess(featureAccess, ['donation_module'])) {
+        return sendPlayerFeatureDenied(sendJson, res, featureAccess, ['donation_module']);
+      }
+      const limit = safeAsInt(urlObj.searchParams.get('limit'), 8) || 8;
+      const overview = typeof buildTenantDonationOverview === 'function' && tenantOptions.tenantId
+        ? await buildTenantDonationOverview({
+          tenantId: tenantOptions.tenantId,
+          serverId: tenantOptions.serverId || null,
+          limit: Math.max(limit * 2, 12),
+        }).catch(() => null)
+        : null;
+      const playerAccounts = typeof listPlayerAccounts === 'function' && tenantOptions.tenantId
+        ? await readOptionalPlayerData(
+          'supporter-player-accounts',
+          () => listPlayerAccounts(Math.max(limit * 4, 32), tenantOptions),
+          [],
+        )
+        : [];
+      sendJson(res, 200, {
+        ok: true,
+        data: {
+          generatedAt: overview?.generatedAt || null,
+          summary: overview?.summary || {
+            supporterPackages: 0,
+            supporterPurchases30d: 0,
+            supporterRevenueCoins30d: 0,
+            activeSupporters30d: 0,
+            lastPurchaseAt: null,
+          },
+          items: buildSupporterCommunityPayload(overview, playerAccounts, limit),
+        },
       });
       return true;
     }

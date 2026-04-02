@@ -86,10 +86,58 @@ test('tenant delivery agents v4 model keeps runtime management context', () => {
   assert.equal(model.rows[0].name, 'delivery-1');
   assert.equal(model.rows[0].deviceId, 'device-1');
   assert.equal(model.rows[0].apiKeyId, 'apikey-1');
+  assert.equal(model.rows[0].machine, 'machine-a');
+  assert.equal(model.rows[0].version, '1.4.2');
   assert.equal(model.tokens.length, 1);
   assert.equal(model.tokens[0].tokenId, 'token-1');
   assert.equal(model.history.length, 1);
   assert.equal(model.history[0].sessionId, 'session-1');
+});
+
+test('tenant delivery agents v4 model falls back to session details and latest error', () => {
+  const model = createTenantDeliveryAgentsV4Model({
+    tenantLabel: 'Codex Test Community',
+    activeServer: { id: 'server-alpha', name: 'Alpha Server' },
+    servers: [{ id: 'server-alpha', name: 'Alpha Server' }],
+    agents: [
+      {
+        runtimeKey: 'delivery-1',
+        status: 'offline',
+        meta: { agentId: 'agent-delivery-1', agentRole: 'execute', agentScope: 'execute_only', serverId: 'server-alpha' },
+      },
+    ],
+    agentCredentials: [
+      {
+        id: 'cred-1',
+        apiKeyId: 'apikey-1',
+        agentId: 'agent-delivery-1',
+        serverId: 'server-alpha',
+        runtimeKey: 'delivery-1',
+        status: 'active',
+      },
+    ],
+    agentSessions: [
+      {
+        id: 'session-1',
+        sessionId: 'session-1',
+        agentId: 'agent-delivery-1',
+        serverId: 'server-alpha',
+        runtimeKey: 'delivery-1',
+        role: 'execute',
+        scope: 'execute_only',
+        status: 'offline',
+        hostname: 'machine-from-session',
+        version: '1.5.0',
+        heartbeatAt: '2026-03-27T10:05:00.000Z',
+        metadata: { lastError: 'Lost connection to client' },
+      },
+    ],
+  });
+
+  assert.equal(model.rows[0].machine, 'machine-from-session');
+  assert.equal(model.rows[0].version, '1.5.0');
+  assert.match(model.rows[0].lastSeenAt, /2026|Mar|มี\.ค\./);
+  assert.equal(model.rows[0].issue, 'Lost connection to client');
 });
 
 test('tenant delivery agents v4 html exposes provisioning and management hooks', () => {
@@ -177,10 +225,12 @@ test('tenant delivery agents v4 html exposes provisioning and management hooks',
   assert.match(html, /data-runtime-action="rotate-token"/);
   assert.match(html, /data-runtime-action="revoke-token"/);
   assert.match(html, /data-runtime-action="revoke-device"/);
+  assert.match(html, /data-runtime-action="revoke-runtime"/);
   assert.match(html, /data-runtime-action="reissue-provision"/);
   assert.match(html, /data-runtime-action="revoke-provision"/);
   assert.match(html, /data-runtime-download-kind="delivery-agents"/);
   assert.match(html, /data-runtime-download-key="install-ps1"/);
+  assert.match(html, /href="#delivery-agents-history"/);
   assert.match(html, /ดาวน์โหลดสคริปต์ติดตั้ง \(\.ps1\)|ดาวน์โหลดไฟล์/);
   assert.match(html, /ความเคลื่อนไหวล่าสุดของบอต/);
   assert.match(html, /กติกาการผูกเครื่อง/);

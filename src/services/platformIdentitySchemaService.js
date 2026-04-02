@@ -27,21 +27,59 @@ function trimText(value, maxLen = 240) {
   return text.length <= maxLen ? text : text.slice(0, maxLen);
 }
 
+function isPrismaClientLike(db) {
+  return Boolean(
+    db
+    && typeof db === 'object'
+    && typeof db.$transaction === 'function'
+    && typeof db.$disconnect === 'function',
+  );
+}
+
+function getIdentityDelegates(db) {
+  if (!db || typeof db !== 'object') return null;
+  const delegates = [
+    db.platformUser,
+    db.platformUserIdentity,
+    db.platformMembership,
+    db.platformPlayerProfile,
+    db.platformVerificationToken,
+    db.platformPasswordResetToken,
+  ];
+  return delegates.every((delegate) => delegate && typeof delegate === 'object')
+    ? delegates
+    : null;
+}
+
+function hasExplicitDelegateBackedIdentityPersistence(db, runtime) {
+  if (!getIdentityDelegates(db)) return false;
+  if (!runtime?.isServerEngine && isPrismaClientLike(db)) {
+    return false;
+  }
+  return true;
+}
+
 function escapeSqlLiteral(value) {
   return String(value || '').replaceAll("'", "''");
 }
 
-function getIdentitySchemaCacheKey(env = process.env) {
+function getIdentitySchemaCacheKey(env = process.env, db = prisma) {
   const runtime = resolveDatabaseRuntime({
     databaseUrl: env.DATABASE_URL,
     provider: env.PRISMA_SCHEMA_PROVIDER || env.DATABASE_PROVIDER,
   });
+  const persistenceTarget = hasExplicitDelegateBackedIdentityPersistence(db, runtime)
+    ? 'delegate'
+    : isPrismaClientLike(db)
+      ? 'prisma-client'
+      : 'raw';
   return JSON.stringify({
     engine: runtime.engine,
     provider: runtime.provider,
     rawUrl: runtime.rawUrl,
     nodeEnv: trimText(env.NODE_ENV, 32).toLowerCase(),
     runtimeBootstrap: trimText(env[PLATFORM_IDENTITY_RUNTIME_BOOTSTRAP_ENV], 32).toLowerCase(),
+    persistenceTarget,
   });
 }
 
@@ -130,7 +168,7 @@ async function queryColumnExists(db, runtime, tableName, columnName) {
 }
 
 async function getPlatformIdentitySchemaState(db = prisma, env = process.env) {
-  const cacheKey = getIdentitySchemaCacheKey(env);
+  const cacheKey = getIdentitySchemaCacheKey(env, db);
   if (cachedIdentitySchemaKey === cacheKey && cachedIdentitySchemaState) {
     return cachedIdentitySchemaState;
   }
@@ -138,6 +176,18 @@ async function getPlatformIdentitySchemaState(db = prisma, env = process.env) {
     databaseUrl: env.DATABASE_URL,
     provider: env.PRISMA_SCHEMA_PROVIDER || env.DATABASE_PROVIDER,
   });
+  if (hasExplicitDelegateBackedIdentityPersistence(db, runtime)) {
+    const state = Object.freeze({
+      runtime,
+      missingTables: [],
+      ready: true,
+      runtimeBootstrapAllowed: false,
+      persistenceTarget: 'delegate',
+    });
+    cachedIdentitySchemaKey = cacheKey;
+    cachedIdentitySchemaState = state;
+    return state;
+  }
   const missingTables = [];
   for (const tableName of PLATFORM_IDENTITY_TABLES) {
     // eslint-disable-next-line no-await-in-loop
@@ -165,7 +215,7 @@ function invalidateIdentitySchemaCaches() {
 }
 
 async function getPlatformUserPasswordColumnState(db = prisma, env = process.env) {
-  const cacheKey = getIdentitySchemaCacheKey(env);
+  const cacheKey = getIdentitySchemaCacheKey(env, db);
   if (cachedPlatformUserPasswordColumnKey === cacheKey && cachedPlatformUserPasswordColumnState) {
     return cachedPlatformUserPasswordColumnState;
   }
@@ -173,6 +223,17 @@ async function getPlatformUserPasswordColumnState(db = prisma, env = process.env
     databaseUrl: env.DATABASE_URL,
     provider: env.PRISMA_SCHEMA_PROVIDER || env.DATABASE_PROVIDER,
   });
+  if (hasExplicitDelegateBackedIdentityPersistence(db, runtime)) {
+    const state = Object.freeze({
+      runtime,
+      exists: true,
+      runtimeBootstrapAllowed: false,
+      persistenceTarget: 'delegate',
+    });
+    cachedPlatformUserPasswordColumnKey = cacheKey;
+    cachedPlatformUserPasswordColumnState = state;
+    return state;
+  }
   const exists = await queryColumnExists(db, runtime, 'platform_users', 'passwordHash');
   const state = Object.freeze({
     runtime,
@@ -185,7 +246,7 @@ async function getPlatformUserPasswordColumnState(db = prisma, env = process.env
 }
 
 async function getVerificationTokenColumnState(db = prisma, env = process.env) {
-  const cacheKey = getIdentitySchemaCacheKey(env);
+  const cacheKey = getIdentitySchemaCacheKey(env, db);
   if (cachedVerificationTokenColumnKey === cacheKey && cachedVerificationTokenColumnState) {
     return cachedVerificationTokenColumnState;
   }
@@ -193,6 +254,18 @@ async function getVerificationTokenColumnState(db = prisma, env = process.env) {
     databaseUrl: env.DATABASE_URL,
     provider: env.PRISMA_SCHEMA_PROVIDER || env.DATABASE_PROVIDER,
   });
+  if (hasExplicitDelegateBackedIdentityPersistence(db, runtime)) {
+    const state = Object.freeze({
+      runtime,
+      missingColumns: [],
+      ready: true,
+      runtimeBootstrapAllowed: false,
+      persistenceTarget: 'delegate',
+    });
+    cachedVerificationTokenColumnKey = cacheKey;
+    cachedVerificationTokenColumnState = state;
+    return state;
+  }
   const requiredColumns = ['previewAccountId', 'purpose', 'tokenType', 'target'];
   const missingColumns = [];
   for (const columnName of requiredColumns) {

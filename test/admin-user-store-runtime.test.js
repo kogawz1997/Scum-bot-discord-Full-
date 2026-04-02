@@ -132,7 +132,7 @@ test('admin user store seeds and authenticates through Prisma delegate when avai
   assert.equal(auth?.role, 'owner');
   assert.equal(snapshot.rawInsertCalls, 0);
   assert.equal(snapshot.rawQueryCalls, 0);
-  assert.ok(snapshot.rawUnsafeCalls >= 1);
+  assert.equal(snapshot.rawUnsafeCalls, 0);
 });
 
 test('admin user store updates existing admin users through Prisma delegate', async () => {
@@ -211,6 +211,58 @@ test('admin user store falls back to env-backed users when prisma is unavailable
   assert.equal(users[0].role, 'owner');
   assert.equal(auth?.username, 'env_owner');
   assert.equal(auth?.role, 'owner');
+});
+
+test('admin user store bootstraps legacy table path only when delegate persistence falls back', async () => {
+  let rawUnsafeCalls = 0;
+  let rawInsertCalls = 0;
+  const runtime = createAdminUserStoreRuntime({
+    prisma: {
+      adminWebUser: {
+        async upsert() {
+          const error = new Error('no such table: admin_web_users');
+          error.code = 'P2021';
+          throw error;
+        },
+      },
+      async $executeRawUnsafe() {
+        rawUnsafeCalls += 1;
+        return [];
+      },
+      async $executeRaw() {
+        rawInsertCalls += 1;
+        return [];
+      },
+      async $queryRaw() {
+        return [{
+          username: 'legacy_owner',
+          role: 'owner',
+          tenantId: null,
+          isActive: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }];
+      },
+    },
+    crypto,
+    secureEqual: (left, right) => String(left) === String(right),
+    normalizeRole,
+    resolveDatabaseRuntime: () => ({ engine: 'sqlite' }),
+    adminWebUser: 'fallback_owner',
+    adminWebUserRole: 'owner',
+    adminWebUsersJson: JSON.stringify([
+      {
+        username: 'legacy_owner',
+        password: 'legacy-secret',
+        role: 'owner',
+      },
+    ]),
+    logger: { warn() {} },
+  });
+
+  await runtime.ensureAdminUsersReady();
+  assert.ok(rawUnsafeCalls >= 1);
+  assert.ok(rawInsertCalls >= 1);
 });
 
 test('admin user store refuses ephemeral token and password fallback in production', () => {

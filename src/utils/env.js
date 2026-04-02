@@ -37,6 +37,11 @@ function isLocalOrExampleOrigin(origin) {
   return hostname.endsWith('.example.com') || hostname === 'example.com';
 }
 
+function isLoopbackHostname(hostnameValue) {
+  const hostname = String(hostnameValue || '').trim().toLowerCase();
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '0.0.0.0';
+}
+
 function isLikelyPlaceholder(value) {
   const text = String(value || '').trim().toLowerCase();
   if (!text) return true;
@@ -70,7 +75,7 @@ function parseUrlOrNull(value) {
   }
 }
 
-function requireRealHttpsUrl(name, value, errors) {
+function requireRealHttpsUrl(name, value, errors, options = {}) {
   const parsed = parseUrlOrNull(value);
   if (!parsed) {
     errors.push(`${name} must be a valid URL.`);
@@ -79,7 +84,9 @@ function requireRealHttpsUrl(name, value, errors) {
   if (parsed.protocol !== 'https:') {
     errors.push(`${name} must use https:// in production.`);
   }
-  if (isLocalOrExampleOrigin(parsed)) {
+  const hostname = String(parsed.hostname || '').trim().toLowerCase();
+  const isExampleOrigin = hostname.endsWith('.example.com') || hostname === 'example.com';
+  if (isLocalOrExampleOrigin(parsed) && !(isExampleOrigin && options.allowExampleOrigin)) {
     errors.push(`${name} must not use localhost/127.0.0.1/example.com in production.`);
   }
 }
@@ -446,7 +453,9 @@ function getPortalRuntimeErrors(env = process.env) {
   const errors = [];
   if (!isProduction(env)) return errors;
 
-  requireRealHttpsUrl('WEB_PORTAL_BASE_URL', env.WEB_PORTAL_BASE_URL, errors);
+  requireRealHttpsUrl('WEB_PORTAL_BASE_URL', env.WEB_PORTAL_BASE_URL, errors, {
+    allowExampleOrigin: isLoopbackHostname(env.WEB_PORTAL_HOST),
+  });
 
   const sessionSecret = String(env.WEB_PORTAL_SESSION_SECRET || '').trim();
   if (!sessionSecret || sessionSecret.length < 24 || isLikelyPlaceholder(sessionSecret)) {

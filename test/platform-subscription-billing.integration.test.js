@@ -58,6 +58,10 @@ test('createSubscription provisions billing customer and invoice context', async
   }, 'test-suite');
 
   assert.equal(result.ok, true);
+  assert.equal(String(result.subscription?.packageId || ''), 'BOT_LOG_DELIVERY');
+  assert.equal(String(result.subscription?.lifecycleStatus || ''), 'active');
+  assert.ok(result.subscription?.currentPeriodStart);
+  assert.ok(result.subscription?.currentPeriodEnd);
   assert.equal(String(result.billing?.customer?.tenantId || ''), 'tenant-sub-billing-test');
   assert.equal(String(result.billing?.invoice?.status || ''), 'open');
 });

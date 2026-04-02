@@ -23,6 +23,7 @@ const {
 const {
   getFeatureCatalog,
   getPackageCatalog,
+  getPackageById,
   listPersistedPackageCatalog,
   resolveFeatureAccess,
   resolvePackageForPlan,
@@ -556,15 +557,78 @@ async function getSharedTenantRegistryRow(tenantId) {
 
 function sanitizeSubscriptionRow(row) {
   if (!row) return null;
+  const metadata = safeMeta(row) || {};
+  const rawStatus = trimText(row.status, 40).toLowerCase() || null;
+  const packageId = resolveSubscriptionPackageId(row, metadata);
+  const resolvedPackage = getPackageById(packageId, { includeInactive: true })
+    || resolvePackageForPlan(row.planId, metadata)
+    || null;
+  const { currentPeriodStart, currentPeriodEnd, trialEndsAt } = resolveSubscriptionPeriods(row, metadata);
+  const lifecycleStatus = getSubscriptionLifecycleStatus({
+    ...row,
+    metadata,
+    currentPeriodEnd,
+    trialEndsAt,
+  });
   return {
     ...row,
-    metadata: safeMeta(row),
+    metadata,
+    rawStatus,
+    lifecycleStatus,
+    packageId,
+    package: resolvedPackage,
+    currentPeriodStart: toIso(currentPeriodStart),
+    currentPeriodEnd: toIso(currentPeriodEnd),
+    trialEndsAt: toIso(trialEndsAt),
     startedAt: toIso(row.startedAt),
     renewsAt: toIso(row.renewsAt),
     canceledAt: toIso(row.canceledAt),
     createdAt: toIso(row.createdAt),
     updatedAt: toIso(row.updatedAt),
   };
+}
+
+function resolveSubscriptionPackageId(row, metadata = null) {
+  const meta = metadata && typeof metadata === 'object' ? metadata : (safeMeta(row) || {});
+  const explicit = trimText(meta.packageId || meta.planPackageId, 120).toUpperCase();
+  if (explicit) return explicit;
+  return trimText(resolvePackageForPlan(row?.planId, meta)?.id, 120).toUpperCase() || null;
+}
+
+function resolveSubscriptionPeriods(row, metadata = null) {
+  const meta = metadata && typeof metadata === 'object' ? metadata : (safeMeta(row) || {});
+  const currentPeriodStart = parseDateOrNull(meta.currentPeriodStart || meta.periodStart || row?.startedAt);
+  const currentPeriodEnd = parseDateOrNull(meta.currentPeriodEnd || meta.periodEnd || row?.renewsAt);
+  const rawStatus = trimText(row?.status, 40).toLowerCase();
+  const isTrial = rawStatus === 'trialing'
+    || normalizeBillingCycle(meta.billingCycle || row?.billingCycle) === 'trial'
+    || Boolean(meta.trialEndsAt);
+  const trialEndsAt = parseDateOrNull(meta.trialEndsAt || (isTrial ? currentPeriodEnd : null));
+  return {
+    currentPeriodStart,
+    currentPeriodEnd,
+    trialEndsAt,
+  };
+}
+
+function getSubscriptionLifecycleStatus(row) {
+  if (!row) return 'expired';
+  const metadata = row?.metadata && typeof row.metadata === 'object' && !Array.isArray(row.metadata)
+    ? row.metadata
+    : (safeMeta(row) || {});
+  const rawStatus = trimText(row?.status, 40).toLowerCase();
+  const currentPeriodEnd = parseDateOrNull(row?.currentPeriodEnd || metadata.currentPeriodEnd || row?.renewsAt);
+  const trialEndsAt = parseDateOrNull(row?.trialEndsAt || metadata.trialEndsAt);
+  const now = Date.now();
+  if (['expired', 'canceled'].includes(rawStatus)) return 'expired';
+  if (['suspended', 'past_due', 'pending', 'paused'].includes(rawStatus)) return 'suspended';
+  if ((trialEndsAt || currentPeriodEnd) && (trialEndsAt || currentPeriodEnd).getTime() < now) {
+    return 'expired';
+  }
+  if (rawStatus === 'trialing' || normalizeBillingCycle(metadata.billingCycle || row?.billingCycle) === 'trial') {
+    return 'trial';
+  }
+  return 'active';
 }
 
 function sanitizeLicenseRow(row, options = {}) {
@@ -606,8 +670,8 @@ function isTenantRuntimeStatusAllowed(status) {
 
 function isSubscriptionOperational(row) {
   if (!row) return true;
-  const status = normalizeStatus(row.status, ['active', 'trialing', 'paused', 'past_due', 'canceled', 'expired']);
-  return status === 'active' || status === 'trialing';
+  const status = getSubscriptionLifecycleStatus(row);
+  return status === 'active' || status === 'trial';
 }
 
 function isLicenseOperational(row) {
@@ -813,6 +877,10 @@ async function getPlatformTenantById(tenantId) {
   return platformTenantRegistryService.getPlatformTenantById(tenantId);
 }
 
+async function getPlatformTenantBySlug(slugValue) {
+  return platformTenantRegistryService.getPlatformTenantBySlug(slugValue);
+}
+
 async function getTenantOperationalState(tenantId, options = {}) {
   return platformTenantStateService.getTenantOperationalState(tenantId, options);
 }
@@ -1013,16 +1081,21 @@ module.exports = {
   getPlatformAnalyticsOverview,
   getPlatformPermissionCatalog,
   getPlatformPublicOverview,
+  getSubscriptionLifecycleStatus,
   getPlatformTenantById,
+  getPlatformTenantBySlug,
   getTenantFeatureAccess: async (tenantId, options = {}) => {
     const snapshot = await getTenantQuotaSnapshot(tenantId, options);
     return {
       tenantId: snapshot?.tenantId || trimText(tenantId, 120) || null,
       package: snapshot?.package || null,
+      subscription: snapshot?.subscription || null,
+      subscriptionStatus: snapshot?.subscription?.lifecycleStatus || null,
       features: Array.isArray(snapshot?.features) ? snapshot.features : [],
       enabledFeatureKeys: Array.isArray(snapshot?.enabledFeatureKeys) ? snapshot.enabledFeatureKeys : [],
       featureOverrides: snapshot?.featureOverrides || { enabled: [], disabled: [] },
       plan: snapshot?.plan || null,
+      limits: snapshot?.package?.limits || null,
     };
   },
   getTenantQuotaSnapshot,
@@ -1038,8 +1111,10 @@ module.exports = {
   listPlatformWebhookEndpoints,
   recordPlatformAgentHeartbeat,
   reconcileDeliveryState,
+  resolvePackageForPlan,
   revokePlatformApiKey,
   rotatePlatformApiKey,
+  sanitizeSubscriptionRow,
   updatePackageCatalogEntry,
   verifyPlatformApiKey,
 };

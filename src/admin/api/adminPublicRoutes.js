@@ -63,6 +63,7 @@ function createAdminPublicRoutes(deps) {
     deleteDiscordOauthState,
     getClientIp,
     recordAdminSecuritySignal,
+    consumeAdminActionRateLimit,
     createSession,
     buildSessionCookie,
     buildClearSessionCookie,
@@ -91,6 +92,17 @@ function createAdminPublicRoutes(deps) {
 
   function trimTrailingSlash(value) {
     return String(value || '').trim().replace(/\/+$/, '');
+  }
+
+  function sendRateLimitResponse(res, rateLimit, message) {
+    const retryAfterSec = Math.max(1, Math.ceil(Number(rateLimit?.retryAfterMs || 0) / 1000));
+    sendJson(res, 429, {
+      ok: false,
+      error: message || `Too many requests. Please wait ${retryAfterSec}s and try again.`,
+      retryAfterSec,
+    }, {
+      'Retry-After': String(retryAfterSec),
+    });
   }
 
   async function readTenantBootstrapBody(req) {
@@ -829,12 +841,37 @@ function createAdminPublicRoutes(deps) {
 
         if (req.method === 'POST' && pathname === '/platform/api/v1/agent/activate') {
           const body = await readJsonBody(req);
+          const setupToken = requiredString(body, 'setupToken') || requiredString(body, 'setup_token');
+          const machineFingerprint = requiredString(body, 'machineFingerprint') || requiredString(body, 'machine_fingerprint');
+          const runtimeKey = requiredString(body, 'runtimeKey');
+          if (typeof consumeAdminActionRateLimit === 'function') {
+            let ip = '';
+            try {
+              ip = req?.headers && typeof getClientIp === 'function' ? getClientIp(req) : '';
+            } catch {
+              ip = '';
+            }
+            const rateLimit = consumeAdminActionRateLimit('platform-agent-activate', {
+              actor: 'platform-agent-activate',
+              ip,
+              identityKey: machineFingerprint || String(setupToken || '').slice(0, 12),
+              path: pathname,
+            });
+            if (rateLimit?.limited) {
+              sendRateLimitResponse(
+                res,
+                rateLimit,
+                'Too many activation attempts. Please wait and try again.',
+              );
+              return true;
+            }
+          }
           const result = await activatePlatformAgent?.({
-            setupToken: requiredString(body, 'setupToken'),
+            setupToken,
             setup_token: requiredString(body, 'setup_token'),
-            machineFingerprint: requiredString(body, 'machineFingerprint'),
+            machineFingerprint,
             machine_fingerprint: requiredString(body, 'machine_fingerprint'),
-            runtimeKey: requiredString(body, 'runtimeKey'),
+            runtimeKey,
             displayName: requiredString(body, 'displayName') || requiredString(body, 'name'),
             hostname: requiredString(body, 'hostname'),
             version: requiredString(body, 'version'),

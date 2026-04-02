@@ -67,6 +67,7 @@ function createAdminRouteHandlersRuntime(deps) {
     resolveAdminEditableRootEnvFilePath,
     resolveAdminEditablePortalEnvFilePath,
     recordAdminSecuritySignal,
+    consumeAdminActionRateLimit,
     getClientIp,
     upsertAdminUserInDb,
     revokeSessionsForUser,
@@ -94,8 +95,10 @@ function createAdminRouteHandlersRuntime(deps) {
     getTenantQuotaSnapshot,
     getPlatformPublicOverview,
     getPlatformAnalyticsOverview,
+    findPlanById,
     getPackageCatalogSummary,
     getFeatureCatalogSummary,
+    resolvePackageForPlan,
     verifyPlatformApiKey,
     SSO_DISCORD_ACTIVE,
     cleanupDiscordOauthStates,
@@ -326,6 +329,7 @@ function createAdminRouteHandlersRuntime(deps) {
     recordSession: recordPlatformAgentSession,
     registerAgent: registerPlatformAgent,
     revokeManagedAgentDevice: revokePlatformAgentDevice,
+    revokeManagedRuntime: revokePlatformAgentRuntime,
     revokeProvisioningToken: revokePlatformAgentProvisioningToken,
     revokeAgentToken: revokePlatformAgentToken,
     rotateAgentToken: rotatePlatformAgentToken,
@@ -338,7 +342,9 @@ function createAdminRouteHandlersRuntime(deps) {
   });
   const {
     getServerConfigCategory,
+    getServerConfigJob,
     getServerConfigWorkspace,
+    listServerConfigJobs,
     listServerConfigBackups,
     createServerConfigSaveJob,
     createServerConfigApplyJob,
@@ -346,6 +352,7 @@ function createAdminRouteHandlersRuntime(deps) {
     createServerBotActionJob,
     claimNextServerConfigJob,
     completeServerConfigJob,
+    retryServerConfigJob,
     upsertServerConfigSnapshot,
   } = platformServerConfigService;
 
@@ -464,6 +471,7 @@ function createAdminRouteHandlersRuntime(deps) {
     deleteDiscordOauthState: (state) => discordOauthStates.delete(state),
     getClientIp,
     recordAdminSecuritySignal,
+    consumeAdminActionRateLimit,
     createSession,
     buildSessionCookie,
     buildClearSessionCookie,
@@ -549,6 +557,7 @@ function createAdminRouteHandlersRuntime(deps) {
     listPlatformAgentRuntimes,
     listPlatformServerRegistry,
     listPlatformServerLinks,
+    listServerConfigJobs,
     getServerConfigWorkspace,
     getServerConfigCategory,
     listServerConfigBackups,
@@ -674,6 +683,8 @@ function createAdminRouteHandlersRuntime(deps) {
     getStatus,
     getTenantFeatureAccess,
     buildTenantProductEntitlements,
+    consumeAdminActionRateLimit,
+    getClientIp,
   });
 
   const handleAdminPortalPostRoute = createAdminPortalPostRoutes({
@@ -717,14 +728,17 @@ function createAdminRouteHandlersRuntime(deps) {
     acceptPlatformLicenseLegal,
     createPlatformApiKey,
     createPlatformWebhookEndpoint,
+    getServerConfigJob,
     createServerConfigApplyJob,
     createServerConfigRollbackJob,
     createServerConfigSaveJob,
+    retryServerConfigJob,
     createServerBotActionJob,
     scheduleRestartPlan,
     createPlatformAgentToken,
     createPlatformAgentProvisioningToken,
     revokePlatformAgentDevice,
+    revokePlatformAgentRuntime,
     revokePlatformAgentProvisioningToken,
     revokePlatformAgentToken,
     rotatePlatformAgentToken,
@@ -738,6 +752,8 @@ function createAdminRouteHandlersRuntime(deps) {
     getTenantFeatureAccess,
     buildTenantProductEntitlements,
     updatePackageCatalogEntry,
+    consumeAdminActionRateLimit,
+    getClientIp,
   });
 
   const handleAdminAuditRoute = createAdminAuditRoutes({

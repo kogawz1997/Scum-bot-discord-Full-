@@ -268,3 +268,65 @@ test('portal page routes allow capture-only dashboard auth with a valid token', 
   assert.equal(res.headers.Location, '/player');
   assert.equal(res.headers['Set-Cookie'], 'scum_portal_session=capture-session-id; Path=/; HttpOnly');
 });
+
+test('portal page routes redirect public server slugs to stats by default', async () => {
+  const handler = buildRoutes();
+  const res = createMockRes();
+
+  const handled = await handler({
+    req: { headers: {} },
+    res,
+    urlObj: new URL('https://player.example.com/s/frontier'),
+    pathname: '/s/frontier',
+    method: 'GET',
+  });
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 302);
+  assert.equal(res.headers.Location, '/s/frontier/stats');
+});
+
+test('portal page routes serve tenant-scoped public server pages by slug', async () => {
+  const handler = buildRoutes({
+    getPublicServerPortalSnapshot: async (slug) => ({
+      tenant: {
+        id: 'tenant-1',
+        slug,
+        name: 'SCUM TH Frontier',
+        status: 'active',
+      },
+      generatedAt: '2026-04-02T10:00:00.000Z',
+      featureAccess: {
+        sections: {
+          stats: { enabled: true },
+          shop: { enabled: true },
+          events: { enabled: true },
+          donate: { enabled: true },
+        },
+      },
+      servers: [{ id: 'server-main', name: 'Frontier Main' }],
+      leaderboard: [{ userId: 'MiraTH', kills: 18, deaths: 5, kd: 3.6 }],
+      shopItems: [{ id: 'vip-1', name: 'Supporter VIP', kind: 'vip', price: 3000, description: 'Support the server' }],
+      killfeed: [],
+      raidWindows: [],
+      raidSummaries: [],
+      donations: { summary: { activeSupporters30d: 2 }, topPackages: [] },
+      supporters: [],
+    }),
+  });
+  const res = createMockRes();
+
+  const handled = await handler({
+    req: { headers: {} },
+    res,
+    urlObj: new URL('https://player.example.com/s/frontier/stats'),
+    pathname: '/s/frontier/stats',
+    method: 'GET',
+  });
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 200);
+  assert.match(res.body, /SCUM TH Frontier/);
+  assert.match(res.body, /สถิติชุมชน/);
+  assert.match(res.body, /MiraTH/);
+});

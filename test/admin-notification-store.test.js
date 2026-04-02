@@ -197,3 +197,39 @@ test('admin notification store does not fall back to file mode when db persisten
     /missing-table/,
   );
 });
+
+test('admin notification store filters notifications by tenant id from payload data', async () => {
+  const harness = createNotificationDelegateHarness();
+  const store = loadStoreWithMocks(harness.delegate);
+
+  await store.initAdminNotificationStore();
+
+  store.addAdminNotification({
+    id: 'note-tenant-1',
+    type: 'billing',
+    source: 'platform-monitor',
+    kind: 'subscription-expiring',
+    severity: 'warn',
+    title: 'Subscription Expiring Soon',
+    message: 'tenant-1 plan is ending soon',
+    entityKey: 'sub-1',
+    data: { tenantId: 'tenant-1', subscriptionId: 'sub-1' },
+  });
+  store.addAdminNotification({
+    id: 'note-tenant-2',
+    type: 'billing',
+    source: 'platform-monitor',
+    kind: 'subscription-expiring',
+    severity: 'warn',
+    title: 'Subscription Expiring Soon',
+    message: 'tenant-2 plan is ending soon',
+    entityKey: 'sub-2',
+    data: { tenantId: 'tenant-2', subscriptionId: 'sub-2' },
+  });
+  await store.waitForAdminNotificationPersistence();
+
+  const tenantOneRows = store.listAdminNotifications({ limit: 10, tenantId: 'tenant-1' });
+  assert.equal(tenantOneRows.length, 1);
+  assert.equal(tenantOneRows[0].id, 'note-tenant-1');
+  assert.equal(tenantOneRows[0].tenantId, 'tenant-1');
+});

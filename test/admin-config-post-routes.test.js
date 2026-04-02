@@ -180,3 +180,38 @@ test('admin tenant-config route allows module save when module entitlement is en
   const payload = JSON.parse(String(res.body || '{}'));
   assert.equal(payload.ok, true);
 });
+
+test('admin tenant-config route denies config save when subscription is suspended even with config feature enabled', async () => {
+  let called = false;
+  const handler = buildRoutes({
+    getTenantFeatureAccess: async () => ({
+      tenantId: 'tenant-1',
+      subscriptionStatus: 'suspended',
+      enabledFeatureKeys: ['server_settings'],
+    }),
+    upsertPlatformTenantConfig: async () => {
+      called = true;
+      return { ok: true, data: { tenantId: 'tenant-1' } };
+    },
+  });
+  const res = createMockRes();
+
+  const handled = await handler({
+    req: { method: 'POST', headers: {} },
+    pathname: '/admin/api/platform/tenant-config',
+    body: {
+      tenantId: 'tenant-1',
+      updateScope: 'settings',
+      configPatch: { maintenanceModeEnabled: true },
+    },
+    res,
+    auth: { user: 'tenant-admin', role: 'admin', tenantId: 'tenant-1' },
+  });
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 403);
+  assert.equal(called, false);
+  const payload = JSON.parse(String(res.body || '{}'));
+  assert.equal(payload.error, 'feature-not-enabled');
+  assert.equal(payload.data.actionKey, 'can_edit_config');
+});

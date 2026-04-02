@@ -44,6 +44,7 @@ function createAdminNotificationGetRouteHandler(deps) {
     asInt,
     jsonReplacer,
     listAdminNotifications,
+    getAuthTenantId,
   } = deps;
 
   return async function handleAdminNotificationGetRoute(context) {
@@ -58,6 +59,7 @@ function createAdminNotificationGetRouteHandler(deps) {
       const auth = ensureRole(req, urlObj, 'mod', res);
       if (!auth) return true;
       const acknowledged = parseAcknowledgedFlag(urlObj);
+      const tenantId = getAuthTenantId(auth) || String(urlObj.searchParams.get('tenantId') || '').trim() || null;
       sendJson(res, 200, {
         ok: true,
         data: {
@@ -67,6 +69,7 @@ function createAdminNotificationGetRouteHandler(deps) {
             kind: String(urlObj.searchParams.get('kind') || '').trim(),
             severity: String(urlObj.searchParams.get('severity') || '').trim(),
             entityKey: String(urlObj.searchParams.get('entityKey') || '').trim(),
+            tenantId,
             acknowledged,
           }),
         },
@@ -78,12 +81,14 @@ function createAdminNotificationGetRouteHandler(deps) {
       const auth = ensureRole(req, urlObj, 'mod', res);
       if (!auth) return true;
       const acknowledged = parseAcknowledgedFlag(urlObj);
+      const tenantId = getAuthTenantId(auth) || String(urlObj.searchParams.get('tenantId') || '').trim() || null;
       const rows = listAdminNotifications({
         limit: asInt(urlObj.searchParams.get('limit'), 500) || 500,
         type: String(urlObj.searchParams.get('type') || '').trim(),
         kind: String(urlObj.searchParams.get('kind') || '').trim(),
         severity: String(urlObj.searchParams.get('severity') || '').trim(),
         entityKey: String(urlObj.searchParams.get('entityKey') || '').trim(),
+        tenantId,
         acknowledged,
       });
       const format = String(urlObj.searchParams.get('format') || 'json').trim().toLowerCase();

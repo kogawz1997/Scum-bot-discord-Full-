@@ -204,8 +204,22 @@
       }));
   }
 
+  function findLatestRuntimeSession(sessions, runtimeRow) {
+    const matches = (Array.isArray(sessions) ? sessions : [])
+      .filter((entry) => matchesRuntimeEntry(entry, runtimeRow))
+      .sort((left, right) => {
+        const leftTime = new Date(left?.heartbeatAt || left?.updatedAt || 0).getTime();
+        const rightTime = new Date(right?.heartbeatAt || right?.updatedAt || 0).getTime();
+        return rightTime - leftTime;
+      });
+    return matches[0] || null;
+  }
+
   function renderRuntimeActions(kind, row) {
     const buttons = [];
+    buttons.push(
+      `<a class="tdv4-button tdv4-button-secondary" href="#server-bots-history">Inspect status</a>`,
+    );
     if (row.apiKeyId) {
       buttons.push(
         `<button class="tdv4-button tdv4-button-secondary" type="button" data-runtime-action-kind="${escapeHtml(kind)}" data-runtime-action="rotate-token" data-runtime-api-key-id="${escapeHtml(row.apiKeyId)}" data-runtime-name="${escapeHtml(row.name)}">Rotate bot key</button>`,
@@ -217,6 +231,11 @@
     if (row.deviceId) {
       buttons.push(
         `<button class="tdv4-button tdv4-button-secondary" type="button" data-runtime-action-kind="${escapeHtml(kind)}" data-runtime-action="revoke-device" data-runtime-device-id="${escapeHtml(row.deviceId)}" data-runtime-name="${escapeHtml(row.name)}">Reset binding</button>`,
+      );
+    }
+    if (row.deviceId || row.apiKeyId) {
+      buttons.push(
+        `<button class="tdv4-button tdv4-button-secondary" type="button" data-runtime-action-kind="${escapeHtml(kind)}" data-runtime-action="revoke-runtime" data-runtime-device-id="${escapeHtml(row.deviceId)}" data-runtime-api-key-id="${escapeHtml(row.apiKeyId)}" data-runtime-name="${escapeHtml(row.name)}">Revoke runtime</button>`,
       );
     }
     if (!buttons.length) {
@@ -287,25 +306,27 @@
     const result = state?.__provisioningResult?.['server-bots'] || null;
     const hasServers = Array.isArray(state.servers) && state.servers.length > 0;
     const probeReadiness = buildProbeReadiness(state);
+    const sessions = Array.isArray(state.agentSessions) ? state.agentSessions : [];
     const history = buildRuntimeHistory(state, runtimeRows, selectedServerId);
 
     const rows = runtimeRows.map((row) => {
       const device = devices.find((entry) => matchesRuntimeEntry(entry, row) && String(entry?.status || '').trim() !== 'revoked') || null;
       const credential = credentials.find((entry) => matchesRuntimeEntry(entry, row) && String(entry?.status || '').trim() !== 'revoked') || null;
+      const session = findLatestRuntimeSession(sessions, row);
       const capabilities = normalizeCapabilities(row?.meta?.capabilities || row?.meta?.features);
       return {
         name: firstNonEmpty([row?.meta?.agentLabel, row?.displayName, row?.name, row?.runtimeKey, 'Server Bot']),
         server: firstNonEmpty([row?.meta?.serverId, row?.serverId, row?.tenantServerId, 'Unassigned']),
-        machine: firstNonEmpty([device?.hostname, row?.hostname, row?.meta?.hostname, row?.meta?.machineFingerprint, 'Unknown host']),
+        machine: firstNonEmpty([device?.hostname, session?.hostname, session?.metadata?.hostname, row?.hostname, row?.meta?.hostname, row?.meta?.machineFingerprint, 'Unknown host']),
         status: firstNonEmpty([row?.status, 'unknown']),
-        lastSeenAt: formatDateTime(row?.lastSeenAt),
-        version: firstNonEmpty([row?.version, row?.meta?.version, '-']),
+        lastSeenAt: formatDateTime(row?.lastSeenAt || session?.heartbeatAt),
+        version: firstNonEmpty([row?.version, row?.meta?.version, session?.version, '-']),
         capabilityLabel: [
           capabilities.some((entry) => entry.includes('sync')) ? 'sync ready' : 'sync pending',
           capabilities.some((entry) => entry.includes('config')) ? 'config ready' : 'config pending',
           capabilities.some((entry) => entry.includes('restart')) ? 'restart ready' : 'restart pending',
         ].join(' | '),
-        manageNote: firstNonEmpty([row?.meta?.lastError, row?.reason], 'Ready to inspect logs, config, backup, and restart control.'),
+        manageNote: firstNonEmpty([row?.meta?.lastError, row?.reason, session?.lastError, session?.metadata?.lastError], 'Ready to inspect logs, config, backup, and restart control.'),
         deviceId: trimText(device?.id, 160),
         apiKeyId: trimText(credential?.apiKeyId || credential?.id, 160),
       };
@@ -498,7 +519,7 @@
       '<h2 class="tdv4-section-title">บอตเซิร์ฟเวอร์ที่ลงทะเบียนแล้ว</h2>',
       '<p class="tdv4-section-copy">ดูว่าบอตตัวไหนออนไลน์ ผูกกับเครื่องไหน ส่งเวอร์ชันอะไรกลับมา และความสามารถใดพร้อมใช้งานตอนนี้</p>',
       safe.rows.length
-        ? `<div class="tdv4-data-table"><div class="tdv4-data-header"><span>ชื่อ</span><span>เซิร์ฟเวอร์</span><span>เครื่อง</span><span>สถานะ</span><span>อัปเดตล่าสุด</span><span>เวอร์ชัน</span><span>ความสามารถ</span><span>จัดการ</span></div>${safe.rows.map((row, index) => `<article class="tdv4-data-row${index === 0 ? ' tdv4-data-row-current' : ''}"><div class="tdv4-data-main"><strong>${escapeHtml(row.name)}</strong><span class="tdv4-kpi-detail">${escapeHtml(row.server)}</span></div><span>${escapeHtml(row.server)}</span><span>${escapeHtml(row.machine)}</span><span>${renderBadge(row.status, statusTone(row.status))}</span><span>${escapeHtml(row.lastSeenAt)}</span><span>${escapeHtml(row.version)}</span><span>${escapeHtml(row.capabilityLabel)}</span><div class="tdv4-runtime-manage-cell">${renderRuntimeActions('server-bots', row)}</div></article>`).join('')}</div>`
+        ? `<div class="tdv4-data-table"><div class="tdv4-data-header"><span>ชื่อ</span><span>เซิร์ฟเวอร์</span><span>เครื่อง</span><span>สถานะ</span><span>อัปเดตล่าสุด</span><span>เวอร์ชัน</span><span>ความสามารถ</span><span>ปัญหาล่าสุด</span><span>จัดการ</span></div>${safe.rows.map((row, index) => `<article class="tdv4-data-row${index === 0 ? ' tdv4-data-row-current' : ''}"><div class="tdv4-data-main"><strong>${escapeHtml(row.name)}</strong><span class="tdv4-kpi-detail">${escapeHtml(row.server)}</span></div><span>${escapeHtml(row.server)}</span><span>${escapeHtml(row.machine)}</span><span>${renderBadge(row.status, statusTone(row.status))}</span><span>${escapeHtml(row.lastSeenAt)}</span><span>${escapeHtml(row.version)}</span><span>${escapeHtml(row.capabilityLabel)}</span><span>${escapeHtml(row.manageNote)}</span><div class="tdv4-runtime-manage-cell">${renderRuntimeActions('server-bots', row)}</div></article>`).join('')}</div>`
         : `<div class="tdv4-empty-state" data-runtime-empty-kind="${escapeHtml(listEmptyState.kind)}"><strong>${escapeHtml(listEmptyState.title)}</strong><p>${escapeHtml(listEmptyState.detail)}</p><div class="tdv4-pagehead-actions"><a class="tdv4-button tdv4-button-primary" data-runtime-empty-action="server-bots" href="${escapeHtml(listEmptyState.actionHref)}">${escapeHtml(listEmptyState.actionLabel)}</a></div></div>`,
       '</article></section>',
       '<section class="tdv4-panel" id="server-bots-tests">',

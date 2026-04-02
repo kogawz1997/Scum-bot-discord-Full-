@@ -2,6 +2,7 @@
 
 const { Prisma } = require('@prisma/client');
 
+const config = require('../../config');
 const { prisma } = require('../../prisma');
 const { resolveDatabaseRuntime } = require('../../utils/dbEngine');
 
@@ -159,15 +160,28 @@ function toIsoString(value) {
 }
 
 function clonePackageEntry(entry = {}) {
+  const metadata = normalizePackageMetadata(entry.metadata);
+  const derivedPlan = resolvePrimaryPlanForPackage(entry.id);
+  const derivedTrialPlan = resolveTrialPlanForPackage(entry.id);
+  const pricing = resolvePackagePricing(metadata, derivedPlan);
+  const explicitTrialPlanId = trimText(metadata?.trialPlanId || metadata?.pricing?.trialPlanId, 80) || null;
+  const limits = resolvePackageLimits(metadata, derivedPlan);
   return {
     id: trimText(entry.id, 120).toUpperCase(),
+    name: trimText(entry.title, 180),
     title: trimText(entry.title, 180),
     description: trimText(entry.description, 400),
     status: normalizePackageStatus(entry.status),
     position: normalizePackagePosition(entry.position, 0),
     isSystem: entry.isSystem === true,
     features: normalizePackageFeatures(entry.features),
-    metadata: normalizePackageMetadata(entry.metadata),
+    metadata,
+    price: pricing.amountCents,
+    currency: pricing.currency,
+    billingCycle: pricing.billingCycle,
+    planId: pricing.planId,
+    trialPlanId: explicitTrialPlanId || (derivedTrialPlan ? trimText(derivedTrialPlan.id, 80) || null : null),
+    limits,
     actor: trimText(entry.actor, 180) || null,
     createdAt: toIsoString(entry.createdAt),
     updatedAt: toIsoString(entry.updatedAt),
@@ -220,6 +234,100 @@ function parseJson(value, fallback = null) {
 function stringifyJson(value) {
   if (value == null) return null;
   return JSON.stringify(value);
+}
+
+function getConfiguredBillingCurrency() {
+  return trimText(config.platform?.billing?.currency, 12).toUpperCase() || 'THB';
+}
+
+function getConfiguredBillingPlans() {
+  return Array.isArray(config.platform?.billing?.plans)
+    ? config.platform.billing.plans
+    : [];
+}
+
+function resolvePlansForPackage(packageId) {
+  const requested = normalizePackageId(packageId);
+  if (!requested) return [];
+  return getConfiguredBillingPlans().filter((plan) => {
+    const planId = trimText(plan?.id, 120).toLowerCase();
+    const mappedPackageId = normalizePackageId(PLAN_PACKAGE_ALIASES[planId]);
+    return mappedPackageId === requested;
+  });
+}
+
+function resolvePrimaryPlanForPackage(packageId) {
+  const matched = resolvePlansForPackage(packageId);
+  return matched.find((plan) => Number(plan?.amountCents || 0) > 0)
+    || matched.find((plan) => trimText(plan?.billingCycle, 40).toLowerCase() !== 'trial')
+    || matched[0]
+    || null;
+}
+
+function resolveTrialPlanForPackage(packageId) {
+  return resolvePlansForPackage(packageId).find((plan) => trimText(plan?.billingCycle, 40).toLowerCase() === 'trial')
+    || null;
+}
+
+function normalizePackageLimits(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const normalized = {};
+  Object.entries(value).forEach(([key, rawValue]) => {
+    const name = trimText(key, 120);
+    if (!name) return;
+    const numeric = Number(rawValue);
+    normalized[name] = Number.isFinite(numeric)
+      ? Math.max(0, Math.trunc(numeric))
+      : rawValue;
+  });
+  return Object.keys(normalized).length ? normalized : null;
+}
+
+function normalizePackageAmount(value, fallback = null) {
+  if (value == null || value === '') return fallback;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(0, Math.trunc(parsed));
+}
+
+function resolvePackagePricing(metadata, derivedPlan) {
+  const pricingMeta = metadata?.pricing && typeof metadata.pricing === 'object' && !Array.isArray(metadata.pricing)
+    ? metadata.pricing
+    : metadata?.price && typeof metadata.price === 'object' && !Array.isArray(metadata.price)
+      ? metadata.price
+      : null;
+  const amountCents = Number(
+    pricingMeta?.amountCents
+    ?? metadata?.amountCents
+    ?? derivedPlan?.amountCents,
+  );
+  return {
+    amountCents: Number.isFinite(amountCents) ? Math.max(0, Math.trunc(amountCents)) : null,
+    currency: trimText(
+      pricingMeta?.currency
+      || metadata?.currency
+      || getConfiguredBillingCurrency(),
+      12,
+    ).toUpperCase() || getConfiguredBillingCurrency(),
+    billingCycle: trimText(
+      pricingMeta?.billingCycle
+      || metadata?.billingCycle
+      || derivedPlan?.billingCycle,
+      40,
+    ).toLowerCase() || null,
+    planId: trimText(
+      pricingMeta?.planId
+      || metadata?.planId
+      || derivedPlan?.id,
+      120,
+    ) || null,
+  };
+}
+
+function resolvePackageLimits(metadata, derivedPlan) {
+  const explicitLimits = normalizePackageLimits(metadata?.limits || metadata?.quotas);
+  if (explicitLimits) return explicitLimits;
+  return normalizePackageLimits(derivedPlan?.quotas);
 }
 
 function normalizePackageFeatures(value) {
@@ -375,6 +483,27 @@ function getDatabaseRuntime() {
   return resolveDatabaseRuntime();
 }
 
+function getPackageCatalogDelegate(db = prisma) {
+  const delegate = db && typeof db === 'object' ? db.platformPackageCatalogEntry : null;
+  if (!delegate || typeof delegate.findMany !== 'function') {
+    return null;
+  }
+  return delegate;
+}
+
+function shouldFallbackToLegacyPackageCatalogPersistence(error) {
+  const code = trimText(error?.code, 20).toUpperCase();
+  if (code === 'P2021' || code === 'P2022') {
+    return true;
+  }
+  const message = String(error?.message || error || '').toLowerCase();
+  return message.includes('platformpackagecatalogentry')
+    || message.includes('package catalog')
+    || message.includes('no such table')
+    || message.includes('does not exist')
+    || message.includes('could not convert value');
+}
+
 async function ensurePackageCatalogTable(db = prisma) {
   const runtime = getDatabaseRuntime();
   if (runtime.isSqlite) {
@@ -433,6 +562,23 @@ function normalizePackageCatalogRow(row = {}) {
 }
 
 async function readPersistedPackageCatalogRows(db = prisma) {
+  const delegate = getPackageCatalogDelegate(db);
+  if (delegate) {
+    try {
+      const rows = await delegate.findMany({
+        orderBy: [
+          { position: 'asc' },
+          { createdAt: 'asc' },
+          { id: 'asc' },
+        ],
+      });
+      return Array.isArray(rows) ? rows.map(normalizePackageCatalogRow) : [];
+    } catch (error) {
+      if (!shouldFallbackToLegacyPackageCatalogPersistence(error)) {
+        throw error;
+      }
+    }
+  }
   await ensurePackageCatalogTable(db);
   const rows = await db.$queryRaw(Prisma.sql`
     SELECT *
@@ -445,9 +591,35 @@ async function readPersistedPackageCatalogRows(db = prisma) {
 async function ensurePackageCatalogSeeded(db = prisma) {
   const existingRows = await readPersistedPackageCatalogRows(db);
   const existingIds = new Set(existingRows.map((entry) => entry.id));
+  const delegate = getPackageCatalogDelegate(db);
   for (const entry of BUILTIN_PACKAGE_CATALOG) {
     if (existingIds.has(entry.id)) continue;
     const normalized = clonePackageEntry(entry);
+    if (delegate && typeof delegate.upsert === 'function') {
+      try {
+        await delegate.upsert({
+          where: { id: normalized.id },
+          update: {},
+          create: {
+            id: normalized.id,
+            title: normalized.title,
+            description: normalized.description || null,
+            status: normalized.status,
+            featuresJson: JSON.stringify(normalized.features),
+            position: normalized.position,
+            isSystem: normalized.isSystem,
+            metadataJson: stringifyJson(normalized.metadata),
+            actor: 'system:seed',
+          },
+        });
+        continue;
+      } catch (error) {
+        if (!shouldFallbackToLegacyPackageCatalogPersistence(error)) {
+          throw error;
+        }
+      }
+    }
+    await ensurePackageCatalogTable(db);
     await db.$executeRaw(Prisma.sql`
       INSERT INTO "PlatformPackageCatalogEntry" (
         "id",
@@ -511,7 +683,12 @@ async function listPersistedPackageCatalog(options = {}, db = prisma) {
 function normalizePackageInput(input = {}, options = {}) {
   const existing = options.existing && typeof options.existing === 'object' ? options.existing : null;
   const id = normalizePackageId(input.id || existing?.id);
-  const title = trimText(input.title != null ? input.title : existing?.title, 180);
+  const title = trimText(
+    input.title != null
+      ? input.title
+      : (input.name != null ? input.name : existing?.title),
+    180,
+  );
   const description = trimText(
     input.description != null ? input.description : existing?.description,
     400,
@@ -528,7 +705,50 @@ function normalizePackageInput(input = {}, options = {}) {
   );
   const metadata = normalizePackageMetadata(
     input.metadata != null ? input.metadata : existing?.metadata,
+  ) || {};
+  const pricing = normalizePackageMetadata(metadata.pricing) || {};
+  const explicitPrice = normalizePackageAmount(
+    Object.prototype.hasOwnProperty.call(input, 'price') ? input.price : input.amountCents,
+    pricing.amountCents ?? metadata.amountCents ?? existing?.price ?? null,
   );
+  const explicitCurrency = trimText(
+    Object.prototype.hasOwnProperty.call(input, 'currency') ? input.currency : (pricing.currency ?? metadata.currency ?? existing?.currency),
+    12,
+  ).toUpperCase() || null;
+  const explicitBillingCycle = trimText(
+    Object.prototype.hasOwnProperty.call(input, 'billingCycle') ? input.billingCycle : (pricing.billingCycle ?? metadata.billingCycle ?? existing?.billingCycle),
+    40,
+  ).toLowerCase() || null;
+  const explicitPlanId = trimText(
+    Object.prototype.hasOwnProperty.call(input, 'planId') ? input.planId : (pricing.planId ?? metadata.planId ?? existing?.planId),
+    120,
+  ) || null;
+  const explicitTrialPlanId = trimText(
+    Object.prototype.hasOwnProperty.call(input, 'trialPlanId') ? input.trialPlanId : (metadata.trialPlanId ?? existing?.trialPlanId),
+    120,
+  ) || null;
+  const explicitLimits = normalizePackageLimits(
+    Object.prototype.hasOwnProperty.call(input, 'limits')
+      ? input.limits
+      : (Object.prototype.hasOwnProperty.call(input, 'quotas')
+        ? input.quotas
+        : (metadata.limits ?? metadata.quotas ?? existing?.limits)),
+  );
+  if (explicitPrice != null || explicitCurrency || explicitBillingCycle || explicitPlanId) {
+    metadata.pricing = {
+      ...(normalizePackageMetadata(metadata.pricing) || {}),
+      ...(explicitPrice != null ? { amountCents: explicitPrice } : {}),
+      ...(explicitCurrency ? { currency: explicitCurrency } : {}),
+      ...(explicitBillingCycle ? { billingCycle: explicitBillingCycle } : {}),
+      ...(explicitPlanId ? { planId: explicitPlanId } : {}),
+    };
+  }
+  if (explicitTrialPlanId) {
+    metadata.trialPlanId = explicitTrialPlanId;
+  }
+  if (explicitLimits) {
+    metadata.limits = explicitLimits;
+  }
   const actor = trimText(input.actor || options.actor, 180) || null;
   const isSystem = existing?.isSystem === true || input.isSystem === true;
   return {
@@ -553,35 +773,87 @@ async function createPackageCatalogEntry(input = {}, actor = 'system', db = pris
   if (getPackageById(normalized.id, { includeInactive: true })) {
     return { ok: false, reason: 'package-already-exists' };
   }
-  await ensurePackageCatalogTable(db);
-  const now = new Date();
-  await db.$executeRaw(Prisma.sql`
-    INSERT INTO "PlatformPackageCatalogEntry" (
-      "id",
-      "title",
-      "description",
-      "status",
-      "featuresJson",
-      "position",
-      "isSystem",
-      "metadataJson",
-      "actor",
-      "createdAt",
-      "updatedAt"
-    ) VALUES (
-      ${normalized.id},
-      ${normalized.title},
-      ${normalized.description || null},
-      ${normalized.status},
-      ${JSON.stringify(normalized.features)},
-      ${normalized.position},
-      ${false},
-      ${stringifyJson(normalized.metadata)},
-      ${normalized.actor || null},
-      ${now},
-      ${now}
-    )
-  `);
+  const delegate = getPackageCatalogDelegate(db);
+  if (delegate && typeof delegate.create === 'function') {
+    try {
+      await delegate.create({
+        data: {
+          id: normalized.id,
+          title: normalized.title,
+          description: normalized.description || null,
+          status: normalized.status,
+          featuresJson: JSON.stringify(normalized.features),
+          position: normalized.position,
+          isSystem: false,
+          metadataJson: stringifyJson(normalized.metadata),
+          actor: normalized.actor || null,
+        },
+      });
+    } catch (error) {
+      if (!shouldFallbackToLegacyPackageCatalogPersistence(error)) {
+        throw error;
+      }
+      await ensurePackageCatalogTable(db);
+      const now = new Date();
+      await db.$executeRaw(Prisma.sql`
+        INSERT INTO "PlatformPackageCatalogEntry" (
+          "id",
+          "title",
+          "description",
+          "status",
+          "featuresJson",
+          "position",
+          "isSystem",
+          "metadataJson",
+          "actor",
+          "createdAt",
+          "updatedAt"
+        ) VALUES (
+          ${normalized.id},
+          ${normalized.title},
+          ${normalized.description || null},
+          ${normalized.status},
+          ${JSON.stringify(normalized.features)},
+          ${normalized.position},
+          ${false},
+          ${stringifyJson(normalized.metadata)},
+          ${normalized.actor || null},
+          ${now},
+          ${now}
+        )
+      `);
+    }
+  } else {
+    await ensurePackageCatalogTable(db);
+    const now = new Date();
+    await db.$executeRaw(Prisma.sql`
+      INSERT INTO "PlatformPackageCatalogEntry" (
+        "id",
+        "title",
+        "description",
+        "status",
+        "featuresJson",
+        "position",
+        "isSystem",
+        "metadataJson",
+        "actor",
+        "createdAt",
+        "updatedAt"
+      ) VALUES (
+        ${normalized.id},
+        ${normalized.title},
+        ${normalized.description || null},
+        ${normalized.status},
+        ${JSON.stringify(normalized.features)},
+        ${normalized.position},
+        ${false},
+        ${stringifyJson(normalized.metadata)},
+        ${normalized.actor || null},
+        ${now},
+        ${now}
+      )
+    `);
+  }
   const rows = await refreshPackageCatalogCache({ db, force: true });
   return {
     ok: true,
@@ -598,21 +870,58 @@ async function updatePackageCatalogEntry(input = {}, actor = 'system', db = pris
   const normalized = normalizePackageInput(input, { actor, existing });
   if (!normalized.title) return { ok: false, reason: 'package-title-required' };
   if (normalized.features.length === 0) return { ok: false, reason: 'package-features-required' };
-  await ensurePackageCatalogTable(db);
-  const now = new Date();
-  await db.$executeRaw(Prisma.sql`
-    UPDATE "PlatformPackageCatalogEntry"
-    SET
-      "title" = ${normalized.title},
-      "description" = ${normalized.description || null},
-      "status" = ${normalized.status},
-      "featuresJson" = ${JSON.stringify(normalized.features)},
-      "position" = ${normalized.position},
-      "metadataJson" = ${stringifyJson(normalized.metadata)},
-      "actor" = ${normalized.actor || existing.actor || null},
-      "updatedAt" = ${now}
-    WHERE "id" = ${packageId}
-  `);
+  const delegate = getPackageCatalogDelegate(db);
+  if (delegate && typeof delegate.update === 'function') {
+    try {
+      await delegate.update({
+        where: { id: packageId },
+        data: {
+          title: normalized.title,
+          description: normalized.description || null,
+          status: normalized.status,
+          featuresJson: JSON.stringify(normalized.features),
+          position: normalized.position,
+          metadataJson: stringifyJson(normalized.metadata),
+          actor: normalized.actor || existing.actor || null,
+        },
+      });
+    } catch (error) {
+      if (!shouldFallbackToLegacyPackageCatalogPersistence(error)) {
+        throw error;
+      }
+      await ensurePackageCatalogTable(db);
+      const now = new Date();
+      await db.$executeRaw(Prisma.sql`
+        UPDATE "PlatformPackageCatalogEntry"
+        SET
+          "title" = ${normalized.title},
+          "description" = ${normalized.description || null},
+          "status" = ${normalized.status},
+          "featuresJson" = ${JSON.stringify(normalized.features)},
+          "position" = ${normalized.position},
+          "metadataJson" = ${stringifyJson(normalized.metadata)},
+          "actor" = ${normalized.actor || existing.actor || null},
+          "updatedAt" = ${now}
+        WHERE "id" = ${packageId}
+      `);
+    }
+  } else {
+    await ensurePackageCatalogTable(db);
+    const now = new Date();
+    await db.$executeRaw(Prisma.sql`
+      UPDATE "PlatformPackageCatalogEntry"
+      SET
+        "title" = ${normalized.title},
+        "description" = ${normalized.description || null},
+        "status" = ${normalized.status},
+        "featuresJson" = ${JSON.stringify(normalized.features)},
+        "position" = ${normalized.position},
+        "metadataJson" = ${stringifyJson(normalized.metadata)},
+        "actor" = ${normalized.actor || existing.actor || null},
+        "updatedAt" = ${now}
+      WHERE "id" = ${packageId}
+    `);
+  }
   const rows = await refreshPackageCatalogCache({ db, force: true });
   return {
     ok: true,
@@ -627,11 +936,29 @@ async function deletePackageCatalogEntry(input = {}, actor = 'system', db = pris
   const existing = getPackageById(packageId, { includeInactive: true });
   if (!existing) return { ok: false, reason: 'package-not-found' };
   if (existing.isSystem) return { ok: false, reason: 'package-system-delete-blocked' };
-  await ensurePackageCatalogTable(db);
-  await db.$executeRaw(Prisma.sql`
-    DELETE FROM "PlatformPackageCatalogEntry"
-    WHERE "id" = ${packageId}
-  `);
+  const delegate = getPackageCatalogDelegate(db);
+  if (delegate && typeof delegate.delete === 'function') {
+    try {
+      await delegate.delete({
+        where: { id: packageId },
+      });
+    } catch (error) {
+      if (!shouldFallbackToLegacyPackageCatalogPersistence(error)) {
+        throw error;
+      }
+      await ensurePackageCatalogTable(db);
+      await db.$executeRaw(Prisma.sql`
+        DELETE FROM "PlatformPackageCatalogEntry"
+        WHERE "id" = ${packageId}
+      `);
+    }
+  } else {
+    await ensurePackageCatalogTable(db);
+    await db.$executeRaw(Prisma.sql`
+      DELETE FROM "PlatformPackageCatalogEntry"
+      WHERE "id" = ${packageId}
+    `);
+  }
   await refreshPackageCatalogCache({ db, force: true });
   return {
     ok: true,

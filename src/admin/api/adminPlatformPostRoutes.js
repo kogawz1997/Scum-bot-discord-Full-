@@ -67,6 +67,10 @@ function resolveRuntimeActionEntitlement(body = {}) {
   if (strictProfile.ok && strictProfile.runtimeKind === 'server-bots') return 'can_create_server_bot';
   if (strictProfile.ok && strictProfile.runtimeKind === 'delivery-agents') return 'can_create_delivery_agent';
 
+  const runtimeKind = trimText(body?.runtimeKind, 80).toLowerCase();
+  if (runtimeKind === 'server-bots') return 'can_create_server_bot';
+  if (runtimeKind === 'delivery-agents') return 'can_create_delivery_agent';
+
   const role = trimText(body?.role, 80).toLowerCase();
   const scope = trimText(body?.scope, 80).toLowerCase();
   if (role === 'sync' || ['sync_only', 'sync-only'].includes(scope)) {
@@ -101,6 +105,8 @@ function createAdminPlatformPostRoutes(deps) {
     createSubscription,
     deletePackageCatalogEntry,
     createCheckoutSession,
+    findPlanById,
+    resolvePackageForPlan,
     updateInvoiceStatus,
     updatePaymentAttempt,
     updateSubscriptionBillingState,
@@ -110,14 +116,17 @@ function createAdminPlatformPostRoutes(deps) {
     acceptPlatformLicenseLegal,
     createPlatformApiKey,
     createPlatformWebhookEndpoint,
+    getServerConfigJob,
     createServerConfigApplyJob,
     createServerConfigRollbackJob,
     createServerConfigSaveJob,
+    retryServerConfigJob,
     createServerBotActionJob,
     scheduleRestartPlan,
     createPlatformAgentToken,
     createPlatformAgentProvisioningToken,
     revokePlatformAgentDevice,
+    revokePlatformAgentRuntime,
     revokePlatformAgentProvisioningToken,
     revokePlatformAgentToken,
     rotatePlatformAgentToken,
@@ -131,6 +140,8 @@ function createAdminPlatformPostRoutes(deps) {
     getTenantFeatureAccess,
     buildTenantProductEntitlements,
     updatePackageCatalogEntry,
+    consumeAdminActionRateLimit,
+    getClientIp,
   } = deps;
 
   const handleAdminBillingPostRoute = createAdminBillingPostRouteHandler({
@@ -143,6 +154,9 @@ function createAdminPlatformPostRoutes(deps) {
     updateInvoiceStatus,
     updatePaymentAttempt,
     createCheckoutSession,
+    findPlanById,
+    resolvePackageForPlan,
+    listPlatformSubscriptions,
   });
   const handleAdminRuntimeControlPostRoute = createAdminRuntimeControlPostRouteHandler({
     sendJson,
@@ -151,11 +165,15 @@ function createAdminPlatformPostRoutes(deps) {
     getAuthTenantId,
     getTenantFeatureAccess,
     buildTenantProductEntitlements,
+    getServerConfigJob,
     createServerConfigApplyJob,
     createServerConfigRollbackJob,
     createServerConfigSaveJob,
+    retryServerConfigJob,
     scheduleRestartPlan,
     createServerBotActionJob,
+    consumeAdminActionRateLimit,
+    getClientIp,
   });
   const handleAdminNotificationPostRoute = createAdminNotificationPostRouteHandler({
     sendJson,
@@ -296,11 +314,20 @@ function createAdminPlatformPostRoutes(deps) {
       }
       const result = await createPackageCatalogEntry?.({
         id: requiredString(body, 'id'),
+        name: requiredString(body, 'name'),
         title: requiredString(body, 'title'),
         description: requiredString(body, 'description'),
         status: requiredString(body, 'status'),
         position: body?.position,
+        features: body?.features,
         featureText: requiredString(body, 'featureText'),
+        price: body?.price,
+        amountCents: body?.amountCents,
+        currency: requiredString(body, 'currency'),
+        billingCycle: requiredString(body, 'billingCycle'),
+        planId: requiredString(body, 'planId'),
+        trialPlanId: requiredString(body, 'trialPlanId'),
+        limits: body?.limits,
         metadata: body?.metadata,
       }, `admin-web:${auth?.user || 'unknown'}`);
       if (!result?.ok) {
@@ -318,11 +345,20 @@ function createAdminPlatformPostRoutes(deps) {
       }
       const result = await updatePackageCatalogEntry?.({
         id: requiredString(body, 'id'),
+        name: requiredString(body, 'name'),
         title: requiredString(body, 'title'),
         description: requiredString(body, 'description'),
         status: requiredString(body, 'status'),
         position: body?.position,
+        features: body?.features,
         featureText: requiredString(body, 'featureText'),
+        price: body?.price,
+        amountCents: body?.amountCents,
+        currency: requiredString(body, 'currency'),
+        billingCycle: requiredString(body, 'billingCycle'),
+        planId: requiredString(body, 'planId'),
+        trialPlanId: requiredString(body, 'trialPlanId'),
+        limits: body?.limits,
         metadata: body?.metadata,
       }, `admin-web:${auth?.user || 'unknown'}`);
       if (!result?.ok) {
@@ -890,6 +926,44 @@ function createAdminPlatformPostRoutes(deps) {
       }, `admin-web:${auth?.user || 'unknown'}`);
       if (!result?.ok) {
         sendJson(res, 400, { ok: false, error: result?.reason || 'platform-agent-device-revoke-failed' });
+        return true;
+      }
+      sendJson(res, 200, { ok: true, data: result });
+      return true;
+    }
+
+    if (pathname === '/admin/api/platform/agent-runtime/revoke') {
+      const tenantId = getAuthTenantId(auth) || requiredString(body, 'tenantId');
+      const runtimePermission = requireTenantPermission({
+        sendJson,
+        res,
+        auth,
+        permissionKey: 'manage_runtimes',
+        message: 'Your tenant role cannot revoke tenant runtimes.',
+      });
+      if (!runtimePermission.allowed) return true;
+      const runtimeActionKey = resolveRuntimeActionEntitlement(body);
+      if (tenantId && runtimeActionKey && isTenantScopedAuth(auth, getAuthTenantId)) {
+        const runtimeCheck = await requireTenantActionEntitlement({
+          sendJson,
+          res,
+          getTenantFeatureAccess,
+          buildTenantProductEntitlements,
+          tenantId,
+          actionKey: runtimeActionKey,
+          message: 'Runtime revocation is locked in the current package.',
+        });
+        if (!runtimeCheck.allowed) return true;
+      }
+      const result = await revokePlatformAgentRuntime?.({
+        tenantId,
+        runtimeKind: requiredString(body, 'runtimeKind'),
+        apiKeyId: requiredString(body, 'apiKeyId'),
+        deviceId: requiredString(body, 'deviceId'),
+        revokeReason: requiredString(body, 'revokeReason'),
+      }, `admin-web:${auth?.user || 'unknown'}`);
+      if (!result?.ok) {
+        sendJson(res, 400, { ok: false, error: result?.reason || 'platform-agent-runtime-revoke-failed' });
         return true;
       }
       sendJson(res, 200, { ok: true, data: result });

@@ -395,6 +395,7 @@
         wheelState,
         raids,
         killfeed,
+        supporters,
       ] = await Promise.all([
         hasAnyFeature(featureAccess, ['wallet_module'])
           ? safePlayerRead('/player/api/wallet/ledger?limit=20', { wallet: {}, items: [] }, loadWarnings, 'wallet-ledger')
@@ -432,6 +433,9 @@
         isSectionEnabled(featureAccess, 'events')
           ? safePlayerRead('/player/api/killfeed?limit=20', { items: [] }, loadWarnings, 'killfeed')
           : Promise.resolve({ items: [], locked: true }),
+        isSectionEnabled(featureAccess, 'donations')
+          ? safePlayerRead('/player/api/supporters?limit=10', { items: [], summary: null }, loadWarnings, 'supporters')
+          : Promise.resolve({ items: [], summary: null, locked: true }),
       ]);
 
       state.payload = {
@@ -456,6 +460,7 @@
         wheelState,
         raids,
         killfeed: Array.isArray(killfeed?.items) ? killfeed.items : (Array.isArray(killfeed) ? killfeed : []),
+        supporters,
         party,
         lastRefreshedAt: new Date().toISOString(),
         __loadWarnings: loadWarnings,

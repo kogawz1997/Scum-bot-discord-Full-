@@ -100,11 +100,64 @@ test('tenant server bots v4 model keeps runtime and discord management context',
   assert.equal(model.rows[0].name, 'watcher-1');
   assert.equal(model.rows[0].deviceId, 'device-1');
   assert.equal(model.rows[0].apiKeyId, 'apikey-1');
-  assert.equal(model.rows[0].version, '-');
+  assert.equal(model.rows[0].machine, 'server-bot-host');
+  assert.equal(model.rows[0].version, '2.0.0');
   assert.equal(model.tokens[0].tokenId, 'token-1');
   assert.equal(model.probeReadiness.restartConfigured, false);
   assert.equal(model.discordLinks.length, 1);
   assert.equal(model.history.length, 1);
+});
+
+test('tenant server bots v4 model falls back to session details and latest error', () => {
+  const model = createTenantServerBotsV4Model({
+    tenantLabel: 'Codex Test Community',
+    activeServer: { id: 'server-alpha', name: 'Alpha Server' },
+    servers: [{ id: 'server-alpha', name: 'Alpha Server' }],
+    agents: [
+      {
+        runtimeKey: 'watcher-1',
+        status: 'offline',
+        meta: {
+          agentId: 'agent-sync-1',
+          agentRole: 'sync',
+          agentScope: 'sync_only',
+          serverId: 'server-alpha',
+          capabilities: ['sync'],
+        },
+      },
+    ],
+    agentCredentials: [
+      {
+        id: 'cred-1',
+        apiKeyId: 'apikey-1',
+        agentId: 'agent-sync-1',
+        serverId: 'server-alpha',
+        runtimeKey: 'watcher-1',
+        status: 'active',
+      },
+    ],
+    agentSessions: [
+      {
+        id: 'session-1',
+        sessionId: 'session-1',
+        agentId: 'agent-sync-1',
+        serverId: 'server-alpha',
+        runtimeKey: 'watcher-1',
+        role: 'sync',
+        scope: 'sync_only',
+        status: 'offline',
+        hostname: 'server-bot-from-session',
+        version: '2.1.0',
+        heartbeatAt: '2026-03-27T10:05:00.000Z',
+        metadata: { lastError: 'Config path unavailable' },
+      },
+    ],
+  });
+
+  assert.equal(model.rows[0].machine, 'server-bot-from-session');
+  assert.equal(model.rows[0].version, '2.1.0');
+  assert.match(model.rows[0].lastSeenAt, /2026|Mar|มี\.ค\./);
+  assert.equal(model.rows[0].manageNote, 'Config path unavailable');
 });
 
 test('tenant server bots v4 html exposes provisioning, management, and discord mapping hooks', () => {
@@ -205,10 +258,12 @@ test('tenant server bots v4 html exposes provisioning, management, and discord m
   assert.match(html, /data-runtime-action="rotate-token"/);
   assert.match(html, /data-runtime-action="revoke-token"/);
   assert.match(html, /data-runtime-action="revoke-device"/);
+  assert.match(html, /data-runtime-action="revoke-runtime"/);
   assert.match(html, /data-runtime-action="reissue-provision"/);
   assert.match(html, /data-runtime-action="revoke-provision"/);
   assert.match(html, /data-runtime-download-kind="server-bots"/);
   assert.match(html, /data-runtime-download-key="install-ps1"/);
+  assert.match(html, /href="#server-bots-history"/);
   assert.match(html, /ดาวน์โหลดสคริปต์ติดตั้ง \(\.ps1\)|Download install script \(\.ps1\)/);
   assert.match(html, /กิจกรรมล่าสุดของบอต|Recent bot activity/);
   assert.match(html, /กติกาการผูกเครื่อง|Binding rule/);

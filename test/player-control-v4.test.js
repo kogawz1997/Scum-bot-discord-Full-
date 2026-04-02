@@ -158,6 +158,21 @@ function buildSampleState() {
         playerRole: 'killer',
       },
     ],
+    supporters: {
+      summary: {
+        activeSupporters30d: 2,
+      },
+      items: [
+        {
+          label: 'MiraTH',
+          latestPackage: 'Supporter VIP',
+          latestStatus: 'delivered',
+          lastPurchaseAt: '2026-03-27T15:00:00+07:00',
+          totalPurchases: 2,
+          totalCoins: 6000,
+        },
+      ],
+    },
     linkHistory: {
       items: [{ provider: 'steam', status: 'linked', steamId: '7656119', createdAt: '2026-03-20T12:00:00+07:00' }],
     },
@@ -266,6 +281,7 @@ test('player control v4 donations page exposes supporter summary, readiness, and
   const donationsModel = createPlayerControlV4Model(state, 'donations');
 
   assert.match(donationsModel.mainHtml, /data-player-supporter-summary/);
+  assert.match(donationsModel.mainHtml, /data-player-supporter-community/);
   assert.match(donationsModel.mainHtml, /data-player-supporter-readiness/);
   assert.match(donationsModel.mainHtml, /data-player-supporter-history/);
   assert.match(donationsModel.mainHtml, /ความพร้อมและสถานะล่าสุด/);

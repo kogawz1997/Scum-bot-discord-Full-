@@ -47,7 +47,8 @@ function normalizePaymentStatus(value, fallback = 'pending') {
 
 function normalizeSubscriptionStatus(value, fallback = 'active') {
   const normalized = trimText(value, 40).toLowerCase();
-  return ['active', 'trialing', 'pending', 'past_due', 'canceled', 'expired'].includes(normalized)
+  if (normalized === 'trial') return 'trialing';
+  return ['active', 'trialing', 'pending', 'past_due', 'suspended', 'canceled', 'expired'].includes(normalized)
     ? normalized
     : fallback;
 }
@@ -1195,7 +1196,7 @@ async function updateSubscriptionBillingState(input = {}, db = prisma) {
     ? (input.renewsAt === null ? null : parseDate(input.renewsAt) || currentRenewsAt)
     : (
       nextStatus === 'active'
-      && ['canceled', 'past_due', 'expired'].includes(normalizeSubscriptionStatus(existing.status, 'active'))
+      && ['canceled', 'past_due', 'suspended', 'expired'].includes(normalizeSubscriptionStatus(existing.status, 'active'))
       && (!currentRenewsAt || currentRenewsAt.getTime() <= now.getTime())
         ? (() => {
           const renewDays = resolveBillingCycleDays(nextBillingCycle);
@@ -1206,7 +1207,19 @@ async function updateSubscriptionBillingState(input = {}, db = prisma) {
   const nextCanceledAt = hasOwn(input, 'canceledAt')
     ? (input.canceledAt === null ? null : parseDate(input.canceledAt) || currentCanceledAt)
     : (nextStatus === 'canceled' ? currentCanceledAt || now : null);
-  const nextMetadataJson = buildJson(mergeMeta(existing.metadataJson, input.metadata));
+  const previousStatus = normalizeSubscriptionStatus(existing.status, 'active');
+  const nextMetadata = mergeMeta(existing.metadataJson, input.metadata);
+  nextMetadata.currentPeriodStart = (
+    nextStatus === 'active' && previousStatus !== 'active'
+      ? now
+      : parseDate(nextMetadata.currentPeriodStart) || parseDate(existing.startedAt) || now
+  ).toISOString();
+  nextMetadata.currentPeriodEnd = toIso(nextRenewsAt);
+  nextMetadata.trialEndsAt = nextBillingCycle === 'trial' || nextStatus === 'trialing'
+    ? toIso(nextRenewsAt)
+    : null;
+  nextMetadata.billingCycle = nextBillingCycle;
+  const nextMetadataJson = buildJson(nextMetadata);
   const row = await scopedDb.platformSubscription.update({
     where: { id: existing.id },
     data: {
@@ -1223,11 +1236,14 @@ async function updateSubscriptionBillingState(input = {}, db = prisma) {
   });
   let event = null;
   if (input.recordEvent !== false) {
-    const previousStatus = normalizeSubscriptionStatus(existing.status, 'active');
     const eventType = nextStatus === 'canceled' && previousStatus !== 'canceled'
       ? 'subscription.canceled'
       : previousStatus === 'canceled' && nextStatus === 'active'
         ? 'subscription.reactivated'
+        : nextStatus === 'suspended' && previousStatus !== 'suspended'
+          ? 'subscription.suspended'
+          : previousStatus === 'suspended' && nextStatus === 'active'
+            ? 'subscription.reactivated'
         : previousStatus === 'past_due' && nextStatus === 'active'
           ? 'subscription.recovered'
           : nextStatus === 'past_due' && previousStatus !== 'past_due'

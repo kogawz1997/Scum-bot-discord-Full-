@@ -10,6 +10,11 @@ process.env.PRISMA_SCHEMA_PROVIDER = 'sqlite';
 
 const { prisma } = require('../src/prisma');
 const {
+  listAdminNotifications,
+  replaceAdminNotifications,
+  waitForAdminNotificationPersistence,
+} = require('../src/store/adminNotificationStore');
+const {
   completeRestartPlan,
   ensurePlatformRestartTables,
   listDueRestartAnnouncements,
@@ -30,9 +35,16 @@ async function cleanupRestartFixtures() {
   await prisma.$executeRawUnsafe("DELETE FROM platform_restart_plans WHERE tenant_id = 'tenant-restart-test'").catch(() => null);
 }
 
+async function cleanupNotifications() {
+  replaceAdminNotifications([]);
+  await waitForAdminNotificationPersistence();
+}
+
 test('platform restart orchestration persists restart plan and execution history', async (t) => {
   await cleanupRestartFixtures();
+  await cleanupNotifications();
   t.after(cleanupRestartFixtures);
+  t.after(cleanupNotifications);
 
   const plan = await scheduleRestartPlan({
     tenantId: 'tenant-restart-test',
@@ -57,6 +69,15 @@ test('platform restart orchestration persists restart plan and execution history
     detail: 'Restart completed',
   });
   assert.equal(execution.ok, true);
+  await waitForAdminNotificationPersistence();
+
+  const notifications = listAdminNotifications({
+    limit: 10,
+    tenantId: 'tenant-restart-test',
+    kind: 'restart-succeeded',
+  });
+  assert.equal(notifications.length, 1);
+  assert.equal(String(notifications[0]?.entityKey || ''), String(execution.execution?.id || ''));
 
   const completed = await completeRestartPlan({
     planId: plan.plan.id,

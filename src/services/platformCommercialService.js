@@ -40,6 +40,16 @@ function createPlatformCommercialService(deps) {
     return parts.join('-').toUpperCase();
   }
 
+  function normalizeCommercialSubscriptionStatus(value, fallback = 'active') {
+    const requested = trimText(value, 40).toLowerCase();
+    if (requested === 'trial') return 'trialing';
+    if (requested === 'suspended') return 'suspended';
+    return normalizeStatus(
+      requested || fallback,
+      ['active', 'trialing', 'paused', 'past_due', 'suspended', 'canceled', 'expired'],
+    );
+  }
+
   async function createSubscription(input = {}, actor = 'system') {
     const tenantId = trimText(input.tenantId, 120);
     if (!tenantId) return { ok: false, reason: 'tenant-required' };
@@ -63,13 +73,20 @@ function createPlatformCommercialService(deps) {
         1,
       );
       const renewsAt = parseDateOrNull(input.renewsAt) || new Date(startedAt.getTime() + intervalDays * 24 * 60 * 60 * 1000);
+      metadata.currentPeriodStart = startedAt.toISOString();
+      metadata.currentPeriodEnd = renewsAt ? renewsAt.toISOString() : null;
+      metadata.trialEndsAt = cycle === 'trial' ? (renewsAt ? renewsAt.toISOString() : null) : null;
+      metadata.billingCycle = cycle;
       const row = await db.platformSubscription.create({
         data: {
           id: trimText(input.id, 120) || createId('sub'),
           tenantId,
           planId: trimText(input.planId, 120) || plan?.id || 'custom',
           billingCycle: cycle,
-          status: normalizeStatus(input.status, ['active', 'trialing', 'paused', 'past_due', 'canceled', 'expired']),
+          status: normalizeCommercialSubscriptionStatus(
+            input.status,
+            cycle === 'trial' ? 'trialing' : 'active',
+          ),
           currency: normalizeCurrency(input.currency || config.platform?.billing?.currency),
           amountCents: asInt(input.amountCents, plan?.amountCents || 0, 0),
           startedAt,
@@ -186,7 +203,7 @@ function createPlatformCommercialService(deps) {
     const take = Math.max(1, Math.min(500, asInt(options.limit, 100, 1)));
     const where = {};
     if (tenantId) where.tenantId = tenantId;
-    if (options.status) where.status = normalizeStatus(options.status, ['active', 'trialing', 'paused', 'past_due', 'canceled', 'expired']);
+    if (options.status) where.status = normalizeCommercialSubscriptionStatus(options.status, 'active');
     const rows = !tenantId && getTenantDatabaseTopologyMode() !== 'shared'
       ? sortRowsByTimestampDesc(
         await readAcrossPlatformTenantScopes(

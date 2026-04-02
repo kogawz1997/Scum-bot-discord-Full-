@@ -7,6 +7,7 @@ const { prisma } = require('../prisma');
 const { normalizeRestartServerPayload } = require('../contracts/jobs/jobContracts');
 const { buildRestartAnnouncementPlan } = require('../domain/servers/serverControlJobService');
 const { resolveDatabaseRuntime } = require('../utils/dbEngine');
+const { publishAdminLiveUpdate } = require('./adminLiveBus');
 
 function trimText(value, maxLen = 240) {
   const text = String(value || '').trim();
@@ -529,12 +530,27 @@ async function recordRestartExecution(input = {}, db = prisma) {
       },
     });
   }
+  const normalizedResultStatus = trimText(input.resultStatus, 60) || 'pending';
+  if (!['pending', 'running', 'processing'].includes(normalizedResultStatus)) {
+    publishAdminLiveUpdate('restart-execution-result', {
+      source: 'restart-orchestration',
+      tenantId,
+      serverId,
+      planId,
+      executionId,
+      runtimeKey: trimText(input.runtimeKey, 200) || null,
+      action: trimText(input.action, 80) || 'restart',
+      resultStatus: normalizedResultStatus,
+      exitCode: input.exitCode == null ? null : asInt(input.exitCode, 0, 0),
+      detail: trimText(input.detail, 800) || null,
+    });
+  }
   return {
     ok: true,
     execution: {
       id: executionId,
       planId,
-      resultStatus: trimText(input.resultStatus, 60) || 'pending',
+      resultStatus: normalizedResultStatus,
     },
   };
 }

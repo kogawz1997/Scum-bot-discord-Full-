@@ -107,6 +107,7 @@ function createAdminGetRoutes(deps) {
     listPlatformAgentRuntimes,
     listPlatformServerRegistry,
     listPlatformServerLinks,
+    listServerConfigJobs,
     getServerConfigWorkspace,
     getServerConfigCategory,
     listServerConfigBackups,
@@ -245,6 +246,7 @@ function createAdminGetRoutes(deps) {
     resolveScopedTenantId,
     getAuthTenantId,
     asInt,
+    listServerConfigJobs,
     listServerConfigBackups,
     getServerConfigCategory,
     getServerConfigWorkspace,
@@ -272,6 +274,7 @@ function createAdminGetRoutes(deps) {
     asInt,
     jsonReplacer,
     listAdminNotifications,
+    getAuthTenantId,
   });
   const handleAdminDiagnosticsGetRoute = createAdminDiagnosticsGetRouteHandler({
     ensureRole,

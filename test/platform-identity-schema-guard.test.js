@@ -181,9 +181,9 @@ function sortRows(rows, orderBy) {
   });
 }
 
-function createDelegateIdentityDb() {
-  const tables = REQUIRED_TABLES;
-  const columns = {
+function createDelegateIdentityDb(runtime = 'postgresql', options = {}) {
+  const tables = Array.isArray(options.tables) ? options.tables : REQUIRED_TABLES;
+  const columns = options.columns || {
     platform_users: ['id', 'primaryEmail', 'displayName', 'passwordHash', 'locale', 'status', 'metadataJson', 'createdAt', 'updatedAt'],
     platform_user_identities: ['id', 'userId', 'provider', 'providerUserId', 'providerEmail', 'displayName', 'avatarUrl', 'verifiedAt', 'linkedAt', 'metadataJson', 'createdAt', 'updatedAt'],
     platform_memberships: ['id', 'userId', 'tenantId', 'membershipType', 'role', 'status', 'isPrimary', 'acceptedAt', 'revokedAt', 'metadataJson', 'createdAt', 'updatedAt'],
@@ -270,7 +270,7 @@ function createDelegateIdentityDb() {
   }
 
   const db = createMockDb({
-    runtime: 'postgresql',
+    runtime,
     tables,
     columns,
     delegates: {
@@ -544,6 +544,83 @@ test('identity service prefers prisma delegates for verification token lifecycle
   });
 
   assert.equal(db.calls.some((entry) => entry.method === '$executeRaw'), false);
+});
+
+test('identity service prefers prisma delegates when sqlite runtimes expose generated delegates', async () => {
+  const { db, state } = createDelegateIdentityDb('sqlite');
+
+  await withEnv({
+    NODE_ENV: 'test',
+    DATABASE_URL: 'file:./identity-delegate-sqlite.db',
+    PRISMA_SCHEMA_PROVIDER: 'sqlite',
+    PLATFORM_IDENTITY_RUNTIME_BOOTSTRAP: null,
+  }, async () => {
+    const ensured = await ensurePlatformUserIdentity({
+      provider: 'email_preview',
+      providerUserId: 'delegate-sqlite-preview',
+      email: 'delegate-sqlite@example.com',
+      displayName: 'Delegate SQLite',
+      tenantId: 'tenant-sqlite-test',
+      membershipType: 'tenant',
+      role: 'owner',
+    }, db);
+    assert.equal(ensured.ok, true);
+
+    const issued = await issueEmailVerificationToken({
+      email: 'delegate-sqlite@example.com',
+      userId: ensured.user.id,
+    }, db);
+    assert.equal(issued.ok, true);
+
+    const completed = await completeEmailVerification({
+      token: issued.rawToken,
+      email: 'delegate-sqlite@example.com',
+    }, db);
+    assert.equal(completed.ok, true);
+    assert.equal(state.users.length, 1);
+    assert.equal(state.identities.length, 1);
+    assert.equal(state.memberships.length, 1);
+    assert.equal(state.verificationTokens.length, 1);
+    assert.ok(state.identities[0].verifiedAt instanceof Date);
+  });
+
+  assert.equal(db.calls.some((entry) => entry.method === '$executeRaw'), false);
+  assert.equal(db.calls.some((entry) => entry.method === '$queryRaw'), false);
+});
+
+test('identity schema guard skips runtime bootstrap when explicit sqlite delegates are available', async () => {
+  const { db } = createDelegateIdentityDb('sqlite', {
+    tables: [],
+    columns: {},
+  });
+
+  await withEnv({
+    NODE_ENV: 'test',
+    DATABASE_URL: 'file:./identity-delegate-schema-sqlite.db',
+    PRISMA_SCHEMA_PROVIDER: 'sqlite',
+    PLATFORM_IDENTITY_RUNTIME_BOOTSTRAP: null,
+  }, async () => {
+    const schema = await ensurePlatformIdentityTables(db);
+    assert.equal(schema.ok, true);
+    assert.equal(schema.bootstrapped, false);
+
+    const passwordColumn = await ensurePlatformUserPasswordColumn(db);
+    assert.equal(passwordColumn.ok, true);
+    assert.equal(passwordColumn.bootstrapped, false);
+  });
+
+  assert.equal(
+    db.calls.some((entry) => entry.method === '$executeRawUnsafe' && entry.query.includes('CREATE TABLE IF NOT EXISTS')),
+    false,
+  );
+  assert.equal(
+    db.calls.some((entry) => entry.method === '$executeRawUnsafe' && /ALTER TABLE platform_users ADD COLUMN passwordHash TEXT/i.test(entry.query)),
+    false,
+  );
+  assert.equal(
+    db.calls.some((entry) => entry.method === '$executeRawUnsafe' && /ALTER TABLE platform_verification_tokens ADD COLUMN/i.test(entry.query)),
+    false,
+  );
 });
 
 test('identity service refuses server-engine CRUD when prisma delegates are unavailable', async () => {

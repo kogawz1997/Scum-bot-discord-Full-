@@ -165,6 +165,21 @@
     return fallback;
   }
 
+  function getNotificationTenantId(row) {
+    return firstNonEmpty([
+      row && row.tenantId,
+      row && row.data && row.data.tenantId,
+      row && row.data && row.data.tenant && row.data.tenant.id,
+    ], '');
+  }
+
+  function filterTenantNotifications(rows, tenantId) {
+    const scopedTenantId = firstNonEmpty([tenantId], '');
+    return (Array.isArray(rows) ? rows : []).filter(function (row) {
+      return getNotificationTenantId(row) === scopedTenantId;
+    });
+  }
+
   function root() {
     return document.getElementById('tenantV4AppRoot');
   }
@@ -1021,7 +1036,7 @@
         api(`/admin/api/player/accounts?tenantId=${encodeURIComponent(scopedTenantId)}&limit=20`, { items: [] }).catch(() => ({ items: [] })),
         api(`/admin/api/platform/tenant-staff?tenantId=${encodeURIComponent(scopedTenantId)}&limit=50`, []).catch(() => []),
         api(`/admin/api/platform/tenant-role-matrix?tenantId=${encodeURIComponent(scopedTenantId)}`, { roles: [], currentAccess: null }).catch(() => ({ roles: [], currentAccess: null })),
-        api('/admin/api/notifications?acknowledged=false&limit=10', { items: [] }),
+        api(`/admin/api/notifications?tenantId=${encodeURIComponent(scopedTenantId)}&acknowledged=false&limit=10`, { items: [] }),
         api('/admin/api/delivery/runtime', {}),
         api('/admin/api/purchase/statuses', { knownStatuses: [], allowedTransitions: [] }),
         api(`/admin/api/audit/query?tenantId=${encodeURIComponent(scopedTenantId)}&limit=20`, { items: [] }).catch(() => ({ items: [] })),
@@ -1034,6 +1049,7 @@
       const activeServer = serverRows[0] || null;
       const [
         serverConfigWorkspace,
+        serverConfigJobs,
         restartPlans,
         restartExecutions,
         serverDiscordLinks,
@@ -1049,6 +1065,10 @@
             `/admin/api/platform/servers/${encodeURIComponent(activeServer.id)}/config?tenantId=${encodeURIComponent(scopedTenantId)}`,
             null,
           ).catch(() => null),
+          api(
+            `/admin/api/platform/servers/${encodeURIComponent(activeServer.id)}/config/jobs?tenantId=${encodeURIComponent(scopedTenantId)}&limit=12`,
+            [],
+          ).catch(() => []),
           api(
             `/admin/api/platform/restart-plans?tenantId=${encodeURIComponent(scopedTenantId)}&serverId=${encodeURIComponent(activeServer.id)}&limit=12`,
             [],
@@ -1077,7 +1097,7 @@
             { items: [] },
           ).catch(() => ({ items: [] })),
         ])
-        : [null, [], [], [], [], [], {}, [], [], { items: [] }];
+        : [null, [], [], [], [], [], [], {}, [], [], { items: [] }];
 
       const [
         tenantBillingOverview,
@@ -1119,6 +1139,7 @@
         servers: serverRows,
         activeServer,
         serverConfigWorkspace,
+        serverConfigJobs: Array.isArray(serverConfigJobs) ? serverConfigJobs : [],
         restartPlans: Array.isArray(restartPlans) ? restartPlans : [],
         restartExecutions: Array.isArray(restartExecutions) ? restartExecutions : [],
         serverDiscordLinks: Array.isArray(serverDiscordLinks) ? serverDiscordLinks : [],
@@ -1149,7 +1170,10 @@
         tenantRoleMatrix: tenantRoleMatrix && typeof tenantRoleMatrix === 'object'
           ? tenantRoleMatrix
           : { roles: [], currentAccess: null },
-        notifications: Array.isArray(notifications?.items) ? notifications.items : [],
+        notifications: filterTenantNotifications(
+          Array.isArray(notifications?.items) ? notifications.items : [],
+          scopedTenantId,
+        ),
         deliveryRuntime,
         purchaseStatuses,
         audit,
@@ -2648,6 +2672,40 @@
       }
     }
 
+    if (action === 'revoke-runtime') {
+      const deviceId = String(triggerButton?.getAttribute('data-runtime-device-id') || '').trim();
+      const apiKeyId = String(triggerButton?.getAttribute('data-runtime-api-key-id') || '').trim();
+      if (!deviceId && !apiKeyId) {
+        throw new Error('ยังไม่พบข้อมูล runtime ที่ต้องการยกเลิก');
+      }
+      setActionButtonBusy(triggerButton, true, 'กำลังยกเลิก runtime...');
+      try {
+        const result = await apiRequest('/admin/api/platform/agent-runtime/revoke', {
+          method: 'POST',
+          body: {
+            tenantId,
+            runtimeKind: kind,
+            deviceId,
+            apiKeyId,
+            revokeReason: 'tenant-ui-runtime-revoke',
+          },
+        }, null);
+        state.provisioningResult[kind] = {
+          instructions: buildRuntimeActionNotice(
+            `ยกเลิก ${runtimeName} แล้ว`,
+            'เครื่องและคีย์ของ runtime นี้จะถูกเพิกถอน หากต้องการใช้งานอีกครั้งให้สร้าง setup token ใหม่และติดตั้งใหม่บนเครื่องที่ต้องการ',
+            'warning',
+          ),
+          raw: result,
+        };
+        await refreshState({ silent: true });
+        setStatus(`ยกเลิก ${runtimeName} เรียบร้อยแล้ว`, 'success');
+        return result;
+      } finally {
+        setActionButtonBusy(triggerButton, false);
+      }
+    }
+
     if (action === 'revoke-token') {
       const apiKeyId = String(triggerButton?.getAttribute('data-runtime-api-key-id') || '').trim();
       if (!apiKeyId) {
@@ -3205,6 +3263,8 @@
             ? `ยกเลิกโทเค็นของ ${runtimeName} ใช่หรือไม่`
             : action === 'revoke-device'
               ? `รีเซ็ตการผูกเครื่องของ ${runtimeName} ใช่หรือไม่`
+              : action === 'revoke-runtime'
+                ? `ยกเลิก ${runtimeName} ทั้งเครื่องและคีย์ที่ผูกอยู่ ใช่หรือไม่`
               : action === 'revoke-token'
                 ? `เพิกถอนคีย์ของ ${runtimeName} ใช่หรือไม่`
                 : action === 'rotate-token'
@@ -4532,13 +4592,27 @@
 
   function wireLogsSyncPage(renderState, surfaceState) {
     const refreshButton = document.querySelector('[data-tenant-logs-sync-refresh]');
+    const retryButtons = Array.from(document.querySelectorAll('[data-config-job-retry][data-job-id][data-server-id]'));
     const previewMode = isSurfacePreview(surfaceState, renderState);
     const lockReason = firstNonEmpty([
       renderState?.featureEntitlements?.sections?.logs_sync?.reason,
       'Logs & Sync is locked in the current package.',
     ], 'Logs & Sync is locked in the current package.');
+    const configLockReason = getTenantActionLockReason(
+      renderState,
+      'can_edit_config',
+      'Server Config actions are locked in the current package.',
+    );
+    const restartLockReason = getTenantActionLockReason(
+      renderState,
+      'can_restart_server',
+      'Restart actions are locked in the current package.',
+    );
     if (previewMode || renderState?.featureEntitlements?.sections?.logs_sync?.locked) {
-      disableActionNodes([refreshButton], previewMode ? 'Preview mode cannot load live sync signals.' : lockReason);
+      disableActionNodes(
+        [refreshButton, ...retryButtons],
+        previewMode ? 'Preview mode cannot load live sync signals.' : lockReason,
+      );
       return;
     }
     refreshButton?.addEventListener('click', async () => {
@@ -4548,6 +4622,52 @@
       } finally {
         setActionButtonBusy(refreshButton, false);
       }
+    });
+
+    retryButtons.forEach((button) => {
+      const needsRestartControl = String(button.getAttribute('data-job-needs-restart-control') || '').trim() === 'true';
+      if (getTenantActionEntitlement(renderState, 'can_edit_config')?.locked) {
+        button.disabled = true;
+        button.title = configLockReason;
+        return;
+      }
+      if (needsRestartControl && getTenantActionEntitlement(renderState, 'can_restart_server')?.locked) {
+        button.disabled = true;
+        button.title = restartLockReason;
+        return;
+      }
+      button.addEventListener('click', async () => {
+        const tenantId = getRenderTenantId(renderState);
+        const serverId = String(button.getAttribute('data-server-id') || '').trim();
+        const jobId = String(button.getAttribute('data-job-id') || '').trim();
+        if (!tenantId || !serverId || !jobId) {
+          setStatus('Config job retry could not find the tenant or job context.', 'danger');
+          return;
+        }
+        const confirmMessage = needsRestartControl
+          ? 'Retry this failed config job and allow restart-required follow-up again?'
+          : 'Retry this failed config job?';
+        if (!window.confirm(confirmMessage)) {
+          return;
+        }
+        setActionButtonBusy(button, true, 'Retrying...');
+        try {
+          await apiRequest(
+            `/admin/api/platform/servers/${encodeURIComponent(serverId)}/config/jobs/${encodeURIComponent(jobId)}/retry`,
+            {
+              method: 'POST',
+              body: { tenantId },
+            },
+            null,
+          );
+          setStatus(`Queued a retry for config job ${jobId}.`, 'success');
+          await refreshState({ silent: true });
+        } catch (error) {
+          setStatus(String(error?.message || error), 'danger');
+        } finally {
+          setActionButtonBusy(button, false);
+        }
+      });
     });
   }
 
@@ -4606,7 +4726,7 @@
     });
   }
 
-  function wireBillingPage() {
+  function wireBillingPage(renderState) {
     const refreshButton = document.querySelector('[data-tenant-billing-refresh]');
     refreshButton?.addEventListener('click', async () => {
       setActionButtonBusy(refreshButton, true, 'Refreshing...');
@@ -4615,6 +4735,48 @@
       } finally {
         setActionButtonBusy(refreshButton, false);
       }
+    });
+
+    const checkoutButtons = Array.from(document.querySelectorAll('[data-tenant-billing-checkout][data-plan-id]'));
+    checkoutButtons.forEach((button) => {
+      button.addEventListener('click', async () => {
+        const tenantId = getRenderTenantId(renderState);
+        const planId = String(button.getAttribute('data-plan-id') || '').trim();
+        const subscriptionId = String(
+          button.getAttribute('data-subscription-id')
+          || renderState?.quota?.subscription?.id
+          || renderState?.subscriptions?.[0]?.id
+          || '',
+        ).trim();
+        if (!tenantId || !planId || !subscriptionId) {
+          setStatus('ยังไม่พบข้อมูล tenant หรือการสมัครใช้สำหรับเปิดหน้าชำระเงิน', 'warning');
+          return;
+        }
+        setActionButtonBusy(button, true, 'Preparing checkout...');
+        try {
+          const result = await apiRequest('/admin/api/platform/billing/checkout-session', {
+            method: 'POST',
+            body: {
+              tenantId,
+              subscriptionId,
+              planId,
+              successUrl: '/tenant/billing',
+              cancelUrl: '/tenant/billing',
+              checkoutUrl: '/payment-result',
+            },
+          }, null);
+          const checkoutUrl = String(result?.session?.checkoutUrl || '').trim();
+          if (!checkoutUrl) {
+            throw new Error('ระบบยังไม่ส่งลิงก์ชำระเงินกลับมา');
+          }
+          setStatus('กำลังเปิดหน้าชำระเงิน...', 'info');
+          window.location.assign(checkoutUrl);
+        } catch (error) {
+          setStatus(String(error?.message || error || 'ไม่สามารถเปิดหน้าชำระเงินได้'), 'danger');
+        } finally {
+          setActionButtonBusy(button, false);
+        }
+      });
     });
   }
 
@@ -4842,7 +5004,7 @@
       return;
     }
     if (page === 'billing') {
-      wireBillingPage();
+      wireBillingPage(renderState);
       return;
     }
     if (page === 'delivery-agents') {
@@ -4874,6 +5036,27 @@
     const tenantId = String(renderState?.tenantId || '').trim();
     const inviteForm = document.querySelector('[data-tenant-staff-invite-form]');
     const inviteButton = inviteForm?.querySelector('[data-tenant-staff-invite-submit]');
+    const playerSelectButtons = Array.from(document.querySelectorAll('[data-tenant-player-select]'));
+    const playerOrderButtons = Array.from(document.querySelectorAll('[data-tenant-player-open-orders]'));
+
+    playerSelectButtons.forEach((button) => {
+      button.addEventListener('click', async () => {
+        const userId = String(button.getAttribute('data-tenant-player-select') || '').trim();
+        if (!userId) return;
+        writeUserIdToUrl(userId);
+        await refreshState({ silent: true });
+        setStatus(`เปิดบริบทของผู้เล่น ${userId} แล้ว`, 'success');
+      });
+    });
+
+    playerOrderButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const userId = String(button.getAttribute('data-tenant-player-open-orders') || '').trim();
+        if (!userId) return;
+        writePurchaseFiltersToUrl(userId, '');
+        window.location.assign(`/tenant/orders?userId=${encodeURIComponent(userId)}`);
+      });
+    });
 
     if (previewMode || manageStaffLocked) {
       disableActionNodes(

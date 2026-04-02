@@ -117,7 +117,10 @@ function mapRaidSummary(row) {
   };
 }
 
-function getRaidPersistenceMode() {
+function getRaidPersistenceMode(scope) {
+  if (getRaidDelegates(scope)) {
+    return 'prisma';
+  }
   const runtime = resolveDatabaseRuntime();
   return runtime.isServerEngine ? 'prisma' : 'sql';
 }
@@ -148,7 +151,7 @@ function getRaidDelegatesOrThrow(scope) {
 
 async function ensureRaidTables(options = {}) {
   const scope = resolveTenantStoreScope(options);
-  if (getRaidPersistenceMode() === 'prisma') {
+  if (getRaidPersistenceMode(scope) === 'prisma') {
     getRaidDelegatesOrThrow(scope);
     return scope;
   }

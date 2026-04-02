@@ -6,6 +6,7 @@ const {
   listPlatformAgentRuntimes,
   getPlatformAnalyticsOverview,
   getTenantQuotaSnapshot,
+  listPlatformSubscriptions,
   listPlatformTenants,
   reconcileDeliveryState,
 } = require('./platformService');
@@ -63,6 +64,11 @@ function getMonitoringConfig() {
       10 * 60 * 1000,
       60 * 1000,
     ),
+    subscriptionExpiringMs: asInt(
+      config.platform?.monitoring?.subscriptionExpiringMs,
+      7 * 24 * 60 * 60 * 1000,
+      60 * 60 * 1000,
+    ),
     backups: {
       enabled: config.platform?.backups?.enabled === true,
       intervalMs: asInt(config.platform?.backups?.intervalMs, 6 * 60 * 60 * 1000, 5 * 60 * 1000),
@@ -83,6 +89,16 @@ function markAlert(state, key) {
     ...(state?.lastAlertAtByKey || {}),
     [key]: nowIso(),
   };
+}
+
+function getSubscriptionExpiryAt(subscription) {
+  return toDate(
+    subscription?.currentPeriodEnd
+    || subscription?.trialEndsAt
+    || subscription?.renewsAt
+    || subscription?.metadata?.currentPeriodEnd
+    || subscription?.metadata?.trialEndsAt,
+  );
 }
 
 // Monitoring emits actionable alerts on a cadence so operators do not have to keep
@@ -165,10 +181,11 @@ async function runPlatformMonitoringCycle({ client = null, force = false } = {})
       const reconcile = shouldReconcile
         ? await reconcileDeliveryState({ allowGlobal: true })
         : null;
-      const [runtimeSupervisor, agentRuntimes, tenants] = await Promise.all([
+      const [runtimeSupervisor, agentRuntimes, tenants, subscriptions] = await Promise.all([
         getRuntimeSupervisorSnapshot({ forceRefresh: true }).catch(() => null),
         listPlatformAgentRuntimes({ limit: 500, allowGlobal: true }),
         listPlatformTenants({ limit: 500 }),
+        listPlatformSubscriptions({ limit: 500, allowGlobal: true }).catch(() => []),
       ]);
 
       report.analytics = analytics;
@@ -177,6 +194,10 @@ async function runPlatformMonitoringCycle({ client = null, force = false } = {})
       report.agents = {
         total: agentRuntimes.length,
         items: agentRuntimes,
+      };
+      report.subscriptions = {
+        total: Array.isArray(subscriptions) ? subscriptions.length : 0,
+        expiring: [],
       };
       report.quota = {
         tenants: 0,
@@ -287,6 +308,49 @@ async function runPlatformMonitoringCycle({ client = null, force = false } = {})
               report.alerts.push(alertKey);
             }
           }
+        }
+      }
+
+      for (const subscription of Array.isArray(subscriptions) ? subscriptions : []) {
+        const tenantId = trimText(subscription?.tenantId, 160) || null;
+        const subscriptionId = trimText(subscription?.id, 160) || null;
+        const lifecycleStatus = trimText(
+          subscription?.lifecycleStatus || subscription?.status,
+          80,
+        ).toLowerCase() || 'active';
+        const expiresAt = getSubscriptionExpiryAt(subscription);
+        if (!tenantId || !subscriptionId || !expiresAt) continue;
+        if (['expired', 'canceled', 'cancelled', 'suspended'].includes(lifecycleStatus)) continue;
+        const remainingMs = expiresAt.getTime() - Date.now();
+        if (remainingMs <= 0 || remainingMs > monitoring.subscriptionExpiringMs) continue;
+
+        report.subscriptions.expiring.push({
+          tenantId,
+          subscriptionId,
+          packageId: trimText(subscription?.packageId || subscription?.planId, 160) || null,
+          packageName: trimText(subscription?.packageName || subscription?.planId, 160) || null,
+          lifecycleStatus,
+          currentPeriodEnd: expiresAt.toISOString(),
+          daysRemaining: Number((remainingMs / (24 * 60 * 60 * 1000)).toFixed(1)),
+        });
+
+        const alertKey = `subscription-expiring:${tenantId}:${subscriptionId}`;
+        if (force || cooldownAllowsAlert(state, alertKey, monitoring.alertCooldownMs)) {
+          publishAdminLiveUpdate('subscription-expiring', {
+            source: 'platform-monitor',
+            tenantId,
+            tenantSlug: trimText(subscription?.tenantSlug, 160) || null,
+            tenantLabel: trimText(subscription?.tenantName, 160) || null,
+            subscriptionId,
+            packageId: trimText(subscription?.packageId || subscription?.planId, 160) || null,
+            packageName: trimText(subscription?.packageName || subscription?.planId, 160) || null,
+            lifecycleStatus,
+            currentPeriodEnd: expiresAt.toISOString(),
+            trialEndsAt: trimText(subscription?.trialEndsAt, 160) || null,
+            daysRemaining: Number((remainingMs / (24 * 60 * 60 * 1000)).toFixed(1)),
+          });
+          updatedAlertMap[alertKey] = generatedAt;
+          report.alerts.push(alertKey);
         }
       }
 
