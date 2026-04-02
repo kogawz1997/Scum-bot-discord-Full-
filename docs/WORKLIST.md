@@ -4,7 +4,7 @@ This file is the source of truth for work that is still open after the latest wo
 
 Last updated: `2026-04-02`
 
-The current workstation is no longer in the broad local-runtime cleanup state. The remaining backlog is now mostly runtime-blocked or product-readiness work rather than basic local bring-up.
+The current workstation is no longer in the broad local-runtime cleanup state, and the main SaaS-readiness phase plan is now closed in-repo. The remaining backlog is mostly next-tier hardening, environment proof, and deeper productization rather than basic local bring-up.
 
 ## Status Labels
 
@@ -79,12 +79,12 @@ The current workstation is no longer in the broad local-runtime cleanup state. T
 
 - Status: `partial`
 - Current state:
-  - billing and subscription foundation exists in schema/services
-  - owner billing views and public checkout foundations exist in code
+  - package metadata, subscription-state-aware entitlements, tenant billing state, and self-service upgrade foundations now exist in the active product flow
+  - backend enforcement now locks protected actions correctly for `trial`, `active`, `expired`, and `suspended` paths
 - What is still open:
   - harden provider-backed renew/fail/cancel/retry flows
   - prove webhook idempotency and invoice lifecycle
-  - add owner-facing billing operations deep enough for support/recovery
+  - add owner/support billing operations deep enough for recovery and customer service
 - Main files:
   - [../src/services/platformBillingLifecycleService.js](../src/services/platformBillingLifecycleService.js)
   - [../src/services/platformService.js](../src/services/platformService.js)
@@ -128,7 +128,7 @@ The current workstation is no longer in the broad local-runtime cleanup state. T
 
 - Status: `partial`
 - Current state:
-  - tenant staff foundation and some tenant Discord UI work exist
+  - tenant staff foundation, role views, and some tenant Discord/runtime UI work exist
 - What is still open:
   - complete the staff permission matrix
   - expand tenant-owned Discord setup and diagnostics into a full product workflow
@@ -137,17 +137,19 @@ The current workstation is no longer in the broad local-runtime cleanup state. T
   - [../src/admin/assets/tenant-v4-app.js](../src/admin/assets/tenant-v4-app.js)
   - [../src/admin/assets/tenant-server-bots-v4.js](../src/admin/assets/tenant-server-bots-v4.js)
 
-### 9. Build first-class donation, modules, raid, and killfeed systems
+### 9. Deepen donation, modules, raid, and killfeed systems
 
-- Status: `open`
+- Status: `partial`
 - Current state:
-  - there are supporting building blocks and entitlements
-  - there is not yet a finished first-class product system for these areas
+  - tenant donations/events/modules surfaces exist
+  - player supporter/community flow now exists
+  - public tenant slug pages now expose stats/shop/events/donate surfaces
+  - player-facing killfeed and public overview routes exist
 - What is still open:
-  - donation / supporter lifecycle
-  - module/plugin management lifecycle
-  - raid request / raid window / raid summary
-  - player-facing killfeed product surface
+  - deepen donation/supporter lifecycle and recurring-commercial behavior
+  - finish module/plugin management lifecycle
+  - finish raid request / raid window / raid summary as a stronger end-to-end product flow
+  - deepen killfeed/public events presentation beyond the current baseline
 - Main files:
   - [../src/domain/billing/packageCatalogService.js](../src/domain/billing/packageCatalogService.js)
   - [../src/services/eventService.js](../src/services/eventService.js)
@@ -166,6 +168,7 @@ The current workstation is no longer in the broad local-runtime cleanup state. T
   - [../src/services/platformMonitoringService.js](../src/services/platformMonitoringService.js)
   - [../src/admin/assets/owner-v4-app.js](../src/admin/assets/owner-v4-app.js)
   - [../src/admin/assets/tenant-v4-app.js](../src/admin/assets/tenant-v4-app.js)
+  - [../apps/web-portal-standalone/api/publicPlatformRoutes.js](../apps/web-portal-standalone/api/publicPlatformRoutes.js)
 
 ## P3 Polish / Architecture Cleanup
 
@@ -199,3 +202,19 @@ The current workstation is no longer in the broad local-runtime cleanup state. T
   - [../apps/api/server.js](../apps/api/server.js)
   - [../src/adminWebServer.js](../src/adminWebServer.js)
   - [../src/services/platformService.js](../src/services/platformService.js)
+
+### 13. Deepen security hardening beyond the new P0 baseline
+
+- Status: `partial`
+- Current state:
+  - critical action rate limiting and validation now cover the main runtime/config/delivery mutation routes
+  - notification scoping and backend entitlement checks are stronger than the previous baseline
+- What is still open:
+  - move from in-memory rate limiting to shared/distributed enforcement where needed
+  - widen request-schema validation coverage across older admin/public mutation routes
+  - keep auditing legacy query paths for tenant-scope safety
+- Main files:
+  - [../src/admin/runtime/adminSecurityRuntime.js](../src/admin/runtime/adminSecurityRuntime.js)
+  - [../src/admin/api/adminRuntimeControlPostRoutes.js](../src/admin/api/adminRuntimeControlPostRoutes.js)
+  - [../src/admin/api/adminCommerceDeliveryPostRoutes.js](../src/admin/api/adminCommerceDeliveryPostRoutes.js)
+  - [../src/admin/api/adminPublicRoutes.js](../src/admin/api/adminPublicRoutes.js)

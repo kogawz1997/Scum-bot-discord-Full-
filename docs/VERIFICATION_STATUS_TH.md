@@ -91,6 +91,37 @@ On this workstation as of `2026-04-02`:
 - `scum-server-bot` is healthy now, but treat this as machine-specific proof, not universal deploy proof
 - admin DB login is verified locally, but Discord admin SSO was not counted as verified in this round because the current guild role export does not prove the configured owner/admin/moderator mapping
 
+## Current Repo-Ready Scope Closed In This Round
+
+The current branch/workstation baseline now also includes repo-side completion of the main SaaS-readiness phase plan. Treat the items below as `implemented` at repo level and `verified` where backed by the tests and local browser/runtime checks already listed in this file:
+
+- billing and entitlement hardening:
+  - normalized package metadata
+  - subscription-state-aware entitlement enforcement
+  - tenant billing view with current plan, status, expiry, and upgrade path
+- tenant action completion:
+  - dashboard quick actions
+  - action-driven runtime/config/restart/order/support surfaces
+- tenant onboarding:
+  - six-step checklist driven by real runtime/config/package state
+- runtime provisioning UX hardening:
+  - clearer runtime status
+  - reissue/reset/revoke flows
+  - runtime-level management entry points
+- queue and support visibility:
+  - config job listing
+  - retry flow
+  - tenant `Logs & Sync` recovery surface
+- logging, audit, and notifications:
+  - tenant-scoped notifications
+  - config failure, restart result, and subscription-expiring notifications
+- security P0 hardening:
+  - critical action rate limiting
+  - stricter validation on runtime/config/delivery mutation routes
+- player monetization and public tenant routes:
+  - supporter/community view in player donations
+  - tenant public slug routes `/s/:slug`, `/stats`, `/shop`, `/events`, `/donate`
+
 ## Prior Repository-Local Evidence Still Relevant
 
 Earlier repository-local validation from the March 2026 hardening rounds is still relevant where it is backed by artifacts and tests:
@@ -109,7 +140,7 @@ Treat those as historical repo/workstation evidence, not as a substitute for tod
 - admin Discord SSO role assignment on the current live guild
 - a clean production log set for every runtime after the latest PM2 boot
 - a full player-portal end-to-end journey on the current workstation after the latest restart
-- billing/provider lifecycle as a production commerce flow
-- finished donation, raid, module/plugin, and killfeed product systems
+- provider-grade billing lifecycle operations such as live webhook idempotency, renew/fail/cancel recovery, and customer billing-portal behavior
+- full live proof of the newer donation/supporter, raid, module/plugin, and public slug product flows across multiple real tenants
 - a second verified tenant-topology environment or a `database-per-tenant` deployment
 - behavior on another workstation without the same Windows session, SCUM client, `SCUM.db`, and `SCUM.log` paths
