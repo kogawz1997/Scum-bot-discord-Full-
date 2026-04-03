@@ -78,6 +78,8 @@ function buildRoutes(overrides = {}) {
     updateScumStatusForAdmin: async () => ({ ok: true }),
     getStatus: () => ({ ok: true }),
     buildTenantProductEntitlements,
+    consumeAdminActionRateLimit: () => ({ limited: false, retryAfterMs: 0 }),
+    getClientIp: () => '127.0.0.1',
     ...overrides,
   });
 }
@@ -164,7 +166,7 @@ test('admin shop add route denies donation package creation when donation entitl
   assert.equal(payload.data.actionKey, 'can_manage_donations');
 });
 
-test('admin delivery retry route denies order action when orders entitlement is locked', async () => {
+test('admin delivery retry route denies delivery action when delivery entitlement is locked', async () => {
   let called = false;
   const handler = buildRoutes({
     getTenantFeatureAccess: async () => ({
@@ -206,7 +208,7 @@ test('admin delivery retry route denies order action when orders entitlement is 
   assert.equal(called, false);
   const payload = JSON.parse(String(res.body || '{}'));
   assert.equal(payload.error, 'feature-not-enabled');
-  assert.equal(payload.data.actionKey, 'can_manage_orders');
+  assert.equal(payload.data.actionKey, 'can_use_delivery');
 });
 
 test('tenant-scoped purchase status hides cross-tenant purchase codes before entitlement checks', async () => {
@@ -274,4 +276,108 @@ test('tenant-scoped delivery retry hides cross-tenant purchase codes before enti
   assert.equal(retried, false);
   const payload = JSON.parse(String(res.body || '{}'));
   assert.equal(payload.error, 'Resource not found');
+});
+
+test('admin delivery retry route returns 429 when the action rate limit is exceeded', async () => {
+  let retried = false;
+  const handler = buildRoutes({
+    getDeliveryDetailsByPurchaseCode: async () => ({
+      purchase: {
+        code: 'PUR-1001',
+        tenantId: 'tenant-1',
+      },
+      queueJob: {
+        purchaseCode: 'PUR-1001',
+        tenantId: 'tenant-1',
+      },
+      deadLetter: null,
+    }),
+    consumeAdminActionRateLimit: () => ({
+      limited: true,
+      retryAfterMs: 12_000,
+    }),
+    retryDeliveryNow: async () => {
+      retried = true;
+      return { ok: true };
+    },
+  });
+  const res = createMockRes();
+
+  const handled = await handler({
+    client: null,
+    req: { method: 'POST', headers: {} },
+    pathname: '/admin/api/delivery/retry',
+    body: {
+      tenantId: 'tenant-1',
+      code: 'PUR-1001',
+    },
+    res,
+    auth: { user: 'tenant-admin', role: 'admin', tenantId: 'tenant-1' },
+  });
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 429);
+  assert.equal(retried, false);
+  const payload = JSON.parse(String(res.body || '{}'));
+  assert.equal(payload.ok, false);
+  assert.equal(payload.retryAfterSec, 12);
+});
+
+test('admin delivery test-send route denies execution when delivery entitlement is locked', async () => {
+  let called = false;
+  const handler = buildRoutes({
+    getTenantFeatureAccess: async () => ({
+      tenantId: 'tenant-1',
+      enabledFeatureKeys: [],
+    }),
+    sendTestDeliveryCommand: async () => {
+      called = true;
+      return { ok: true };
+    },
+  });
+  const res = createMockRes();
+
+  const handled = await handler({
+    client: null,
+    req: { method: 'POST', headers: {} },
+    pathname: '/admin/api/delivery/test-send',
+    body: {
+      tenantId: 'tenant-1',
+      itemId: 'starter-crate',
+    },
+    res,
+    auth: { user: 'tenant-admin', role: 'admin', tenantId: 'tenant-1' },
+  });
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 403);
+  assert.equal(called, false);
+  const payload = JSON.parse(String(res.body || '{}'));
+  assert.equal(payload.error, 'feature-not-enabled');
+  assert.equal(payload.data.actionKey, 'can_use_delivery');
+});
+
+test('admin delivery retry-many route rejects oversized code batches', async () => {
+  const handler = buildRoutes({
+    parseStringArray: (value) => Array.isArray(value) ? value : [],
+  });
+  const res = createMockRes();
+  const codes = Array.from({ length: 51 }, (_, index) => `PUR-${index + 1}`);
+
+  const handled = await handler({
+    client: null,
+    req: { method: 'POST', headers: {} },
+    pathname: '/admin/api/delivery/retry-many',
+    body: {
+      tenantId: 'tenant-1',
+      codes,
+    },
+    res,
+    auth: { user: 'tenant-admin', role: 'admin', tenantId: 'tenant-1' },
+  });
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 400);
+  const payload = JSON.parse(String(res.body || '{}'));
+  assert.match(String(payload.error || ''), /codes cannot contain more than 50 entries/i);
 });

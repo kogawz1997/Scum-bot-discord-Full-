@@ -76,6 +76,8 @@ function createPlayerGeneralRoutes(deps) {
     listRaidWindows,
     listRaidSummaries,
     listKillFeedEntries,
+    listPlayerAccounts,
+    buildTenantDonationOverview,
   } = deps;
   const safeNormalizeText = typeof normalizeText === 'function'
     ? normalizeText
@@ -155,6 +157,71 @@ function createPlayerGeneralRoutes(deps) {
       embedUrl: normalizeText(raw?.embedUrl) || null,
       externalUrl: normalizeText(raw?.externalUrl) || null,
     };
+  }
+
+  function buildSupporterDisplayLabel(account, userId, index) {
+    const displayName = safeNormalizeText(account?.displayName || account?.username);
+    if (displayName) return displayName;
+    const normalizedUserId = safeNormalizeText(userId);
+    if (normalizedUserId && /^\d{6,25}$/.test(normalizedUserId)) {
+      return `Supporter ${normalizedUserId.slice(-4)}`;
+    }
+    if (normalizedUserId) {
+      return normalizedUserId.length > 18 ? `${normalizedUserId.slice(0, 18)}...` : normalizedUserId;
+    }
+    return `Supporter #${index}`;
+  }
+
+  function buildSupporterCommunityPayload(overview, playerAccounts, limit) {
+    const recentActivity = Array.isArray(overview?.recentActivity) ? overview.recentActivity : [];
+    const accountRows = Array.isArray(playerAccounts) ? playerAccounts : [];
+    const accountMap = new Map(
+      accountRows
+        .map((row) => [safeNormalizeText(row?.discordId), row])
+        .filter(([discordId]) => Boolean(discordId)),
+    );
+    const grouped = new Map();
+    for (const row of recentActivity) {
+      if (!row?.isSupporter) continue;
+      const userId = safeNormalizeText(row?.userId) || `supporter-${grouped.size + 1}`;
+      if (!grouped.has(userId)) {
+        grouped.set(userId, {
+          userId,
+          label: buildSupporterDisplayLabel(accountMap.get(userId), userId, grouped.size + 1),
+          latestPackage: safeNormalizeText(row?.itemName || row?.itemId) || 'Supporter package',
+          latestStatus: safeNormalizeText(row?.status || row?.latestTransition) || 'unknown',
+          lastPurchaseAt: row?.createdAt || null,
+          totalPurchases: 0,
+          totalCoins: 0,
+        });
+      }
+      const entry = grouped.get(userId);
+      entry.totalPurchases += 1;
+      entry.totalCoins += safeNormalizeAmount(row?.price, 0);
+      if (!entry.lastPurchaseAt || new Date(entry.lastPurchaseAt).getTime() < new Date(row?.createdAt || 0).getTime()) {
+        entry.lastPurchaseAt = row?.createdAt || entry.lastPurchaseAt;
+        entry.latestPackage = safeNormalizeText(row?.itemName || row?.itemId) || entry.latestPackage;
+        entry.latestStatus = safeNormalizeText(row?.status || row?.latestTransition) || entry.latestStatus;
+      }
+    }
+    const max = Math.max(1, Math.min(24, safeAsInt(limit, 8) || 8));
+    return Array.from(grouped.values())
+      .sort((left, right) => {
+        const leftTime = new Date(left.lastPurchaseAt || 0).getTime();
+        const rightTime = new Date(right.lastPurchaseAt || 0).getTime();
+        if (rightTime !== leftTime) return rightTime - leftTime;
+        if (right.totalPurchases !== left.totalPurchases) return right.totalPurchases - left.totalPurchases;
+        return right.totalCoins - left.totalCoins;
+      })
+      .slice(0, max)
+      .map((row) => ({
+        label: row.label,
+        latestPackage: row.latestPackage,
+        latestStatus: row.latestStatus,
+        lastPurchaseAt: row.lastPurchaseAt,
+        totalPurchases: row.totalPurchases,
+        totalCoins: row.totalCoins,
+      }));
   }
 
   function buildFallbackWheelState(wheelConfig) {
@@ -386,6 +453,43 @@ function createPlayerGeneralRoutes(deps) {
       sendJson(res, 200, {
         ok: true,
         data: buildPlayerPortalFeatureAccess(featureAccess),
+      });
+      return true;
+    }
+
+    if (pathname === '/player/api/supporters' && method === 'GET') {
+      const featureAccess = await getFeatureAccess(session);
+      if (!hasFeatureAccess(featureAccess, ['donation_module'])) {
+        return sendPlayerFeatureDenied(sendJson, res, featureAccess, ['donation_module']);
+      }
+      const limit = safeAsInt(urlObj.searchParams.get('limit'), 8) || 8;
+      const overview = typeof buildTenantDonationOverview === 'function' && tenantOptions.tenantId
+        ? await buildTenantDonationOverview({
+          tenantId: tenantOptions.tenantId,
+          serverId: tenantOptions.serverId || null,
+          limit: Math.max(limit * 2, 12),
+        }).catch(() => null)
+        : null;
+      const playerAccounts = typeof listPlayerAccounts === 'function' && tenantOptions.tenantId
+        ? await readOptionalPlayerData(
+          'supporter-player-accounts',
+          () => listPlayerAccounts(Math.max(limit * 4, 32), tenantOptions),
+          [],
+        )
+        : [];
+      sendJson(res, 200, {
+        ok: true,
+        data: {
+          generatedAt: overview?.generatedAt || null,
+          summary: overview?.summary || {
+            supporterPackages: 0,
+            supporterPurchases30d: 0,
+            supporterRevenueCoins30d: 0,
+            activeSupporters30d: 0,
+            lastPurchaseAt: null,
+          },
+          items: buildSupporterCommunityPayload(overview, playerAccounts, limit),
+        },
       });
       return true;
     }
@@ -785,6 +889,9 @@ function createPlayerGeneralRoutes(deps) {
               discordUserId: session.discordId,
               steamId: link?.steamId || null,
               tenantId: tenantOptions.tenantId || null,
+              legacySteamLink: link || null,
+              fallbackEmail: session.primaryEmail || null,
+              fallbackDiscordUserId: session.discordId || null,
             })
             : null
         ),
@@ -799,6 +906,55 @@ function createPlayerGeneralRoutes(deps) {
         || memberships.find((entry) => normalizeText(entry?.status || '').toLowerCase() === 'active')
         || memberships[0]
         || null;
+      const normalizedIdentitySummary = identity?.identitySummary || {
+        linkedProviders: identities
+          .map((entry) => normalizeText(entry?.provider).toLowerCase())
+          .filter(Boolean),
+        verificationState: normalizeText(identity?.profile?.verificationState).toLowerCase() || null,
+        memberships: memberships.map((entry) => ({
+          tenantId: entry?.tenantId || null,
+          membershipType: entry?.membershipType || null,
+          role: entry?.role || null,
+          status: entry?.status || null,
+        })),
+        linkedAccounts: {
+          email: {
+            linked: Boolean(emailIdentity || session.primaryEmail),
+            verified: Boolean(emailIdentity?.verifiedAt),
+            value: normalizeText(identity?.user?.primaryEmail)
+              || normalizeText(emailIdentity?.providerEmail)
+              || normalizeText(session.primaryEmail)
+              || null,
+          },
+          discord: {
+            linked: Boolean(discordIdentity || session.discordId),
+            verified: Boolean(discordIdentity?.verifiedAt) || Boolean(session.discordId),
+            value: normalizeText(discordIdentity?.providerUserId) || normalizeText(session.discordId) || null,
+          },
+          steam: {
+            linked: Boolean(steamIdentity || link?.linked),
+            verified: Boolean(steamIdentity?.verifiedAt)
+              || ['steam_linked', 'verified', 'fully_verified'].includes(normalizeText(identity?.profile?.verificationState).toLowerCase()),
+            value: normalizeText(identity?.profile?.steamId)
+              || normalizeText(steamIdentity?.providerUserId)
+              || normalizeText(link?.steamId)
+              || null,
+          },
+          inGame: {
+            linked: Boolean(identity?.profile?.inGameName),
+            verified: ['verified', 'fully_verified', 'in_game_verified'].includes(normalizeText(identity?.profile?.verificationState).toLowerCase()),
+            value: normalizeText(identity?.profile?.inGameName) || normalizeText(link?.inGameName) || null,
+          },
+        },
+        activeMembership: activeMembership
+          ? {
+              tenantId: activeMembership.tenantId || null,
+              membershipType: activeMembership.membershipType || null,
+              role: activeMembership.role || null,
+              status: activeMembership.status || null,
+            }
+          : null,
+      };
       sendJson(res, 200, {
         ok: true,
         data: {
@@ -821,55 +977,7 @@ function createPlayerGeneralRoutes(deps) {
           steamLink: link,
           platformUserId: identity?.user?.id || session.platformUserId || null,
           platformProfileId: identity?.profile?.id || session.platformProfileId || null,
-          identitySummary: {
-            linkedProviders: identities
-              .map((entry) => normalizeText(entry?.provider).toLowerCase())
-              .filter(Boolean),
-            verificationState: normalizeText(identity?.profile?.verificationState).toLowerCase() || null,
-            memberships: memberships.map((entry) => ({
-              tenantId: entry?.tenantId || null,
-              membershipType: entry?.membershipType || null,
-              role: entry?.role || null,
-              status: entry?.status || null,
-            })),
-            linkedAccounts: {
-              email: {
-                linked: Boolean(emailIdentity || session.primaryEmail),
-                verified: Boolean(emailIdentity?.verifiedAt),
-                value: normalizeText(identity?.user?.primaryEmail)
-                  || normalizeText(emailIdentity?.providerEmail)
-                  || normalizeText(session.primaryEmail)
-                  || null,
-              },
-              discord: {
-                linked: Boolean(discordIdentity || session.discordId),
-                verified: Boolean(discordIdentity?.verifiedAt) || Boolean(session.discordId),
-                value: normalizeText(discordIdentity?.providerUserId) || normalizeText(session.discordId) || null,
-              },
-              steam: {
-                linked: Boolean(steamIdentity || link?.linked),
-                verified: Boolean(steamIdentity?.verifiedAt)
-                  || ['steam_linked', 'verified', 'fully_verified'].includes(normalizeText(identity?.profile?.verificationState).toLowerCase()),
-                value: normalizeText(identity?.profile?.steamId)
-                  || normalizeText(steamIdentity?.providerUserId)
-                  || normalizeText(link?.steamId)
-                  || null,
-              },
-              inGame: {
-                linked: Boolean(identity?.profile?.inGameName),
-                verified: ['verified', 'fully_verified', 'in_game_verified'].includes(normalizeText(identity?.profile?.verificationState).toLowerCase()),
-                value: normalizeText(identity?.profile?.inGameName) || normalizeText(link?.inGameName) || null,
-              },
-            },
-            activeMembership: activeMembership
-              ? {
-                  tenantId: activeMembership.tenantId || null,
-                  membershipType: activeMembership.membershipType || null,
-                  role: activeMembership.role || null,
-                  status: activeMembership.status || null,
-                }
-              : null,
-          },
+          identitySummary: normalizedIdentitySummary,
         },
       });
       return true;

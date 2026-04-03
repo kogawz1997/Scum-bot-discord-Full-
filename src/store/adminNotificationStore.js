@@ -51,6 +51,15 @@ function normalizeNotification(entry = {}) {
   };
 }
 
+function getNotificationTenantId(entry = {}) {
+  return trimText(
+    entry?.tenantId
+      || entry?.data?.tenantId
+      || entry?.data?.tenant?.id,
+    160,
+  ) || null;
+}
+
 function parseDataJson(value) {
   if (value && typeof value === 'object' && !Array.isArray(value)) {
     return value;
@@ -257,6 +266,7 @@ function listAdminNotifications(options = {}) {
   const kindFilter = String(options.kind || '').trim().toLowerCase();
   const severityFilter = String(options.severity || '').trim().toLowerCase();
   const entityKeyFilter = String(options.entityKey || '').trim().toLowerCase();
+  const tenantIdFilter = trimText(options.tenantId, 160).toLowerCase();
   const acknowledgedFilter =
     typeof options.acknowledged === 'boolean' ? options.acknowledged : null;
 
@@ -273,6 +283,12 @@ function listAdminNotifications(options = {}) {
       ) {
         return false;
       }
+      if (
+        tenantIdFilter
+        && String(getNotificationTenantId(row) || '').toLowerCase() !== tenantIdFilter
+      ) {
+        return false;
+      }
       if (acknowledgedFilter === true && !row.acknowledgedAt) return false;
       if (acknowledgedFilter === false && row.acknowledgedAt) return false;
       return true;
@@ -280,6 +296,7 @@ function listAdminNotifications(options = {}) {
     .slice(0, limit)
     .map((row) => ({
       ...row,
+      tenantId: getNotificationTenantId(row),
       createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : row.createdAt,
       acknowledgedAt:
         row.acknowledgedAt instanceof Date
@@ -333,6 +350,48 @@ function clearAdminNotifications(options = {}) {
   const removed = Math.max(0, before - notifications.length);
   queueWrite(writeSnapshot, 'clear');
   return { removed, remaining: notifications.length };
+}
+
+function pruneAdminNotifications(options = {}) {
+  const now = options.now ? new Date(options.now) : new Date();
+  const referenceNow = Number.isNaN(now.getTime()) ? new Date() : now;
+  const olderThanMs = Math.max(0, Number(options.olderThanMs || 0) || 0);
+  const keepLatest = Math.max(0, Number(options.keepLatest || 0) || 0);
+  const acknowledgedOnly = options.acknowledgedOnly === true;
+  const cutoff = olderThanMs > 0 ? referenceNow.getTime() - olderThanMs : null;
+
+  const sorted = notifications
+    .slice()
+    .sort((left, right) => new Date(right.createdAt) - new Date(left.createdAt));
+  const removableIds = new Set();
+
+  sorted.forEach((row, index) => {
+    if (index < keepLatest) return;
+    if (acknowledgedOnly && !row.acknowledgedAt) return;
+    if (cutoff != null) {
+      const createdAt = new Date(row.createdAt).getTime();
+      if (!Number.isFinite(createdAt) || createdAt > cutoff) return;
+    }
+    removableIds.add(String(row.id || ''));
+  });
+
+  if (removableIds.size === 0) {
+    return {
+      removed: 0,
+      remaining: notifications.length,
+      cutoffAt: cutoff != null ? new Date(cutoff).toISOString() : null,
+    };
+  }
+
+  const remaining = notifications.filter((row) => !removableIds.has(String(row.id || '')));
+  notifications.length = 0;
+  notifications.push(...remaining);
+  queueWrite(writeSnapshot, 'prune');
+  return {
+    removed: removableIds.size,
+    remaining: notifications.length,
+    cutoffAt: cutoff != null ? new Date(cutoff).toISOString() : null,
+  };
 }
 
 function replaceAdminNotifications(nextRows = []) {
@@ -569,6 +628,62 @@ function buildNotificationFromLiveEvent(type, payload = {}) {
     };
   }
 
+  if (eventType === 'server-config-job-result') {
+    const failed = ['failed', 'cancelled', 'error'].includes(String(data.status || '').trim().toLowerCase());
+    const title = failed ? 'Server Settings Apply Failed' : 'Server Settings Applied';
+    return {
+      type: 'server-config',
+      source: String(data.source || 'server-bot').trim() || 'server-bot',
+      kind: failed ? 'config-job-failed' : 'config-job-succeeded',
+      severity: failed ? 'error' : 'info',
+      title,
+      message: [
+        String(data.serverName || data.serverId || 'server'),
+        data.jobLabel ? `| ${String(data.jobLabel)}` : '',
+        data.detail ? `| ${trimText(data.detail, 220)}` : '',
+      ].join(' ').trim(),
+      entityKey: String(data.jobId || data.serverId || '').trim() || null,
+      data,
+    };
+  }
+
+  if (eventType === 'restart-execution-result') {
+    const failed = ['failed', 'error', 'cancelled'].includes(String(data.resultStatus || '').trim().toLowerCase());
+    return {
+      type: 'restart',
+      source: String(data.source || 'server-bot').trim() || 'server-bot',
+      kind: failed ? 'restart-failed' : 'restart-succeeded',
+      severity: failed ? 'error' : 'info',
+      title: failed ? 'Restart Failed' : 'Restart Completed',
+      message: [
+        String(data.serverName || data.serverId || 'server'),
+        data.action ? `| ${String(data.action)}` : '',
+        data.detail ? `| ${trimText(data.detail, 220)}` : '',
+      ].join(' ').trim(),
+      entityKey: String(data.executionId || data.planId || data.serverId || '').trim() || null,
+      data,
+    };
+  }
+
+  if (eventType === 'subscription-expiring') {
+    const expiresAt = trimText(data.currentPeriodEnd || data.trialEndsAt, 160) || null;
+    return {
+      type: 'billing',
+      source: String(data.source || 'platform-monitor').trim() || 'platform-monitor',
+      kind: 'subscription-expiring',
+      severity: 'warn',
+      title: 'Subscription Expiring Soon',
+      message: [
+        String(data.tenantLabel || data.tenantSlug || data.tenantId || 'tenant'),
+        data.packageName ? `| ${String(data.packageName)}` : '',
+        expiresAt ? `| ends ${expiresAt}` : '',
+        Number.isFinite(Number(data.daysRemaining)) ? `| ${Number(data.daysRemaining).toFixed(1)} days left` : '',
+      ].join(' ').trim(),
+      entityKey: String(data.subscriptionId || data.tenantId || '').trim() || null,
+      data,
+    };
+  }
+
   if (eventType === 'command-template-update') {
     return {
       type: 'command-template',
@@ -633,6 +748,7 @@ module.exports = {
   initAdminNotificationStore,
   listAdminNotifications,
   persistAdminLiveEvent,
+  pruneAdminNotifications,
   replaceAdminNotifications,
   waitForAdminNotificationPersistence,
 };

@@ -194,7 +194,7 @@ function buildRuntimeTargets() {
   });
   targets.push({
     key: 'console-agent',
-    label: 'Console Agent',
+    label: 'Delivery Agent',
     enabled: agentEnabled,
     required: agentEnabled && agentRequired,
     url:

@@ -35,17 +35,23 @@ test('tenant players v4 model builds support-focused workspace', () => {
   assert.equal(model.summaryStrip.length, 4);
   assert.equal(model.players.length, 1);
   assert.equal(model.selected.discordId, '123');
+  assert.equal(model.selected.ordersHref, '/tenant/orders?userId=123');
+  assert.equal(model.selected.deliveryHref, '/tenant/orders?userId=123&code=PUR-1');
   assert.ok(model.railCards.length >= 3);
 });
 
-test('tenant players v4 html includes player table and team access handoff', () => {
+test('tenant players v4 html includes player actions and team access handoff', () => {
   const html = buildTenantPlayersV4Html(createTenantPlayersV4Model({
     me: { role: 'owner' },
     tenantConfig: { name: 'Tenant Demo' },
-    players: [],
+    players: [{ displayName: 'Scout', discordId: '321', steamId: 'steam-321', isActive: true }],
+    purchaseLookup: { items: [{ code: 'ORD-321', status: 'queued', userId: '321' }] },
   }));
 
   assert.match(html, /Steam \/ In-game/);
+  assert.match(html, /Open context/);
+  assert.match(html, /Open order history/);
+  assert.match(html, /data-tenant-player-select="321"/);
   assert.match(html, /Manage team access from the dedicated team pages/);
   assert.match(html, /Open staff/);
   assert.doesNotMatch(html, /data-tenant-staff-card/);

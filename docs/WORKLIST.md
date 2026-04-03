@@ -2,9 +2,9 @@
 
 This file is the source of truth for work that is still open after the latest workstation audit.
 
-Last updated: `2026-03-31`
+Last updated: `2026-04-02`
 
-The repo is no longer in the "nothing left except external evidence" state. The current workstation can boot most runtimes again, but there is still an active local-runtime cleanup track and a larger product-readiness backlog.
+The current workstation is no longer in the broad local-runtime cleanup state, and the main SaaS-readiness phase plan is now closed in-repo. The remaining backlog is mostly next-tier hardening, environment proof, and deeper productization rather than basic local bring-up.
 
 ## Status Labels
 
@@ -17,18 +17,13 @@ The repo is no longer in the "nothing left except external evidence" state. The 
 
 ### 1. Clean production-profile bot startup on this workstation
 
-- Status: `open`
+- Status: `closed`
 - Current state:
   - `scum-bot` is online
   - health endpoint returns `ok=true` and `discordReady=true`
-  - recent error log still contains:
-    - `Production requires ADMIN_WEB_STEP_UP_ENABLED=true`
-    - `Production requires ADMIN_WEB_2FA_ENABLED=true`
-    - `The table public.ControlPlaneServer does not exist in the current database`
+  - latest PM2 logs no longer show the earlier local production-guard / schema-alignment warnings as an active current issue
 - What is still open:
-  - make the bot boot cleanly on the intended production profile
-  - resolve whether the 2FA/step-up guard is expected locally or whether the runtime profile is mismatched
-  - fix schema/state alignment for `ControlPlaneServer`
+  - none on this workstation
 - Main files:
   - [../src/bot.js](../src/bot.js)
   - [../src/services/platformService.js](../src/services/platformService.js)
@@ -37,14 +32,13 @@ The repo is no longer in the "nothing left except external evidence" state. The 
 
 ### 2. Revalidate player portal after the latest PM2 recovery
 
-- Status: `partial`
+- Status: `closed`
 - Current state:
   - `scum-web-portal` is online
-  - process logs show the portal is listening again
-  - error log still reports optional player-data failure for `lucky-wheel-config`
+  - health endpoint returns `200 OK`
+  - `player-capture-verify.js` passed for the current shell/workbench flow
 - What is still open:
-  - verify landing/login/player paths after the latest runtime restart
-  - fix `normalizeHttpUrl is not a function` so optional data loads cleanly
+  - none on this workstation
 - Main files:
   - [../apps/web-portal-standalone/runtime/portalBootstrapRuntime.js](../apps/web-portal-standalone/runtime/portalBootstrapRuntime.js)
   - [../apps/web-portal-standalone/api/playerGeneralRoutes.js](../apps/web-portal-standalone/api/playerGeneralRoutes.js)
@@ -67,23 +61,37 @@ The repo is no longer in the "nothing left except external evidence" state. The 
 
 ## P1 Product-Readiness Foundation
 
-### 4. Finish billing / subscription lifecycle to commercial depth
+### 4. Keep runtime install / validation tooling aligned with the current local topology
+
+- Status: `closed`
+- Current state:
+  - install scripts for `Server Bot` and `Delivery Agent` now generate machine-local env bundles
+  - generated bundles are checked immediately through `scripts/runtime-env-check.js`
+  - runtime operator checklist has been updated to the new env-check first flow
+- What is still open:
+  - none on this workstation
+- Main files:
+  - [../scripts/install-server-bot.ps1](../scripts/install-server-bot.ps1)
+  - [../scripts/install-delivery-agent.ps1](../scripts/install-delivery-agent.ps1)
+  - [../scripts/runtime-env-check.js](../scripts/runtime-env-check.js)
+  - [RUNTIME_OPERATOR_CHECKLIST.md](./RUNTIME_OPERATOR_CHECKLIST.md)
+### 5. Finish billing / subscription lifecycle to commercial depth
 
 - Status: `partial`
 - Current state:
-  - billing and subscription foundation exists in schema/services
-  - owner billing views and public checkout foundations exist in code
+  - package metadata, subscription-state-aware entitlements, tenant billing state, and self-service upgrade foundations now exist in the active product flow
+  - backend enforcement now locks protected actions correctly for `trial`, `active`, `expired`, and `suspended` paths
 - What is still open:
   - harden provider-backed renew/fail/cancel/retry flows
   - prove webhook idempotency and invoice lifecycle
-  - add owner-facing billing operations deep enough for support/recovery
+  - add owner/support billing operations deep enough for recovery and customer service
 - Main files:
   - [../src/services/platformBillingLifecycleService.js](../src/services/platformBillingLifecycleService.js)
   - [../src/services/platformService.js](../src/services/platformService.js)
   - [../src/admin/api/adminPlatformPostRoutes.js](../src/admin/api/adminPlatformPostRoutes.js)
   - [../apps/web-portal-standalone/api/publicPlatformRoutes.js](../apps/web-portal-standalone/api/publicPlatformRoutes.js)
 
-### 5. Finish unified identity across email, Discord, Steam, and in-game
+### 6. Finish unified identity across email, Discord, Steam, and in-game
 
 - Status: `partial`
 - Current state:
@@ -98,7 +106,7 @@ The repo is no longer in the "nothing left except external evidence" state. The 
   - [../apps/web-portal-standalone/auth/portalAuthRuntime.js](../apps/web-portal-standalone/auth/portalAuthRuntime.js)
   - [../src/services/linkService.js](../src/services/linkService.js)
 
-### 6. Normalize persistence for core paths
+### 7. Normalize persistence for core paths
 
 - Status: `partial`
 - Current state:
@@ -116,11 +124,11 @@ The repo is no longer in the "nothing left except external evidence" state. The 
 
 ## P2 Product Systems Still Not Finished
 
-### 7. Productize tenant staff / permissions and Discord management
+### 8. Productize tenant staff / permissions and Discord management
 
 - Status: `partial`
 - Current state:
-  - tenant staff foundation and some tenant Discord UI work exist
+  - tenant staff foundation, role views, and some tenant Discord/runtime UI work exist
 - What is still open:
   - complete the staff permission matrix
   - expand tenant-owned Discord setup and diagnostics into a full product workflow
@@ -129,24 +137,26 @@ The repo is no longer in the "nothing left except external evidence" state. The 
   - [../src/admin/assets/tenant-v4-app.js](../src/admin/assets/tenant-v4-app.js)
   - [../src/admin/assets/tenant-server-bots-v4.js](../src/admin/assets/tenant-server-bots-v4.js)
 
-### 8. Build first-class donation, modules, raid, and killfeed systems
+### 9. Deepen donation, modules, raid, and killfeed systems
 
-- Status: `open`
+- Status: `partial`
 - Current state:
-  - there are supporting building blocks and entitlements
-  - there is not yet a finished first-class product system for these areas
+  - tenant donations/events/modules surfaces exist
+  - player supporter/community flow now exists
+  - public tenant slug pages now expose stats/shop/events/donate surfaces
+  - player-facing killfeed and public overview routes exist
 - What is still open:
-  - donation / supporter lifecycle
-  - module/plugin management lifecycle
-  - raid request / raid window / raid summary
-  - player-facing killfeed product surface
+  - deepen donation/supporter lifecycle and recurring-commercial behavior
+  - finish module/plugin management lifecycle
+  - finish raid request / raid window / raid summary as a stronger end-to-end product flow
+  - deepen killfeed/public events presentation beyond the current baseline
 - Main files:
   - [../src/domain/billing/packageCatalogService.js](../src/domain/billing/packageCatalogService.js)
   - [../src/services/eventService.js](../src/services/eventService.js)
   - [../src/services/scumEvents.js](../src/services/scumEvents.js)
   - [../apps/web-portal-standalone/api/playerGeneralRoutes.js](../apps/web-portal-standalone/api/playerGeneralRoutes.js)
 
-### 9. Deepen analytics / reporting
+### 10. Deepen analytics / reporting
 
 - Status: `partial`
 - Current state:
@@ -158,10 +168,11 @@ The repo is no longer in the "nothing left except external evidence" state. The 
   - [../src/services/platformMonitoringService.js](../src/services/platformMonitoringService.js)
   - [../src/admin/assets/owner-v4-app.js](../src/admin/assets/owner-v4-app.js)
   - [../src/admin/assets/tenant-v4-app.js](../src/admin/assets/tenant-v4-app.js)
+  - [../apps/web-portal-standalone/api/publicPlatformRoutes.js](../apps/web-portal-standalone/api/publicPlatformRoutes.js)
 
 ## P3 Polish / Architecture Cleanup
 
-### 10. Finish i18n and UX cleanup
+### 11. Finish i18n and UX cleanup
 
 - Status: `partial`
 - Current state:
@@ -178,7 +189,7 @@ The repo is no longer in the "nothing left except external evidence" state. The 
   - [../src/admin/assets/tenant-v4-app.js](../src/admin/assets/tenant-v4-app.js)
   - [../apps/web-portal-standalone/public/assets/player-v4-app.js](../apps/web-portal-standalone/public/assets/player-v4-app.js)
 
-### 11. Keep service boundaries moving away from the remaining monolith seams
+### 12. Keep service boundaries moving away from the remaining monolith seams
 
 - Status: `partial`
 - Current state:
@@ -191,3 +202,19 @@ The repo is no longer in the "nothing left except external evidence" state. The 
   - [../apps/api/server.js](../apps/api/server.js)
   - [../src/adminWebServer.js](../src/adminWebServer.js)
   - [../src/services/platformService.js](../src/services/platformService.js)
+
+### 13. Deepen security hardening beyond the new P0 baseline
+
+- Status: `partial`
+- Current state:
+  - critical action rate limiting and validation now cover the main runtime/config/delivery mutation routes
+  - notification scoping and backend entitlement checks are stronger than the previous baseline
+- What is still open:
+  - move from in-memory rate limiting to shared/distributed enforcement where needed
+  - widen request-schema validation coverage across older admin/public mutation routes
+  - keep auditing legacy query paths for tenant-scope safety
+- Main files:
+  - [../src/admin/runtime/adminSecurityRuntime.js](../src/admin/runtime/adminSecurityRuntime.js)
+  - [../src/admin/api/adminRuntimeControlPostRoutes.js](../src/admin/api/adminRuntimeControlPostRoutes.js)
+  - [../src/admin/api/adminCommerceDeliveryPostRoutes.js](../src/admin/api/adminCommerceDeliveryPostRoutes.js)
+  - [../src/admin/api/adminPublicRoutes.js](../src/admin/api/adminPublicRoutes.js)

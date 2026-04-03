@@ -22,6 +22,15 @@ test('tenant runtime provisioning instructions include display-name env wiring',
   assert.match(source, /PLATFORM_AGENT_SETUP_TOKEN/);
 });
 
+test('tenant runtime provisioning copy uses Delivery Agent wording in installer prompts', () => {
+  const filePath = path.join(__dirname, '..', 'src', 'admin', 'assets', 'tenant-v4-app.js');
+  const source = fs.readFileSync(filePath, 'utf8');
+
+  assert.match(source, /shared Delivery Agent token/);
+  assert.match(source, /Read-Host 'Delivery Agent token'/);
+  assert.doesNotMatch(source, /Read-Host 'SCUM console-agent token'/);
+});
+
 test('tenant runtime provisioning instructions generate downloadable installer files', () => {
   const filePath = path.join(__dirname, '..', 'src', 'admin', 'assets', 'tenant-v4-app.js');
   const source = fs.readFileSync(filePath, 'utf8');

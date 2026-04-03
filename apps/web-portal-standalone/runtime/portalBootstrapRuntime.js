@@ -83,8 +83,12 @@ const {
 const { awardWheelRewardForUser } = require('../../../src/services/wheelService');
 const {
   getPlatformPublicOverview,
+  getPlatformTenantBySlug,
   getTenantFeatureAccess,
 } = require('../../../src/services/platformService');
+const {
+  buildTenantDonationOverview,
+} = require('../../../src/services/tenantDonationOverviewService');
 const {
   createCheckoutSession,
   finalizeCheckoutSession,
@@ -130,6 +134,9 @@ const {
 const {
   createPlayerGeneralRoutes,
 } = require('../api/playerGeneralRoutes');
+const {
+  buildPlayerPortalFeatureAccess,
+} = require('../api/playerRouteEntitlements');
 const {
   buildAdminProductUrl,
   buildLegacyAdminUrl,
@@ -409,6 +416,134 @@ function createPortalBootstrapRuntime({
     removeSession: removePreviewSession,
   } = publicPreviewAuthRuntime;
 
+  async function readOptionalPublicData(label, readFn, fallback) {
+    try {
+      return await Promise.resolve().then(() => readFn());
+    } catch (error) {
+      logger.warn?.(`[public-portal] optional snapshot data unavailable (${label})`, error?.message || error);
+      return fallback;
+    }
+  }
+
+  function buildPublicSupporterRows(overview = {}) {
+    const recentActivity = Array.isArray(overview?.recentActivity) ? overview.recentActivity : [];
+    const grouped = new Map();
+    for (const row of recentActivity) {
+      if (!row?.isSupporter) continue;
+      const userId = normalizeText(row?.userId) || `supporter-${grouped.size + 1}`;
+      if (!grouped.has(userId)) {
+        grouped.set(userId, {
+          userId,
+          label: userId.length > 18 ? `${userId.slice(0, 18)}...` : userId,
+          latestPackage: normalizeText(row?.itemName || row?.itemId) || 'Supporter package',
+          latestStatus: normalizeText(row?.status || row?.latestTransition) || 'unknown',
+          lastPurchaseAt: row?.createdAt || null,
+          totalPurchases: 0,
+          totalCoins: 0,
+        });
+      }
+      const entry = grouped.get(userId);
+      entry.totalPurchases += 1;
+      entry.totalCoins += Number(row?.price || 0) || 0;
+      if (!entry.lastPurchaseAt || new Date(entry.lastPurchaseAt).getTime() < new Date(row?.createdAt || 0).getTime()) {
+        entry.lastPurchaseAt = row?.createdAt || entry.lastPurchaseAt;
+        entry.latestPackage = normalizeText(row?.itemName || row?.itemId) || entry.latestPackage;
+        entry.latestStatus = normalizeText(row?.status || row?.latestTransition) || entry.latestStatus;
+      }
+    }
+    return Array.from(grouped.values())
+      .sort((left, right) => {
+        const leftTime = new Date(left.lastPurchaseAt || 0).getTime();
+        const rightTime = new Date(right.lastPurchaseAt || 0).getTime();
+        if (rightTime !== leftTime) return rightTime - leftTime;
+        if (right.totalPurchases !== left.totalPurchases) return right.totalPurchases - left.totalPurchases;
+        return right.totalCoins - left.totalCoins;
+      })
+      .slice(0, 8);
+  }
+
+  async function getPublicServerPortalSnapshot(slugValue) {
+    const tenant = await getPlatformTenantBySlug(slugValue);
+    if (!tenant?.id) {
+      return null;
+    }
+
+    const tenantId = tenant.id;
+    const servers = await listServerRegistry({ tenantId });
+    const primaryServerId = servers[0]?.id || null;
+    const rawFeatureAccess = await getTenantFeatureAccess(tenantId, {
+      allowFallback: true,
+    });
+    const featureAccess = buildPlayerPortalFeatureAccess(rawFeatureAccess);
+
+    const [
+      shopItemsRaw,
+      statsRowsRaw,
+      killfeedRaw,
+      raidWindowsRaw,
+      raidSummariesRaw,
+      donationOverview,
+    ] = await Promise.all([
+      listShopItems({
+        tenantId,
+        includeDisabled: false,
+        includeTestItems: false,
+      }),
+      readOptionalPublicData('public-stats', () => listAllStats({ tenantId, serverId: primaryServerId }), []),
+      readOptionalPublicData('public-killfeed', () => listKillFeedEntries({ tenantId, serverId: primaryServerId, limit: 12 }), []),
+      readOptionalPublicData('public-raid-windows', () => listRaidWindows({ tenantId, serverId: primaryServerId, limit: 6 }), []),
+      readOptionalPublicData('public-raid-summaries', () => listRaidSummaries({ tenantId, serverId: primaryServerId, limit: 6 }), []),
+      readOptionalPublicData('public-donations', () => buildTenantDonationOverview({ tenantId, serverId: primaryServerId, limit: 8 }), null),
+    ]);
+
+    const shopItems = Array.isArray(shopItemsRaw) ? shopItemsRaw : [];
+    const statsRows = Array.isArray(statsRowsRaw) ? statsRowsRaw : [];
+    const leaderboard = statsRows
+      .map((row) => ({
+        userId: normalizeText(row?.userId) || '-',
+        kills: Number(row?.kills || 0) || 0,
+        deaths: Number(row?.deaths || 0) || 0,
+        playtimeMinutes: Number(row?.playtimeMinutes || 0) || 0,
+        kd: Number(row?.deaths || 0) > 0 ? (Number(row?.kills || 0) / Number(row?.deaths || 0)) : Number(row?.kills || 0),
+      }))
+      .sort((left, right) => {
+        if (right.kills !== left.kills) return right.kills - left.kills;
+        return right.playtimeMinutes - left.playtimeMinutes;
+      })
+      .slice(0, 10);
+
+    return {
+      generatedAt: new Date().toISOString(),
+      tenant: {
+        id: tenant.id,
+        slug: normalizeText(tenant.slug) || normalizeText(slugValue),
+        name: normalizeText(tenant.name) || normalizeText(tenant.slug) || 'SCUM community',
+        status: normalizeText(tenant.status || 'active') || 'active',
+      },
+      featureAccess,
+      servers: Array.isArray(servers) ? servers : [],
+      primaryServer: servers[0] || null,
+      leaderboard,
+      shopItems,
+      killfeed: Array.isArray(killfeedRaw) ? killfeedRaw : [],
+      raidWindows: Array.isArray(raidWindowsRaw) ? raidWindowsRaw : [],
+      raidSummaries: Array.isArray(raidSummariesRaw) ? raidSummariesRaw : [],
+      donations: donationOverview || {
+        summary: {
+          totalPackages: 0,
+          activePackages: 0,
+          supporterRevenueCoins30d: 0,
+          supporterPurchases30d: 0,
+          activeSupporters30d: 0,
+          lastPurchaseAt: null,
+        },
+        topPackages: [],
+        recentActivity: [],
+      },
+      supporters: buildPublicSupporterRows(donationOverview || {}),
+    };
+  }
+
   const { requestHandler, startCleanupTimer } = createPortalSurfaceRuntime({
     createPublicPlatformRoutes,
     createPlayerCommerceRoutes,
@@ -519,6 +654,8 @@ function createPortalBootstrapRuntime({
       listRaidWindows,
       listRaidSummaries,
       listKillFeedEntries,
+      listPlayerAccounts,
+      buildTenantDonationOverview,
     },
     pageAssetDeps: {
       isProduction,
@@ -565,6 +702,7 @@ function createPortalBootstrapRuntime({
       sendHtml,
       buildHealthPayload,
       getPlatformPublicOverview,
+      getPublicServerPortalSnapshot,
       isDiscordStartPath,
       isDiscordCallbackPath: (pathname) => isDiscordCallbackPath(pathname, discordRedirectPath),
       handleDiscordStart,
@@ -577,6 +715,7 @@ function createPortalBootstrapRuntime({
       readJsonBody,
       readRawBody,
       getPlatformPublicOverview,
+      getPublicServerPortalSnapshot,
       registerTenantOwnerAccount,
       registerPreviewAccount: publicPreviewService.registerPreviewAccount,
       authenticatePreviewAccount: publicPreviewService.authenticatePreviewAccount,

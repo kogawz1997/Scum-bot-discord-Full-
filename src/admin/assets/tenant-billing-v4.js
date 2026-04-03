@@ -25,6 +25,11 @@
     return fallback || '';
   }
 
+  function asNumber(value, fallback) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : fallback;
+  }
+
   function formatNumber(value, fallback) {
     const numeric = Number(value);
     return Number.isFinite(numeric) ? new Intl.NumberFormat('th-TH').format(numeric) : (fallback || '0');
@@ -32,7 +37,7 @@
 
   function formatMoney(cents, currency) {
     const amount = Number(cents || 0) / 100;
-    const normalizedCurrency = String(currency || 'USD').trim().toUpperCase() || 'USD';
+    const normalizedCurrency = String(currency || 'THB').trim().toUpperCase() || 'THB';
     try {
       return new Intl.NumberFormat('th-TH', { style: 'currency', currency: normalizedCurrency }).format(amount);
     } catch {
@@ -41,20 +46,28 @@
   }
 
   function formatDateTime(value, fallback) {
-    if (!value) return fallback || 'ยังไม่มีเวลา';
+    if (!value) return fallback || 'ยังไม่มีข้อมูล';
     const date = new Date(value);
-    return Number.isNaN(date.getTime())
-      ? (fallback || 'ยังไม่มีเวลา')
-      : new Intl.DateTimeFormat('th-TH', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+    if (Number.isNaN(date.getTime())) return fallback || 'ยังไม่มีข้อมูล';
+    return new Intl.DateTimeFormat('th-TH', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
   }
 
   function normalizeSubscriptionState(value) {
     const normalized = String(value || '').trim().toLowerCase();
     if (['trial', 'trialing'].includes(normalized)) return 'trial';
-    if (['active', 'paid'].includes(normalized)) return 'active';
-    if (['expired', 'ended'].includes(normalized)) return 'expired';
-    if (['suspended', 'past_due', 'failed', 'canceled', 'cancelled', 'void', 'disputed'].includes(normalized)) return 'suspended';
+    if (normalized === 'active') return 'active';
+    if (['expired', 'canceled', 'cancelled'].includes(normalized)) return 'expired';
+    if (['suspended', 'past_due', 'failed', 'pending', 'paused', 'void', 'disputed'].includes(normalized)) return 'suspended';
     return normalized || 'unknown';
+  }
+
+  function getSubscriptionStateLabel(value) {
+    const normalized = normalizeSubscriptionState(value);
+    if (normalized === 'trial') return 'ช่วงทดลอง';
+    if (normalized === 'active') return 'ใช้งานอยู่';
+    if (normalized === 'expired') return 'หมดอายุแล้ว';
+    if (normalized === 'suspended') return 'ถูกระงับ';
+    return 'ยังไม่ทราบสถานะ';
   }
 
   function subscriptionStateTone(value) {
@@ -70,20 +83,28 @@
     const key = String(value || '').trim();
     if (!key) return 'ฟีเจอร์ที่ไม่ทราบชื่อ';
     const dictionary = {
-      delivery_agent: 'ตัวส่งของ',
-      server_bot: 'บอทเซิร์ฟเวอร์',
-      restart_server: 'รีสตาร์ตเซิร์ฟเวอร์',
+      delivery_agent: 'Delivery Agent',
+      server_bot: 'Server Bot',
+      bot_log: 'Sync และบันทึกเซิร์ฟเวอร์',
+      bot_delivery: 'ส่งของอัตโนมัติ',
+      server_hosting: 'ควบคุมเซิร์ฟเวอร์',
+      server_settings: 'ตั้งค่าเซิร์ฟเวอร์',
+      server_status: 'สถานะเซิร์ฟเวอร์',
       orders_module: 'คำสั่งซื้อ',
       player_module: 'ผู้เล่น',
       wallet_module: 'กระเป๋าเงิน',
-      donation_module: 'ผู้สนับสนุน',
+      donation_module: 'โดเนต',
       analytics_module: 'สรุปข้อมูล',
       event_module: 'กิจกรรม',
-      sync_agent: 'งานซิงก์',
-      execute_agent: 'งานส่งของ',
-      agentRuntimes: 'ตัวช่วยที่เชื่อมอยู่',
-      apiKeys: 'คีย์ API',
-      webhooks: 'เว็บฮุก',
+      restart_announce_module: 'ประกาศก่อนรีสตาร์ต',
+      sync_agent: 'สร้าง Server Bot',
+      execute_agent: 'สร้าง Delivery Agent',
+      staff_roles: 'ทีมงานและสิทธิ์',
+      agentRuntimes: 'จำนวน runtime',
+      apiKeys: 'API key',
+      webhooks: 'Webhook',
+      marketplaceOffers: 'รายการขาย',
+      purchases30d: 'คำสั่งซื้อ 30 วัน',
     };
     if (dictionary[key]) return dictionary[key];
     return key
@@ -96,23 +117,20 @@
   function buildQuotaRows(rawQuotas) {
     const quotas = rawQuotas && typeof rawQuotas === 'object' ? rawQuotas : {};
     return Object.entries(quotas).map(function ([key, row]) {
-      const limit = Number(row && row.limit);
-      const used = Number(row && row.used);
-      const remaining = Number(row && row.remaining);
-      const limitKnown = Number.isFinite(limit);
-      const usedKnown = Number.isFinite(used);
-      const remainingKnown = Number.isFinite(remaining);
-      const nearLimit = limitKnown && usedKnown && limit > 0 && used >= limit;
+      const limit = asNumber(row && row.limit, null);
+      const used = asNumber(row && row.used, null);
+      const remaining = asNumber(row && row.remaining, null);
+      const limitReached = limit != null && used != null && limit > 0 && used >= limit;
       return {
         key,
         label: humanizeFeatureKey(key),
-        used: usedKnown ? formatNumber(used, '0') : '-',
-        limit: limitKnown ? formatNumber(limit, '0') : 'unlimited',
-        remaining: remainingKnown ? formatNumber(Math.max(remaining, 0), '0') : '-',
-        tone: nearLimit ? 'warning' : 'info',
-        detail: limitKnown
-          ? `ใช้ไป ${usedKnown ? formatNumber(used, '0') : '-'} จาก ${formatNumber(limit, '0')}`
-          : 'แพ็กเกจนี้ยังไม่รายงานเพดานใช้งานของส่วนนี้',
+        used: used != null ? formatNumber(used, '0') : '-',
+        limit: limit != null ? formatNumber(limit, '0') : 'ไม่จำกัด',
+        remaining: remaining != null ? formatNumber(Math.max(remaining, 0), '0') : '-',
+        tone: limitReached ? 'warning' : 'info',
+        detail: limit != null
+          ? `ใช้ไป ${used != null ? formatNumber(used, '0') : '-'} จาก ${formatNumber(limit, '0')}`
+          : 'แพ็กเกจนี้ยังไม่ได้กำหนดเพดานการใช้งานในหมวดนี้',
       };
     });
   }
@@ -144,6 +162,31 @@
     ].join('');
   }
 
+  function createPlanRows(state, currentSubscription) {
+    const overview = state.overview && typeof state.overview === 'object' ? state.overview : {};
+    const plans = Array.isArray(overview.plans) ? overview.plans : [];
+    const currentPlanId = String(currentSubscription && currentSubscription.planId || '').trim();
+    return plans
+      .filter(function (plan) {
+        return Number(plan && plan.amountCents || 0) > 0
+          && String(plan && plan.billingCycle || '').trim().toLowerCase() !== 'trial';
+      })
+      .map(function (plan, index) {
+        const planId = String(plan && plan.id || '').trim();
+        return {
+          id: planId,
+          name: firstNonEmpty([plan && plan.name, planId], 'แพ็กเกจ'),
+          current: Boolean(currentPlanId) && currentPlanId === planId,
+          recommended: index === 0,
+          billingCycle: firstNonEmpty([plan && plan.billingCycle], 'monthly'),
+          priceLabel: formatMoney(plan && plan.amountCents || 0, plan && plan.currency || 'THB'),
+          detail: Array.isArray(plan && plan.features)
+            ? plan.features.slice(0, 3).join(' • ')
+            : 'ดูสิทธิ์และเพดานใช้งานก่อนตัดสินใจ',
+        };
+      });
+  }
+
   function createTenantBillingV4Model(source) {
     const state = source && typeof source === 'object' ? source : {};
     const subscriptions = Array.isArray(state.subscriptions) ? state.subscriptions : [];
@@ -151,15 +194,15 @@
     const invoices = Array.isArray(state.billingInvoices) ? state.billingInvoices : [];
     const attempts = Array.isArray(state.billingPaymentAttempts) ? state.billingPaymentAttempts : [];
     const quotaSnapshot = state.quota && typeof state.quota === 'object' ? state.quota : {};
-    const packageInfo = state.overview && state.overview.tenantFeatureAccess && state.overview.tenantFeatureAccess.package
-      ? state.overview.tenantFeatureAccess.package
-      : {};
     const currentSubscription = subscriptions[0] || quotaSnapshot.subscription || null;
-    const subscriptionState = normalizeSubscriptionState(currentSubscription && currentSubscription.status);
+    const currentPackage = state.overview && state.overview.tenantFeatureAccess && state.overview.tenantFeatureAccess.package
+      ? state.overview.tenantFeatureAccess.package
+      : quotaSnapshot.package || null;
+    const subscriptionState = normalizeSubscriptionState(currentSubscription && (currentSubscription.lifecycleStatus || currentSubscription.status));
     const featureKeys = Array.isArray(quotaSnapshot.enabledFeatureKeys) && quotaSnapshot.enabledFeatureKeys.length
       ? quotaSnapshot.enabledFeatureKeys
-      : Array.isArray(packageInfo.features)
-        ? packageInfo.features
+      : Array.isArray(currentPackage && currentPackage.features)
+        ? currentPackage.features
         : [];
     const features = featureKeys.map(function (key) {
       return {
@@ -173,9 +216,17 @@
       .map(function (entry) {
         return {
           key: entry[0],
-          reason: firstNonEmpty([entry[1].reason], 'Locked by package'),
+          label: humanizeFeatureKey(entry[0]),
+          reason: firstNonEmpty([entry[1].reason], 'ต้องอัปเกรดแพ็กเกจก่อนใช้งาน'),
         };
       });
+    const planRows = createPlanRows(state, currentSubscription);
+    const renewalAt = firstNonEmpty([
+      currentSubscription && currentSubscription.currentPeriodEnd,
+      currentSubscription && currentSubscription.trialEndsAt,
+      currentSubscription && currentSubscription.renewsAt,
+    ], '');
+    const nextUpgradePlan = planRows.find(function (plan) { return !plan.current; }) || null;
 
     return {
       shell: {
@@ -191,97 +242,222 @@
         navGroups: Array.isArray(state.__surfaceShell && state.__surfaceShell.navGroups) ? state.__surfaceShell.navGroups : [],
       },
       header: {
-        title: 'การเงินและแพ็กเกจ',
-        subtitle: 'ดูสถานะการสมัครใช้ ฟีเจอร์ที่ถูกล็อก และประวัติใบแจ้งหนี้ก่อนตัดสินใจอัปเกรด',
+        title: 'แพ็กเกจและการชำระเงิน',
+        subtitle: 'ดูแพ็กเกจปัจจุบัน วันหมดอายุ สิทธิ์ที่เปิดอยู่ และตัวเลือกอัปเกรดสำหรับ tenant นี้',
         statusChips: [
-          { label: firstNonEmpty([packageInfo.name, packageInfo.id, subscriptions[0] && subscriptions[0].planId], 'ยังไม่มีข้อมูลแพ็กเกจ'), tone: 'info' },
-          { label: subscriptions.length ? firstNonEmpty([subscriptionState], 'active') : 'ยังไม่มีการสมัครใช้', tone: subscriptions.length ? subscriptionStateTone(subscriptionState) : 'warning' },
+          { label: firstNonEmpty([currentPackage && (currentPackage.name || currentPackage.title), currentSubscription && currentSubscription.planId], 'ยังไม่มีแพ็กเกจ'), tone: 'info' },
+          { label: getSubscriptionStateLabel(subscriptionState), tone: subscriptionStateTone(subscriptionState) },
+          { label: renewalAt ? ('รอบปัจจุบันถึง ' + formatDateTime(renewalAt, 'ยังไม่มีข้อมูล')) : 'ยังไม่มีวันหมดอายุ', tone: renewalAt ? 'muted' : 'warning' },
         ],
       },
+      actions: {
+        primary: nextUpgradePlan
+          ? {
+            label: 'อัปเกรดแพ็กเกจ',
+            planId: nextUpgradePlan.id,
+          }
+          : null,
+      },
       summaryStrip: [
-        { label: 'แพ็กเกจปัจจุบัน', value: firstNonEmpty([packageInfo.name, packageInfo.id], 'ยังไม่ทราบ'), detail: 'ฟีเจอร์ด้านล่างอ้างอิงจากสิทธิ์ที่แพ็กเกจกำหนดให้ tenant นี้', tone: 'info' },
-        { label: 'ยอดที่รับแล้ว', value: formatMoney(billingOverview.summary && billingOverview.summary.collectedCents || 0, subscriptions[0] && subscriptions[0].currency || 'USD'), detail: 'ใบแจ้งหนี้ที่ชำระแล้วซึ่งระบบบันทึกไว้', tone: 'success' },
-        { label: 'ใบแจ้งหนี้ที่ยังเปิดอยู่', value: formatNumber(billingOverview.summary && billingOverview.summary.openInvoiceCount || 0), detail: 'รายการที่ยังรอการชำระหรือรอจัดการต่อ', tone: (billingOverview.summary && billingOverview.summary.openInvoiceCount) ? 'warning' : 'muted' },
-        { label: 'การทำงานที่ถูกล็อก', value: formatNumber(lockedActions.length), detail: lockedActions.length ? 'ใช้หน้านี้ดูว่าการอัปเกรดจะปลดล็อกอะไรเพิ่มได้บ้าง' : 'ตอนนี้ยังไม่พบการทำงานที่ถูกล็อก', tone: lockedActions.length ? 'warning' : 'success' },
-        { label: 'ฟีเจอร์ที่เปิดอยู่', value: formatNumber(features.length), detail: features.length ? 'ฟีเจอร์ที่ backend เปิดให้ tenant นี้ใช้งานอยู่ตอนนี้' : 'ยังไม่มีรายการฟีเจอร์ที่เปิดใช้งานส่งกลับมา', tone: features.length ? 'success' : 'muted' },
+        {
+          label: 'แพ็กเกจปัจจุบัน',
+          value: firstNonEmpty([currentPackage && (currentPackage.name || currentPackage.title), currentSubscription && currentSubscription.planId], 'ยังไม่ทราบ'),
+          detail: currentSubscription && currentSubscription.planId
+            ? 'แผนที่ backend กำลังบังคับใช้กับ tenant นี้'
+            : 'ยังไม่พบแผนที่ใช้งานอยู่ในระบบ',
+          tone: 'info',
+        },
+        {
+          label: 'สถานะการสมัครใช้',
+          value: getSubscriptionStateLabel(subscriptionState),
+          detail: renewalAt
+            ? 'รอบปัจจุบันสิ้นสุด ' + formatDateTime(renewalAt, 'ยังไม่มีข้อมูล')
+            : 'ยังไม่มีวันสิ้นสุดรอบที่บันทึกไว้',
+          tone: subscriptionStateTone(subscriptionState),
+        },
+        {
+          label: 'ยอดที่รับแล้ว',
+          value: formatMoney(billingOverview.summary && billingOverview.summary.collectedCents || 0, currentSubscription && currentSubscription.currency || 'THB'),
+          detail: 'ยอดจากใบแจ้งหนี้ที่ชำระแล้วในระบบ',
+          tone: 'success',
+        },
+        {
+          label: 'งานที่ถูกล็อก',
+          value: formatNumber(lockedActions.length, '0'),
+          detail: lockedActions.length
+            ? 'ยังมีบาง action ที่ต้องอัปเกรดแพ็กเกจก่อนใช้งาน'
+            : 'ยังไม่พบ action ที่ถูกล็อกด้วยแพ็กเกจ',
+          tone: lockedActions.length ? 'warning' : 'success',
+        },
+        {
+          label: 'ฟีเจอร์ที่เปิดอยู่',
+          value: formatNumber(features.length, '0'),
+          detail: features.length
+            ? 'สิทธิ์ที่ backend เปิดให้ tenant นี้ใช้งานอยู่ตอนนี้'
+            : 'ยังไม่พบฟีเจอร์ที่เปิดใช้งาน',
+          tone: features.length ? 'success' : 'muted',
+        },
       ],
+      currentSubscription,
       subscriptions: subscriptions.slice(0, 6),
       invoices: invoices.slice(0, 8),
       attempts: attempts.slice(0, 8),
       lockedActions: lockedActions.slice(0, 10),
       features: features.slice(0, 24),
       quotaRows: quotaRows.slice(0, 12),
-      currentSubscriptionState: subscriptionState,
+      planRows: planRows.slice(0, 6),
+      subscriptionState: subscriptionState,
     };
+  }
+
+  function renderSubscriptionList(model) {
+    if (!model.subscriptions.length) {
+      return '<div class="tdv4-empty-state"><strong>ยังไม่มีข้อมูลการสมัครใช้</strong><p>ระบบยังไม่ส่งรายการการสมัครใช้กลับมาสำหรับ tenant นี้</p></div>';
+    }
+    return model.subscriptions.map(function (row) {
+      const state = normalizeSubscriptionState(row.lifecycleStatus || row.status);
+      const renewalAt = firstNonEmpty([row.currentPeriodEnd, row.trialEndsAt, row.renewsAt], '');
+      return [
+        '<article class="tdv4-list-item tdv4-tone-' + escapeHtml(subscriptionStateTone(state)) + '">',
+        '<div class="tdv4-list-main">',
+        '<strong>' + escapeHtml(firstNonEmpty([row.planId, row.id], 'การสมัครใช้')) + '</strong>',
+        '<p>เริ่มรอบ ' + escapeHtml(formatDateTime(row.currentPeriodStart || row.startedAt, 'ยังไม่มีข้อมูล')) + ' | สิ้นสุดรอบ ' + escapeHtml(formatDateTime(renewalAt, 'ยังไม่มีข้อมูล')) + '</p>',
+        '</div>',
+        '<div class="tdv4-chip-row">',
+        renderBadge(getSubscriptionStateLabel(state), subscriptionStateTone(state)),
+        renderBadge(formatMoney(row.amountCents, row.currency), 'success'),
+        '</div>',
+        '</article>',
+      ].join('');
+    }).join('');
+  }
+
+  function renderPlanCards(model) {
+    if (!model.planRows.length) {
+      return '<div class="tdv4-empty-state"><strong>ยังไม่มีตัวเลือกอัปเกรด</strong><p>ยังไม่พบแผนที่สามารถขายหรืออัปเกรดได้ในระบบตอนนี้</p></div>';
+    }
+    return model.planRows.map(function (plan) {
+      return [
+        '<article class="tdv4-list-item tdv4-tone-' + escapeHtml(plan.current ? 'success' : (plan.recommended ? 'info' : 'muted')) + '">',
+        '<div class="tdv4-list-main">',
+        '<strong>' + escapeHtml(plan.name) + '</strong>',
+        '<p>' + escapeHtml(plan.detail) + '</p>',
+        '</div>',
+        '<div class="tdv4-chip-row">',
+        renderBadge(plan.priceLabel, 'success'),
+        renderBadge(plan.billingCycle, 'muted'),
+        plan.current
+          ? renderBadge('แพ็กเกจปัจจุบัน', 'success')
+          : '<button class="tdv4-button tdv4-button-primary" type="button" data-tenant-billing-checkout data-plan-id="' + escapeHtml(plan.id) + '">เลือกแพ็กเกจนี้</button>',
+        '</div>',
+        '</article>',
+      ].join('');
+    }).join('');
+  }
+
+  function renderSimpleList(items, emptyTitle, emptyCopy, mapItem) {
+    if (!items.length) {
+      return '<div class="tdv4-empty-state"><strong>' + escapeHtml(emptyTitle) + '</strong><p>' + escapeHtml(emptyCopy) + '</p></div>';
+    }
+    return items.map(mapItem).join('');
   }
 
   function buildTenantBillingV4Html(model) {
     const safe = model || createTenantBillingV4Model({});
+    const primaryUpgrade = safe.actions.primary;
     return [
       '<div class="tdv4-app">',
       '<header class="tdv4-topbar"><div class="tdv4-brand-row"><div class="tdv4-brand-mark">' + escapeHtml(safe.shell.brand) + '</div><div class="tdv4-brand-copy"><div class="tdv4-surface-label">' + escapeHtml(safe.shell.surfaceLabel) + '</div><div class="tdv4-workspace-label">' + escapeHtml(safe.shell.workspaceLabel) + '</div></div></div></header>',
       '<div class="tdv4-shell">',
-      '<aside class="tdv4-sidebar">' + (Array.isArray(safe.shell.navGroups) ? safe.shell.navGroups.map(renderNavGroup).join('') : '') + '</aside>',
+      '<aside class="tdv4-sidebar">' + safe.shell.navGroups.map(renderNavGroup).join('') + '</aside>',
       '<main class="tdv4-main tdv4-stack">',
       '<section class="tdv4-pagehead tdv4-panel">',
       '<div><h1 class="tdv4-page-title">' + escapeHtml(safe.header.title) + '</h1><p class="tdv4-page-subtitle">' + escapeHtml(safe.header.subtitle) + '</p><div class="tdv4-chip-row">' + safe.header.statusChips.map(function (chip) { return renderBadge(chip.label, chip.tone); }).join('') + '</div></div>',
-      '<div class="tdv4-pagehead-actions"><a class="tdv4-button tdv4-button-primary" href="/pricing">ดูแพ็กเกจที่สูงขึ้น</a></div>',
+      '<div class="tdv4-pagehead-actions">',
+      primaryUpgrade
+        ? '<button class="tdv4-button tdv4-button-primary" type="button" data-tenant-billing-checkout data-plan-id="' + escapeHtml(primaryUpgrade.planId) + '">' + escapeHtml(primaryUpgrade.label) + '</button>'
+        : '',
+      '<button class="tdv4-button tdv4-button-secondary" type="button" data-tenant-billing-refresh>รีเฟรชข้อมูลการเงิน</button>',
+      '</div>',
       '</section>',
       '<section class="tdv4-kpi-strip">' + safe.summaryStrip.map(renderSummaryCard).join('') + '</section>',
       '<section class="tdv4-dual-grid">',
       '<section class="tdv4-panel">',
-      '<div class="tdv4-section-kicker">สิ่งที่ควรทำก่อน</div>',
-      '<h2 class="tdv4-section-title">ตรวจแพ็กเกจที่เหมาะกว่า</h2>',
-      '<p class="tdv4-section-copy">ใช้เมื่อฟีเจอร์ที่ล็อกเริ่มกระทบงานประจำวัน และอยากดูว่าควรขยับแพ็กเกจหรือไม่</p>',
-      '<div class="tdv4-action-list"><a class="tdv4-button tdv4-button-primary" href="/pricing">ดูตัวเลือกแพ็กเกจ</a><button class="tdv4-button tdv4-button-secondary" type="button" data-tenant-billing-refresh>รีเฟรชข้อมูลการเงิน</button></div>',
+      '<div class="tdv4-section-kicker">สถานะปัจจุบัน</div>',
+      '<h2 class="tdv4-section-title">การสมัครใช้ที่กำลังมีผล</h2>',
+      renderSubscriptionList(safe),
       '</section>',
       '<section class="tdv4-panel">',
-      '<div class="tdv4-section-kicker">สถานะการสมัครใช้</div>',
-      '<h2 class="tdv4-section-title">รายการสมัครใช้</h2>',
-      safe.subscriptions.length ? safe.subscriptions.map(function (row) {
-        const normalizedStatus = normalizeSubscriptionState(row.status);
-        return '<article class="tdv4-list-item tdv4-tone-' + escapeHtml(subscriptionStateTone(normalizedStatus)) + '"><div class="tdv4-list-main"><strong>' + escapeHtml(firstNonEmpty([row.planId, row.id], 'การสมัครใช้')) + '</strong><p>รอบบิล: ' + escapeHtml(firstNonEmpty([row.billingCycle], '-')) + ' | ต่ออายุ: ' + escapeHtml(formatDateTime(row.renewsAt, 'ยังไม่มีวันต่ออายุ')) + '</p></div><div class="tdv4-chip-row">' + renderBadge(firstNonEmpty([normalizedStatus], 'unknown'), subscriptionStateTone(normalizedStatus)) + renderBadge(formatMoney(row.amountCents, row.currency), 'success') + '</div></article>';
-      }).join('') : '<div class="tdv4-empty-state"><strong>ยังไม่มีข้อมูลการสมัครใช้</strong><p>ระบบการเงินยังไม่ส่งรายการการสมัครใช้กลับมาสำหรับ tenant นี้</p></div>',
+      '<div class="tdv4-section-kicker">สิ่งที่ควรทำต่อ</div>',
+      '<h2 class="tdv4-section-title">ตัวเลือกอัปเกรดแพ็กเกจ</h2>',
+      '<p class="tdv4-section-copy">ใช้ส่วนนี้เมื่อฟีเจอร์ที่ถูกล็อกเริ่มกระทบงานประจำวัน หรือเมื่อเพดานการใช้งานใกล้เต็ม</p>',
+      renderPlanCards(safe),
       '</section>',
       '</section>',
       '<section class="tdv4-dual-grid">',
       '<section class="tdv4-panel">',
-      '<div class="tdv4-section-kicker">สิทธิ์จากแพ็กเกจ</div>',
-      '<h2 class="tdv4-section-title">ฟีเจอร์ที่เปิดอยู่</h2>',
-      safe.features.length ? safe.features.map(function (row) {
-        return '<article class="tdv4-list-item tdv4-tone-success"><div class="tdv4-list-main"><strong>' + escapeHtml(row.label) + '</strong><p>' + escapeHtml(row.key) + '</p></div></article>';
-      }).join('') : '<div class="tdv4-empty-state"><strong>ยังไม่มีรายการฟีเจอร์</strong><p>tenant นี้ยังไม่ส่งรายการฟีเจอร์จากสิทธิ์แพ็กเกจกลับมา</p></div>',
+      '<div class="tdv4-section-kicker">ฟีเจอร์ที่เปิดอยู่</div>',
+      '<h2 class="tdv4-section-title">สิทธิ์จากแพ็กเกจ</h2>',
+      renderSimpleList(
+        safe.features,
+        'ยังไม่มีรายการฟีเจอร์',
+        'tenant นี้ยังไม่ส่งรายการฟีเจอร์ที่เปิดอยู่กลับมา',
+        function (row) {
+          return '<article class="tdv4-list-item tdv4-tone-success"><div class="tdv4-list-main"><strong>' + escapeHtml(row.label) + '</strong><p>' + escapeHtml(row.key) + '</p></div></article>';
+        },
+      ),
       '</section>',
       '<section class="tdv4-panel">',
       '<div class="tdv4-section-kicker">เพดานการใช้งาน</div>',
-      '<h2 class="tdv4-section-title">ขีดจำกัดของแพ็กเกจตอนนี้</h2>',
-      safe.quotaRows.length ? safe.quotaRows.map(function (row) {
-        return '<article class="tdv4-list-item tdv4-tone-' + escapeHtml(row.tone) + '"><div class="tdv4-list-main"><strong>' + escapeHtml(row.label) + '</strong><p>' + escapeHtml(row.detail) + '</p></div><div class="tdv4-chip-row">' + renderBadge('ใช้แล้ว ' + row.used, 'info') + renderBadge('เพดาน ' + row.limit, 'muted') + renderBadge('เหลือ ' + row.remaining, row.tone) + '</div></article>';
-      }).join('') : '<div class="tdv4-empty-state"><strong>ยังไม่มีข้อมูลเพดานใช้งาน</strong><p>tenant นี้ยังไม่ส่งข้อมูลโควตาการใช้งานกลับมา</p></div>',
+      '<h2 class="tdv4-section-title">ขีดจำกัดของแพ็กเกจ</h2>',
+      renderSimpleList(
+        safe.quotaRows,
+        'ยังไม่มีข้อมูลเพดานใช้งาน',
+        'ยังไม่พบโควตาที่ผูกกับ tenant นี้',
+        function (row) {
+          return '<article class="tdv4-list-item tdv4-tone-' + escapeHtml(row.tone) + '"><div class="tdv4-list-main"><strong>' + escapeHtml(row.label) + '</strong><p>' + escapeHtml(row.detail) + '</p></div><div class="tdv4-chip-row">' + renderBadge('ใช้แล้ว ' + row.used, 'info') + renderBadge('เพดาน ' + row.limit, 'muted') + renderBadge('เหลือ ' + row.remaining, row.tone) + '</div></article>';
+        },
+      ),
       '</section>',
       '</section>',
       '<section class="tdv4-dual-grid">',
       '<section class="tdv4-panel">',
       '<div class="tdv4-section-kicker">ใบแจ้งหนี้</div>',
-      '<h2 class="tdv4-section-title">ใบแจ้งหนี้ล่าสุด</h2>',
-      safe.invoices.length ? safe.invoices.map(function (row) {
-        return '<article class="tdv4-list-item tdv4-tone-info"><div class="tdv4-list-main"><strong>' + escapeHtml(firstNonEmpty([row.id], 'ใบแจ้งหนี้')) + '</strong><p>ครบกำหนด ' + escapeHtml(formatDateTime(row.dueAt, 'ยังไม่มีวันครบกำหนด')) + ' | ชำระแล้ว ' + escapeHtml(formatDateTime(row.paidAt, 'ยังไม่ชำระ')) + '</p></div><div class="tdv4-chip-row">' + renderBadge(firstNonEmpty([row.status], 'unknown'), 'info') + renderBadge(formatMoney(row.amountCents, row.currency), 'success') + '</div></article>';
-      }).join('') : '<div class="tdv4-empty-state"><strong>ยังไม่มีใบแจ้งหนี้</strong><p>ประวัติใบแจ้งหนี้จะขึ้นที่นี่เมื่อระบบการเงินเริ่มทำงานรอบแรก</p></div>',
+      '<h2 class="tdv4-section-title">ประวัติการเรียกเก็บเงิน</h2>',
+      renderSimpleList(
+        safe.invoices,
+        'ยังไม่มีใบแจ้งหนี้',
+        'ประวัติใบแจ้งหนี้จะขึ้นที่นี่เมื่อระบบการเงินเริ่มสร้างรอบชำระเงิน',
+        function (row) {
+          return '<article class="tdv4-list-item tdv4-tone-info"><div class="tdv4-list-main"><strong>' + escapeHtml(firstNonEmpty([row.id], 'ใบแจ้งหนี้')) + '</strong><p>ครบกำหนด ' + escapeHtml(formatDateTime(row.dueAt, 'ยังไม่มีวันครบกำหนด')) + ' | ชำระแล้ว ' + escapeHtml(formatDateTime(row.paidAt, 'ยังไม่ชำระ')) + '</p></div><div class="tdv4-chip-row">' + renderBadge(firstNonEmpty([row.status], 'unknown'), 'info') + renderBadge(formatMoney(row.amountCents, row.currency), 'success') + '</div></article>';
+        },
+      ),
       '</section>',
       '<section class="tdv4-panel">',
-      '<div class="tdv4-section-kicker">สิ่งที่ถูกล็อก</div>',
-      '<h2 class="tdv4-section-title">งานที่แพ็กเกจยังไม่เปิดให้ใช้</h2>',
-      safe.lockedActions.length ? safe.lockedActions.map(function (row) {
-        return '<article class="tdv4-list-item tdv4-tone-warning"><div class="tdv4-list-main"><strong>' + escapeHtml(row.key) + '</strong><p>' + escapeHtml(row.reason) + '</p></div></article>';
-      }).join('') : '<div class="tdv4-empty-state"><strong>ยังไม่มีงานที่ถูกล็อก</strong><p>แพ็กเกจปัจจุบันยังไม่รายงานการปิดสิทธิ์ของ tenant ในตอนนี้</p></div>',
+      '<div class="tdv4-section-kicker">สิทธิ์ที่ยังถูกล็อก</div>',
+      '<h2 class="tdv4-section-title">งานที่ต้องอัปเกรดก่อน</h2>',
+      renderSimpleList(
+        safe.lockedActions,
+        'ยังไม่มี action ที่ถูกล็อก',
+        'ตอนนี้ยังไม่พบงานที่ถูกปิดไว้ด้วยแพ็กเกจ',
+        function (row) {
+          return '<article class="tdv4-list-item tdv4-tone-warning"><div class="tdv4-list-main"><strong>' + escapeHtml(row.label) + '</strong><p>' + escapeHtml(row.reason) + '</p></div></article>';
+        },
+      ),
       '</section>',
       '</section>',
       '<section class="tdv4-panel">',
-      '<div class="tdv4-section-kicker">ความพยายามชำระเงิน</div>',
-      '<h2 class="tdv4-section-title">การชำระเงินล่าสุด</h2>',
-      safe.attempts.length ? safe.attempts.map(function (row) {
-        return '<article class="tdv4-list-item tdv4-tone-' + escapeHtml(String(row.status || '').trim().toLowerCase() === 'failed' ? 'warning' : 'info') + '"><div class="tdv4-list-main"><strong>' + escapeHtml(firstNonEmpty([row.provider, row.id], 'รายการชำระเงิน')) + '</strong><p>' + escapeHtml(firstNonEmpty([row.errorDetail, row.errorCode, 'ยังไม่มีข้อผิดพลาดที่บันทึกไว้'])) + '</p></div><div class="tdv4-chip-row">' + renderBadge(firstNonEmpty([row.status], 'unknown'), 'info') + renderBadge(formatMoney(row.amountCents, row.currency), 'success') + '</div></article>';
-      }).join('') : '<div class="tdv4-empty-state"><strong>ยังไม่มีประวัติการชำระเงิน</strong><p>ส่วนนี้จะแสดงเมื่อระบบบันทึกการพยายามชำระเงินเข้ามาแล้ว</p></div>',
+      '<div class="tdv4-section-kicker">การชำระเงินล่าสุด</div>',
+      '<h2 class="tdv4-section-title">ประวัติการพยายามชำระเงิน</h2>',
+      renderSimpleList(
+        safe.attempts,
+        'ยังไม่มีประวัติการชำระเงิน',
+        'ระบบจะบันทึกผลการพยายามชำระเงินไว้ที่นี่',
+        function (row) {
+          const tone = String(row.status || '').trim().toLowerCase() === 'failed' ? 'warning' : 'info';
+          return '<article class="tdv4-list-item tdv4-tone-' + escapeHtml(tone) + '"><div class="tdv4-list-main"><strong>' + escapeHtml(firstNonEmpty([row.provider, row.id], 'การชำระเงิน')) + '</strong><p>' + escapeHtml(firstNonEmpty([row.errorDetail, row.errorCode, 'ยังไม่มีข้อความผิดพลาด'])) + '</p></div><div class="tdv4-chip-row">' + renderBadge(firstNonEmpty([row.status], 'unknown'), tone) + renderBadge(formatMoney(row.amountCents, row.currency), 'success') + '</div></article>';
+        },
+      ),
       '</section>',
       '</main>',
       '</div>',

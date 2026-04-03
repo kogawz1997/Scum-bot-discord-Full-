@@ -56,6 +56,16 @@ function buildPostRoutes(overrides = {}) {
     createPackageCatalogEntry: async (payload) => ({ ok: true, package: { ...payload, id: payload.id || 'PKG_TEST' } }),
     createSubscription: async () => ({ ok: true }),
     createCheckoutSession: async () => ({ ok: true, session: { checkoutUrl: 'https://checkout.example/session-1' }, invoice: { id: 'inv-1' } }),
+    findPlanById: (planId) => {
+      if (String(planId || '').trim() === 'platform-growth') {
+        return { id: 'platform-growth', amountCents: 1290000, billingCycle: 'monthly', currency: 'THB' };
+      }
+      if (String(planId || '').trim() === 'platform-starter') {
+        return { id: 'platform-starter', amountCents: 490000, billingCycle: 'monthly', currency: 'THB' };
+      }
+      return null;
+    },
+    resolvePackageForPlan: (planId) => ({ id: String(planId || '').trim() === 'platform-growth' ? 'FULL_OPTION' : 'BOT_LOG_DELIVERY' }),
     deletePackageCatalogEntry: async () => ({ ok: true, deletedPackageId: 'PKG_TEST' }),
     updateInvoiceStatus: async () => ({ ok: true, invoice: { id: 'inv-1', status: 'paid' } }),
     updatePaymentAttempt: async () => ({ ok: true, attempt: { id: 'pay-1', status: 'succeeded' } }),
@@ -66,14 +76,27 @@ function buildPostRoutes(overrides = {}) {
     acceptPlatformLicenseLegal: async () => ({ ok: true }),
     createPlatformApiKey: async () => ({ ok: true }),
     createPlatformWebhookEndpoint: async () => ({ ok: true }),
+    getServerConfigJob: async () => ({
+      id: 'cfgjob-1',
+      tenantId: 'tenant-1',
+      serverId: 'server-1',
+      jobType: 'config_update',
+      applyMode: 'save_only',
+      status: 'failed',
+      retryable: true,
+    }),
+    retryServerConfigJob: async () => ({ ok: true, job: { id: 'cfgjob-retry-1', status: 'queued' } }),
     dispatchPlatformWebhookEvent: async () => ([]),
     createMarketplaceOffer: async () => ({ ok: true }),
     reconcileDeliveryState: async () => ({ ok: true }),
+    revokePlatformAgentRuntime: async () => ({ ok: true }),
     runPlatformMonitoringCycle: async () => ({ ok: true }),
     runPlatformAutomationCycle: async () => ({ ok: true, evaluated: [] }),
     acknowledgeAdminNotifications: () => ({}),
     clearAdminNotifications: () => ({}),
     buildTenantProductEntitlements,
+    consumeAdminActionRateLimit: () => ({ limited: false, retryAfterMs: 0 }),
+    getClientIp: () => '127.0.0.1',
     updatePackageCatalogEntry: async (payload) => ({ ok: true, package: payload }),
     prepareTransientDownload: (payload) => ({
       ok: true,
@@ -119,6 +142,7 @@ function buildGetRoutes(overrides = {}) {
     getPlatformAutomationState: () => ({ lastAutomationAt: '2026-03-19T00:01:00.000Z' }),
     getPlatformAutomationConfig: () => ({ enabled: true, maxActionsPerCycle: 1, restartServices: ['worker'] }),
     getPlatformTenantConfig: async () => null,
+    listServerConfigJobs: async () => [],
     listRestartPlans: async () => [],
     listRestartExecutions: async () => [],
     listBillingInvoices: async () => [],
@@ -213,7 +237,13 @@ test('admin platform package create route is owner-only and returns created pack
       title: 'Owner Package',
       status: 'draft',
       description: 'Package from owner route test',
-      featureText: 'sync_agent',
+      features: ['sync_agent', 'analytics_module'],
+      price: 99000,
+      currency: 'THB',
+      billingCycle: 'monthly',
+      planId: 'owner-monthly',
+      trialPlanId: 'owner-trial',
+      limits: { agentRuntimes: 2 },
     },
     res,
     auth: { user: 'owner', role: 'owner', tenantId: null },
@@ -223,6 +253,9 @@ test('admin platform package create route is owner-only and returns created pack
   assert.equal(res.statusCode, 200);
   assert.equal(calls.length, 1);
   assert.equal(calls[0].id, 'PKG_OWNER');
+  assert.deepEqual(calls[0].features, ['sync_agent', 'analytics_module']);
+  assert.equal(calls[0].price, 99000);
+  assert.equal(calls[0].planId, 'owner-monthly');
   const payload = JSON.parse(String(res.body || '{}'));
   assert.equal(payload.ok, true);
   assert.equal(payload.data.id, 'PKG_OWNER');
@@ -353,6 +386,35 @@ test('admin platform restart execution route exposes filtered execution history'
   assert.equal(payload.data[0].resultStatus, 'succeeded');
 });
 
+test('admin platform server config jobs route exposes filtered config jobs', async () => {
+  const handler = buildGetRoutes({
+    listServerConfigJobs: async (filters) => ([{
+      id: 'cfgjob-1',
+      tenantId: filters.tenantId,
+      serverId: filters.serverId,
+      status: 'failed',
+      queueStatus: filters.queueStatus || 'failed',
+    }]),
+  });
+  const res = createMockRes();
+
+  const handled = await handler({
+    client: null,
+    req: { method: 'GET', headers: {} },
+    res,
+    urlObj: new URL('https://admin.example.com/admin/api/platform/servers/server-1/config/jobs?tenantId=tenant-1&queueStatus=failed&limit=12'),
+    pathname: '/admin/api/platform/servers/server-1/config/jobs',
+  });
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 200);
+  const payload = JSON.parse(String(res.body || '{}'));
+  assert.equal(payload.ok, true);
+  assert.equal(payload.data.length, 1);
+  assert.equal(payload.data[0].serverId, 'server-1');
+  assert.equal(payload.data[0].queueStatus, 'failed');
+});
+
 test('admin billing overview route falls back to empty summary when billing storage is unavailable', async () => {
   const handler = buildGetRoutes({
     listBillingInvoices: async () => {
@@ -432,6 +494,37 @@ test('admin platform server control route queues start action for tenant scope',
   assert.match(calls[0].actor, /admin-web:tenant-admin/);
 });
 
+test('admin platform server restart route returns 429 when restart actions are rate limited', async () => {
+  let scheduled = false;
+  const handler = buildPostRoutes({
+    consumeAdminActionRateLimit: () => ({
+      limited: true,
+      retryAfterMs: 30_000,
+    }),
+    scheduleRestartPlan: async () => {
+      scheduled = true;
+      return { ok: true };
+    },
+  });
+  const res = createMockRes();
+
+  const handled = await handler({
+    client: null,
+    req: { method: 'POST', headers: {} },
+    pathname: '/admin/api/platform/servers/server-1/restart',
+    body: { tenantId: 'tenant-1', runtimeKey: 'server-bot-main' },
+    res,
+    auth: { user: 'tenant-admin', role: 'admin', tenantId: 'tenant-1' },
+  });
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 429);
+  assert.equal(scheduled, false);
+  const payload = JSON.parse(String(res.body || '{}'));
+  assert.equal(payload.ok, false);
+  assert.equal(payload.retryAfterSec, 30);
+});
+
 test('admin platform server control route denies tenant action when restart entitlement is locked', async () => {
   let called = false;
   const handler = buildPostRoutes({
@@ -489,6 +582,72 @@ test('admin platform server probe route queues restart probe for tenant scope', 
   assert.equal(calls[0].input.serverId, 'server-2');
   assert.equal(calls[0].input.jobType, 'probe_restart');
   assert.match(calls[0].actor, /admin-web:tenant-owner/);
+});
+
+test('admin platform config job retry route retries a failed config job', async () => {
+  const calls = [];
+  const handler = buildPostRoutes({
+    getServerConfigJob: async (input) => ({
+      id: input.jobId,
+      tenantId: input.tenantId,
+      serverId: input.serverId,
+      jobType: 'config_update',
+      applyMode: 'save_restart',
+      status: 'failed',
+      retryable: true,
+    }),
+    retryServerConfigJob: async (input, actor) => {
+      calls.push({ input, actor });
+      return { ok: true, job: { id: 'cfgjob-retry-1', status: 'queued' } };
+    },
+  });
+  const res = createMockRes();
+
+  const handled = await handler({
+    client: null,
+    req: { method: 'POST', headers: {} },
+    pathname: '/admin/api/platform/servers/server-1/config/jobs/cfgjob-1/retry',
+    body: { tenantId: 'tenant-1' },
+    res,
+    auth: { user: 'tenant-admin', role: 'admin', tenantId: 'tenant-1' },
+  });
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 200);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].input.tenantId, 'tenant-1');
+  assert.equal(calls[0].input.serverId, 'server-1');
+  assert.equal(calls[0].input.jobId, 'cfgjob-1');
+  assert.match(calls[0].actor, /admin-web:tenant-admin/);
+});
+
+test('admin platform config apply route rejects invalid apply modes', async () => {
+  let created = false;
+  const handler = buildPostRoutes({
+    createServerConfigApplyJob: async () => {
+      created = true;
+      return { ok: true };
+    },
+  });
+  const res = createMockRes();
+
+  const handled = await handler({
+    client: null,
+    req: { method: 'POST', headers: {} },
+    pathname: '/admin/api/platform/servers/server-1/config/apply',
+    body: {
+      tenantId: 'tenant-1',
+      applyMode: 'unsafe_mode',
+    },
+    res,
+    auth: { user: 'tenant-admin', role: 'admin', tenantId: 'tenant-1' },
+  });
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 400);
+  assert.equal(created, false);
+  const payload = JSON.parse(String(res.body || '{}'));
+  assert.equal(payload.error, 'Invalid applyMode');
 });
 
 test('admin platform agent provision route denies Server Bot creation when sync entitlement is locked', async () => {
@@ -558,6 +717,40 @@ test('admin platform agent provision route rejects hybrid runtime profiles', asy
   assert.equal(called, false);
   const payload = JSON.parse(String(res.body || '{}'));
   assert.equal(payload.error, 'strict-agent-role-scope-required');
+});
+
+test('admin platform runtime revoke route forwards tenant-scoped runtime references', async () => {
+  const calls = [];
+  const handler = buildPostRoutes({
+    revokePlatformAgentRuntime: async (input, actor) => {
+      calls.push({ input, actor });
+      return { ok: true, revoked: { deviceId: input.deviceId, apiKeyId: input.apiKeyId } };
+    },
+  });
+  const res = createMockRes();
+
+  const handled = await handler({
+    client: null,
+    req: { method: 'POST', headers: {} },
+    pathname: '/admin/api/platform/agent-runtime/revoke',
+    body: {
+      tenantId: 'tenant-1',
+      runtimeKind: 'server-bots',
+      deviceId: 'device-1',
+      apiKeyId: 'apikey-1',
+    },
+    res,
+    auth: { user: 'tenant-admin', role: 'admin', tenantId: 'tenant-1' },
+  });
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 200);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].input.tenantId, 'tenant-1');
+  assert.equal(calls[0].input.runtimeKind, 'server-bots');
+  assert.equal(calls[0].input.deviceId, 'device-1');
+  assert.equal(calls[0].input.apiKeyId, 'apikey-1');
+  assert.match(calls[0].actor, /admin-web:tenant-admin/);
 });
 
 test('admin platform runtime download prepare route returns a signed download URL', async () => {
@@ -674,6 +867,88 @@ test('admin platform subscription update route allows owner to change package as
   assert.equal(calls[0].tenantId, 'tenant-1');
   assert.equal(calls[0].metadata.packageId, 'PRO');
   assert.equal(calls[0].actor, 'owner-web:owner');
+});
+
+test('admin platform subscription create route forwards package assignment into billing lifecycle', async () => {
+  const calls = [];
+  const handler = buildPostRoutes({
+    createSubscription: async (input) => {
+      calls.push(input);
+      return {
+        ok: true,
+        subscription: {
+          id: input.id || 'sub-1',
+          tenantId: input.tenantId,
+          planId: input.planId,
+          packageId: input.packageId,
+          metadata: input.metadata,
+        },
+      };
+    },
+  });
+  const res = createMockRes();
+
+  const handled = await handler({
+    client: null,
+    req: { method: 'POST', headers: {} },
+    pathname: '/admin/api/platform/subscription',
+    body: {
+      id: 'sub-new-1',
+      tenantId: 'tenant-1',
+      planId: 'platform-starter',
+      packageId: 'BOT_LOG_DELIVERY',
+      billingCycle: 'monthly',
+      status: 'active',
+      currency: 'THB',
+      amountCents: 490000,
+      metadata: { source: 'owner-create' },
+    },
+    res,
+    auth: { user: 'owner', role: 'owner', tenantId: null },
+  });
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 200);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].packageId, 'BOT_LOG_DELIVERY');
+  assert.equal(calls[0].metadata.packageId, 'BOT_LOG_DELIVERY');
+});
+
+test('admin platform agent provision route denies Server Bot creation when subscription is expired', async () => {
+  let called = false;
+  const handler = buildPostRoutes({
+    getTenantFeatureAccess: async () => ({
+      tenantId: 'tenant-1',
+      subscriptionStatus: 'expired',
+      enabledFeatureKeys: ['sync_agent'],
+    }),
+    createPlatformAgentProvisioningToken: async () => {
+      called = true;
+      return { ok: true };
+    },
+  });
+  const res = createMockRes();
+
+  const handled = await handler({
+    client: null,
+    req: { method: 'POST', headers: {} },
+    pathname: '/admin/api/platform/agent-provision',
+    body: {
+      tenantId: 'tenant-1',
+      role: 'sync',
+      scope: 'sync_only',
+      runtimeKind: 'server-bots',
+    },
+    res,
+    auth: { user: 'tenant-admin', role: 'admin', tenantId: 'tenant-1' },
+  });
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 403);
+  assert.equal(called, false);
+  const payload = JSON.parse(String(res.body || '{}'));
+  assert.equal(payload.error, 'feature-not-enabled');
+  assert.equal(payload.data.actionKey, 'can_create_server_bot');
 });
 
 test('admin platform subscription update route blocks tenant-scoped admin', async () => {
@@ -802,6 +1077,7 @@ test('admin platform checkout session route allows owner to retry checkout', asy
     pathname: '/admin/api/platform/billing/checkout-session',
     body: {
       tenantId: 'tenant-1',
+      idempotencyKey: 'idem-owner-checkout',
       invoiceId: 'inv-1',
       subscriptionId: 'sub-1',
       packageId: 'PRO',
@@ -819,7 +1095,54 @@ test('admin platform checkout session route allows owner to retry checkout', asy
   assert.equal(calls.length, 1);
   assert.equal(calls[0].tenantId, 'tenant-1');
   assert.equal(calls[0].invoiceId, 'inv-1');
+  assert.equal(calls[0].idempotencyKey, 'idem-owner-checkout');
   assert.equal(calls[0].planId, 'pro-monthly');
+});
+
+test('admin platform checkout session route allows tenant self-service upgrade', async () => {
+  const calls = [];
+  const handler = buildPostRoutes({
+    listPlatformSubscriptions: async () => ([
+      {
+        id: 'sub-tenant-1',
+        tenantId: 'tenant-1',
+        planId: 'platform-starter',
+        packageId: 'BOT_LOG_DELIVERY',
+      },
+    ]),
+    createCheckoutSession: async (input) => {
+      calls.push(input);
+      return {
+        ok: true,
+        session: { checkoutUrl: 'https://checkout.example/tenant-upgrade' },
+        invoice: { id: 'inv-upgrade' },
+      };
+    },
+  });
+  const res = createMockRes();
+
+  const handled = await handler({
+    client: null,
+    req: { method: 'POST', headers: {} },
+    pathname: '/admin/api/platform/billing/checkout-session',
+    body: {
+      tenantId: 'tenant-1',
+      idempotencyKey: 'idem-tenant-upgrade',
+      planId: 'platform-growth',
+    },
+    res,
+    auth: { user: 'tenant-admin', role: 'admin', tenantId: 'tenant-1' },
+  });
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 200);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].tenantId, 'tenant-1');
+  assert.equal(calls[0].subscriptionId, 'sub-tenant-1');
+  assert.equal(calls[0].idempotencyKey, 'idem-tenant-upgrade');
+  assert.equal(calls[0].planId, 'platform-growth');
+  assert.equal(calls[0].packageId, 'FULL_OPTION');
+  assert.equal(calls[0].amountCents, 1290000);
 });
 
 test('admin platform agent provision route allows owner without tenant entitlement checks', async () => {

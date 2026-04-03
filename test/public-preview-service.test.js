@@ -247,9 +247,11 @@ test('public preview service validates signup input and creates preview tenant s
 
   assert.equal(result.ok, true);
   assert.equal(result.account.email, 'demo@example.com');
-  assert.equal(result.account.accountState, 'preview');
+  assert.equal(result.account.accountState, 'trialing');
   assert.equal(result.account.verificationState, 'pending_email_verification');
   assert.equal(String(result.account.identity?.userId || ''), 'user-preview-account-1');
+  assert.equal(result.account.linkedIdentities.discordLinked, false);
+  assert.equal(result.account.linkedIdentities.steamLinked, false);
   assert.equal(result.account.verificationQueued, true);
   assert.equal(result.account.verificationTokenPreview, 'vfy_test.token');
   assert.equal(result.tenant.name, 'Demo Community');
@@ -267,8 +269,11 @@ test('public preview service validates signup input and creates preview tenant s
   const state = await service.getPreviewState(result.account.id);
   assert.equal(state.ok, true);
   assert.equal(state.state.account.email, 'demo@example.com');
+  assert.equal(state.state.account.accountState, 'trialing');
   assert.deepEqual(state.state.entitlements.enabledFeatureKeys, ['bot_log', 'shop_module']);
   assert.equal(String(state.state.identity?.userId || ''), 'user-preview-account-1');
+  assert.equal(state.state.commercial.accountState, 'trialing');
+  assert.equal(state.state.commercial.subscriptionStatus, 'trialing');
 
   const reset = await service.requestPasswordReset({
     email: 'demo@example.com',
@@ -292,6 +297,13 @@ test('public preview service validates signup input and creates preview tenant s
   });
   assert.equal(verified.ok, true);
   assert.equal(verified.account.verificationState, 'email_verified');
+
+  const verificationAgain = await service.requestEmailVerification({
+    email: 'demo@example.com',
+  });
+  assert.equal(verificationAgain.ok, true);
+  assert.equal(verificationAgain.requested, false);
+  assert.equal(verificationAgain.alreadyVerified, true);
 
   const resetComplete = await service.completePasswordReset({
     token: 'rst_test.token',
@@ -354,7 +366,105 @@ test('public preview service falls back to lightweight preview state when tenant
   const state = await service.getPreviewState(result.account.id);
   assert.equal(state.ok, true);
   assert.equal(state.state.tenant.status, 'preview');
+  assert.equal(state.state.account.accountState, 'preview');
+  assert.equal(state.state.commercial.accountState, 'preview');
   assert.ok(state.state.entitlements.enabledFeatureKeys.includes('bot_delivery'));
   assert.ok(state.state.entitlements.enabledFeatureKeys.includes('execute_agent'));
   assert.equal(String(state.state.identity?.userId || ''), 'user-preview-account-1');
+});
+
+test('public preview service derives linked identity state from centralized identity summary', async () => {
+  const createPublicPreviewService = loadCreatePublicPreviewService();
+  const store = createStoreHarness();
+  const created = await store.createPreviewAccount({
+    email: 'linked@example.com',
+    passwordHash: 'scrypt$seed$digest',
+    displayName: 'Linked User',
+    communityName: 'Linked Community',
+    locale: 'en',
+    packageId: 'BOT_LOG_DELIVERY',
+    accountState: 'trialing',
+    verificationState: 'email_verified',
+    tenantId: 'tenant-linked-1',
+    subscriptionId: 'sub-linked-1',
+    linkedIdentities: {
+      discordLinked: false,
+      discordVerified: false,
+      steamLinked: false,
+      playerMatched: false,
+      fullyVerified: false,
+    },
+  });
+  const service = createPublicPreviewService({
+    getTenantFeatureAccess: async () => ({
+      enabledFeatureKeys: ['bot_delivery'],
+      features: [{ key: 'bot_delivery', title: 'Bot Delivery', enabled: true }],
+      package: { id: 'BOT_LOG_DELIVERY', title: 'Bot Log + Delivery' },
+    }),
+    getTenantQuotaSnapshot: async () => ({
+      tenantId: 'tenant-linked-1',
+      quotas: { apiKeys: 1 },
+      usage: { apiKeys: 0 },
+      tenantStatus: 'trialing',
+      locale: 'en',
+      subscription: {
+        id: 'sub-linked-1',
+        lifecycleStatus: 'trialing',
+      },
+    }),
+    getPackageCatalog: () => [{ id: 'BOT_LOG_DELIVERY', title: 'Bot Log + Delivery' }],
+    getIdentitySummaryForPreviewAccount: async () => ({
+      user: { id: 'platform-user-linked-1' },
+      identities: [
+        { provider: 'email', providerEmail: 'linked@example.com', verifiedAt: '2026-04-01T10:00:00.000Z' },
+        { provider: 'discord', providerUserId: '123456789012345678', verifiedAt: '2026-04-01T10:01:00.000Z' },
+        { provider: 'steam', providerUserId: '76561199012345678', verifiedAt: '2026-04-01T10:02:00.000Z' },
+      ],
+      memberships: [
+        { tenantId: 'tenant-linked-1', role: 'owner', membershipType: 'tenant', status: 'active' },
+      ],
+      profile: {
+        id: 'platform-profile-linked-1',
+        steamId: '76561199012345678',
+        inGameName: 'Linked Survivor',
+        verificationState: 'fully_verified',
+      },
+      identitySummary: {
+        verificationState: 'fully_verified',
+        linkedAccounts: {
+          email: { linked: true, verified: true, value: 'linked@example.com' },
+          discord: { linked: true, verified: true, value: '123456789012345678' },
+          steam: { linked: true, verified: true, value: '76561199012345678' },
+          inGame: { linked: true, verified: true, value: 'Linked Survivor' },
+        },
+        activeMembership: {
+          tenantId: 'tenant-linked-1',
+          role: 'owner',
+          membershipType: 'tenant',
+          status: 'active',
+        },
+        readiness: {
+          hasEmail: true,
+          hasDiscord: true,
+          hasSteam: true,
+          hasInGameProfile: true,
+          hasActiveMembership: true,
+        },
+      },
+    }),
+    ...store,
+  });
+
+  const state = await service.getPreviewState(created.id);
+  const persisted = await store.getPreviewAccountById(created.id);
+
+  assert.equal(state.ok, true);
+  assert.equal(state.state.account.linkedIdentities.discordLinked, true);
+  assert.equal(state.state.account.linkedIdentities.discordVerified, true);
+  assert.equal(state.state.account.linkedIdentities.steamLinked, true);
+  assert.equal(state.state.account.linkedIdentities.playerMatched, true);
+  assert.equal(state.state.account.linkedIdentities.fullyVerified, true);
+  assert.equal(state.state.identity.verificationState, 'fully_verified');
+  assert.equal(state.state.identity.linkedAccounts.inGame.value, 'Linked Survivor');
+  assert.equal(persisted.linkedIdentities.fullyVerified, true);
 });

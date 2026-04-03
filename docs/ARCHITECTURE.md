@@ -13,6 +13,7 @@ Current production/runtime standard on this workstation:
 - Primary runtime database: PostgreSQL
 - ORM and schema toolchain: Prisma
 - SQLite scope: local dev, import/compatibility paths, and offline tooling only
+- Checked-in source schema: `prisma/schema.prisma` stays on sqlite as the compatibility template; provider-specific schemas are rendered by `scripts/prisma-with-provider.js`
 
 Do not describe SQLite as the active production runtime for this repository unless the deployment actually runs that path.
 
@@ -23,7 +24,7 @@ Do not describe SQLite as the active production runtime for this repository unle
 | Discord bot   | `src/bot.js`                                                    | Discord gateway, command routing, admin web bootstrap, SCUM webhook receiver | Still a large bootstrap entrypoint                              |
 | Worker        | `src/worker.js`                                                 | Delivery queue worker, rent bike runtime, background jobs                    | Split from bot runtime                                          |
 | Watcher       | `src/services/scumLogWatcherRuntime.js`                         | Tail `SCUM.log`, parse events, send them to webhook                          | Can report `disabled` or `degraded` without exiting immediately |
-| Console agent | `src/scum-console-agent.js`, `src/services/scumConsoleAgent.js` | Command bridge to SCUM admin client                                          | Optional runtime depending on execution mode                    |
+| Delivery Agent | `apps/agent/server.js`, `src/delivery-agent.js`, `src/scum-console-agent.js`, `src/services/scumConsoleAgent.js` | In-game delivery/announce execution runtime on the machine that has the SCUM client open | Runtime key and legacy compatibility naming still use `console-agent` internally |
 | Admin web     | `src/adminWebServer.js`                                         | Admin API, auth, RBAC, backup/restore, observability, control panel          | Mounted from bot runtime                                        |
 | Player portal | `apps/web-portal-standalone/server.js`                          | Player login, wallet, purchase history, redeem, profile, Steam link          | Deployable as a separate runtime                                |
 
@@ -67,6 +68,8 @@ Key files:
 - `src/services/rconDelivery.js`
 - `src/store/deliveryAuditStore.js`
 - `src/store/deliveryEvidenceStore.js`
+- `apps/agent/server.js`
+- `src/delivery-agent.js`
 - `src/services/scumConsoleAgent.js`
 - `test/rcon-delivery.integration.test.js`
 
@@ -128,6 +131,7 @@ Production/runtime path:
 
 - PostgreSQL
 - provider-aware Prisma generate / migrate / push
+- provider-rendered Prisma schema generated from the checked-in sqlite compatibility template
 - isolated provider-specific test database or schema per test run
 
 Non-production or compatibility paths:
@@ -139,10 +143,19 @@ Non-production or compatibility paths:
 Key files:
 
 - `src/prisma.js`
+- `src/prismaClientLoader.js`
 - `src/utils/dbEngine.js`
 - `scripts/prisma-with-provider.js`
 - `scripts/run-tests-with-provider.js`
 - `scripts/cutover-sqlite-to-postgres.js`
+
+Schema/provider truth rules:
+
+- `prisma/schema.prisma` is the checked-in compatibility template, not by itself the active production provider contract
+- `scripts/prisma-with-provider.js` renders `schema.postgresql.prisma`, `schema.mysql.prisma`, or `schema.sqlite.prisma` into `artifacts/prisma/`
+- active generated client selection is resolved by `src/prismaClientLoader.js`
+- runtime database truth comes from `DATABASE_URL` plus `PRISMA_SCHEMA_PROVIDER` / `DATABASE_PROVIDER`
+- `src/prisma.js` is the bootstrap layer that normalizes those inputs into the actual Prisma client used at runtime
 
 ## Tenant Boundary
 
@@ -174,7 +187,7 @@ Health endpoints:
 - bot: `http://<BOT_HEALTH_HOST>:<BOT_HEALTH_PORT>/healthz`
 - worker: `http://<WORKER_HEALTH_HOST>:<WORKER_HEALTH_PORT>/healthz`
 - watcher: `http://<SCUM_WATCHER_HEALTH_HOST>:<SCUM_WATCHER_HEALTH_PORT>/healthz`
-- console-agent: `http://<SCUM_CONSOLE_AGENT_HOST>:<SCUM_CONSOLE_AGENT_PORT>/healthz`
+- delivery agent (`console-agent` runtime key): `http://<SCUM_CONSOLE_AGENT_HOST>:<SCUM_CONSOLE_AGENT_PORT>/healthz`
 - admin web: `http://<ADMIN_WEB_HOST>:<ADMIN_WEB_PORT>/healthz`
 - player portal: `http://<WEB_PORTAL_HOST>:<WEB_PORTAL_PORT>/healthz`
 

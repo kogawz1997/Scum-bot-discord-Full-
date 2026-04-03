@@ -77,6 +77,7 @@ function buildRoutes(overrides = {}) {
     deleteDiscordOauthState: () => {},
     getClientIp: () => '127.0.0.1',
     recordAdminSecuritySignal: () => {},
+    consumeAdminActionRateLimit: () => ({ limited: false, retryAfterMs: 0 }),
     createSession: () => ({ id: 'session-id' }),
     buildSessionCookie: () => 'session-id',
     buildClearSessionCookie: () => 'scum_admin_session=; Max-Age=0',
@@ -292,6 +293,49 @@ test('tenant console redirects to tenant login and clears session when membershi
   assert.equal(res.statusCode, 302);
   assert.equal(res.headers.Location, '/tenant/login');
   assert.equal(res.headers['Set-Cookie'], 'scum_admin_session=; Max-Age=0');
+});
+
+test('platform agent activate route is rate limited before activation when repeated attempts exceed policy', async () => {
+  let activated = false;
+  const handler = buildRoutes({
+    readJsonBody: async () => ({
+      setupToken: 'stp_token_1',
+      machineFingerprint: 'machine-1',
+      runtimeKey: 'server-bot-main',
+      displayName: 'Main Server Bot',
+      hostname: 'host-1',
+      version: '1.2.3',
+      channel: 'stable',
+      baseUrl: 'http://127.0.0.1:3300',
+    }),
+    consumeAdminActionRateLimit: () => ({
+      limited: true,
+      retryAfterMs: 15_000,
+    }),
+    activatePlatformAgent: async () => {
+      activated = true;
+      return { ok: true };
+    },
+  });
+  const res = createMockRes();
+
+  const handled = await handler({
+    client: null,
+    req: { method: 'POST', headers: { host: 'admin.example.com' } },
+    res,
+    urlObj: new URL('https://admin.example.com/platform/api/v1/agent/activate'),
+    pathname: '/platform/api/v1/agent/activate',
+    host: 'admin.example.com',
+    port: 3200,
+  });
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 429);
+  assert.equal(activated, false);
+  assert.equal(res.headers['Retry-After'], '15');
+  const payload = JSON.parse(String(res.body || '{}'));
+  assert.equal(payload.ok, false);
+  assert.equal(payload.retryAfterSec, 15);
 });
 
 test('tenant login stays on login page when stale tenant session is invalidated', async () => {

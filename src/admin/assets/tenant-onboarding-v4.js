@@ -121,6 +121,92 @@
     return DELIVERY_SIGNALS.some(function (token) { return text.includes(token); });
   }
 
+  function normalizeSubscriptionStatus(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (!normalized) return '';
+    if (['trial', 'trialing'].includes(normalized)) return 'trial';
+    if (normalized === 'active') return 'active';
+    if (['expired', 'cancelled', 'canceled'].includes(normalized)) return 'expired';
+    if (['suspended', 'past_due', 'failed', 'pending', 'paused', 'inactive'].includes(normalized)) return 'suspended';
+    return normalized;
+  }
+
+  function actionEntitlement(state, key) {
+    return state && state.featureEntitlements && state.featureEntitlements.actions
+      ? state.featureEntitlements.actions[key] || null
+      : null;
+  }
+
+  function sectionEntitlement(state, key) {
+    return state && state.featureEntitlements && state.featureEntitlements.sections
+      ? state.featureEntitlements.sections[key] || null
+      : null;
+  }
+
+  function buildUpgradeAction(value) {
+    if (!value || typeof value !== 'object') return null;
+    const href = String(value.href || '').trim();
+    const label = String(value.label || '').trim();
+    if (!href || !label) return null;
+    return { href: href, label: label };
+  }
+
+  function packageLabel(state) {
+    return firstNonEmpty([
+      state && state.featureEntitlements && state.featureEntitlements.package && state.featureEntitlements.package.name,
+      state && state.billingOverview && state.billingOverview.packageName,
+      state && state.quota && state.quota.package && state.quota.package.name,
+      state && state.quota && state.quota.plan && state.quota.plan.name,
+      state && state.tenantConfig && state.tenantConfig.packageName,
+      'No package assigned',
+    ], 'No package assigned');
+  }
+
+  function subscriptionStatusLabel(value) {
+    const normalized = normalizeSubscriptionStatus(value);
+    if (normalized === 'active') return 'Active';
+    if (normalized === 'trial') return 'Trial';
+    if (normalized === 'expired') return 'Expired';
+    if (normalized === 'suspended') return 'Suspended';
+    return normalized ? normalized.charAt(0).toUpperCase() + normalized.slice(1) : 'Not set';
+  }
+
+  function subscriptionTone(value) {
+    const normalized = normalizeSubscriptionStatus(value);
+    if (normalized === 'active') return 'success';
+    if (normalized === 'trial') return 'info';
+    if (normalized === 'expired') return 'danger';
+    if (normalized === 'suspended') return 'warning';
+    return 'muted';
+  }
+
+  function buildStep(options) {
+    const locked = Boolean(options && options.locked);
+    const blocked = !locked && Boolean(options && options.blocked);
+    const done = !locked && !blocked && Boolean(options && options.done);
+    const tone = locked ? 'danger' : blocked ? 'warning' : done ? 'success' : 'warning';
+    const stateLabel = locked ? 'locked' : blocked ? 'blocked' : done ? 'complete' : 'needs setup';
+    return {
+      key: String(options && options.key || '').trim(),
+      title: String(options && options.title || '').trim(),
+      detail: String(options && options.detail || '').trim(),
+      done: done,
+      blocked: blocked,
+      locked: locked,
+      tone: tone,
+      stateLabel: stateLabel,
+      reason: firstNonEmpty([
+        options && options.reason,
+        locked ? 'This step is locked in the current package.' : '',
+        blocked ? 'Finish the earlier setup step first.' : '',
+        done ? 'This step is already complete.' : '',
+      ], ''),
+      href: String(options && options.href || '#').trim() || '#',
+      actionLabel: String(options && options.actionLabel || '').trim(),
+      upgradeAction: buildUpgradeAction(options && options.upgradeAction),
+    };
+  }
+
   function buildChecklist(state) {
     const runtimes = Array.isArray(state.agents) ? state.agents : [];
     const provisioning = Array.isArray(state.agentProvisioning) ? state.agentProvisioning : [];
@@ -139,48 +225,129 @@
     const deliveryOnline = deliveryAgents.some(function (row) {
       return statusTone(row && row.status) === 'success';
     });
+    const hasActiveServer = Boolean(state && state.activeServer && typeof state.activeServer === 'object');
     const hasConfig = Boolean(
       Array.isArray(configWorkspace && configWorkspace.categories) && configWorkspace.categories.length
       || Array.isArray(configWorkspace && configWorkspace.files) && configWorkspace.files.length
       || Array.isArray(configWorkspace && configWorkspace.groups) && configWorkspace.groups.length
     );
+    const deliveryAction = actionEntitlement(state, 'can_create_delivery_agent');
+    const serverBotAction = actionEntitlement(state, 'can_create_server_bot');
+    const editConfigAction = actionEntitlement(state, 'can_edit_config');
+    const serverStatusSection = sectionEntitlement(state, 'server');
+    const readyForDailyWork = hasActiveServer && serverBotOnline && deliveryOnline && hasConfig;
 
     return [
-      {
+      buildStep({
+        key: 'create-server-bot',
         title: 'Create Server Bot',
         detail: 'Issue the setup token for the machine that can read SCUM.log and edit server config.',
         done: hasServerBot,
+        locked: Boolean(serverBotAction && serverBotAction.locked),
+        reason: serverBotAction && serverBotAction.locked
+          ? serverBotAction.reason
+          : hasServerBot
+            ? 'A Server Bot record or setup token already exists for this tenant.'
+            : 'Create the first Server Bot so the server-side machine can connect.',
         href: '/tenant/runtimes/server-bots',
         actionLabel: hasServerBot ? 'Review Server Bot' : 'Create Server Bot',
-      },
-      {
+        upgradeAction: serverBotAction && serverBotAction.upgradeCta,
+      }),
+      buildStep({
+        key: 'connect-server-bot',
         title: 'Connect Server Bot',
         detail: 'The bot should come online before config apply and restart actions become dependable.',
         done: serverBotOnline,
+        blocked: !hasServerBot,
+        locked: Boolean(serverBotAction && serverBotAction.locked),
+        reason: serverBotAction && serverBotAction.locked
+          ? serverBotAction.reason
+          : !hasServerBot
+            ? 'Create a Server Bot first so the install instructions and setup token are available.'
+            : serverBotOnline
+              ? 'The Server Bot is online and reporting fresh activity.'
+              : 'Run the setup command on the server-side machine, then wait for the bot to report online.',
         href: '/tenant/runtimes/server-bots',
         actionLabel: serverBotOnline ? 'Server Bot online' : 'Finish Server Bot setup',
-      },
-      {
+        upgradeAction: serverBotAction && serverBotAction.upgradeCta,
+      }),
+      buildStep({
+        key: 'create-delivery-agent',
         title: 'Create Delivery Agent',
         detail: 'Issue the setup token for the machine that can keep the SCUM client open for deliveries.',
         done: hasDeliveryAgent,
+        locked: Boolean(deliveryAction && deliveryAction.locked),
+        reason: deliveryAction && deliveryAction.locked
+          ? deliveryAction.reason
+          : hasDeliveryAgent
+            ? 'A Delivery Agent record or setup token already exists for this tenant.'
+            : 'Create the first Delivery Agent so in-game delivery can be connected later.',
         href: '/tenant/runtimes/delivery-agents',
         actionLabel: hasDeliveryAgent ? 'Review Delivery Agent' : 'Create Delivery Agent',
-      },
-      {
+        upgradeAction: deliveryAction && deliveryAction.upgradeCta,
+      }),
+      buildStep({
+        key: 'connect-delivery-agent',
         title: 'Connect Delivery Agent',
         detail: 'The delivery machine should come online before live order delivery becomes reliable.',
         done: deliveryOnline,
+        blocked: !hasDeliveryAgent,
+        locked: Boolean(deliveryAction && deliveryAction.locked),
+        reason: deliveryAction && deliveryAction.locked
+          ? deliveryAction.reason
+          : !hasDeliveryAgent
+            ? 'Create a Delivery Agent first so the install instructions and setup token are available.'
+            : deliveryOnline
+              ? 'The Delivery Agent is online and ready for live delivery work.'
+              : 'Run the setup command on the delivery machine and keep the SCUM client session ready.',
         href: '/tenant/runtimes/delivery-agents',
         actionLabel: deliveryOnline ? 'Delivery Agent online' : 'Finish Delivery Agent setup',
-      },
-      {
+        upgradeAction: deliveryAction && deliveryAction.upgradeCta,
+      }),
+      buildStep({
+        key: 'review-server-settings',
         title: 'Review Server Settings',
         detail: 'Open the config workspace, confirm the current values, and save when ready.',
         done: hasConfig,
+        blocked: !hasActiveServer || !serverBotOnline,
+        locked: Boolean(editConfigAction && editConfigAction.locked),
+        reason: editConfigAction && editConfigAction.locked
+          ? editConfigAction.reason
+          : !hasActiveServer
+            ? 'Connect or create a server first so the settings workspace knows which server to load.'
+            : !hasServerBot
+              ? 'Create a Server Bot first. The web app never reads server files directly.'
+              : !serverBotOnline
+                ? 'Bring the Server Bot online first so it can send the live config snapshot back to the platform.'
+                : hasConfig
+                  ? 'Live config values are available and ready to review.'
+                  : 'Open Server Settings and wait for the first live config snapshot from the Server Bot.',
         href: '/tenant/server/config',
         actionLabel: hasConfig ? 'Open Server Settings' : 'Review Server Settings',
-      },
+        upgradeAction: editConfigAction && editConfigAction.upgradeCta,
+      }),
+      buildStep({
+        key: 'start-using',
+        title: 'Start using the system',
+        detail: 'Move into daily operations once the core runtime setup and server settings are ready.',
+        done: readyForDailyWork,
+        blocked: !readyForDailyWork,
+        locked: Boolean(serverStatusSection && serverStatusSection.locked),
+        reason: serverStatusSection && serverStatusSection.locked
+          ? serverStatusSection.reason
+          : readyForDailyWork
+            ? 'Core setup is complete. You can move into daily operations now.'
+            : !hasActiveServer
+              ? 'Connect or create a server before daily operations can start.'
+              : !serverBotOnline
+                ? 'Bring the Server Bot online so sync, config, and restart actions are dependable.'
+                : !deliveryOnline
+                  ? 'Bring the Delivery Agent online before relying on live item delivery.'
+                  : 'Review Server Settings first so the tenant starts from confirmed live values.',
+        href: '/tenant',
+        actionLabel: readyForDailyWork ? 'Open daily overview' : 'Finish setup first',
+        upgradeAction: serverStatusSection && serverStatusSection.upgradeCta,
+      }),
     ];
   }
 
@@ -200,12 +367,62 @@
     };
   }
 
+  function buildSystemReadiness(state, checklist) {
+    const rows = Array.isArray(checklist) ? checklist : [];
+    const completed = rows.filter(function (row) { return row.done; }).length;
+    const total = rows.length;
+    const percent = total ? Math.round((completed / total) * 100) : 0;
+    const nextStep = rows.find(function (row) { return !row.done; }) || null;
+    const warnings = rows
+      .filter(function (row) { return !row.done && (row.blocked || row.locked); })
+      .slice(0, 3)
+      .map(function (row) {
+        return {
+          title: row.title,
+          detail: row.reason,
+          tone: row.locked ? 'danger' : 'warning',
+        };
+      });
+    return {
+      percent: percent,
+      completed: completed,
+      total: total,
+      ready: total > 0 && completed === total,
+      title: completed === total ? 'System readiness is complete' : 'Finish the missing setup steps first',
+      detail: nextStep
+        ? nextStep.reason || nextStep.detail
+        : 'Server setup, live config, and runtime connections are ready for daily use.',
+      nextStep: nextStep
+        ? {
+          title: nextStep.title,
+          detail: nextStep.reason || nextStep.detail,
+          href: nextStep.href,
+          actionLabel: nextStep.actionLabel,
+        }
+        : {
+          title: 'Start daily operations',
+          detail: 'Open the daily overview and continue from server status, orders, players, or events.',
+          href: '/tenant',
+          actionLabel: 'Open daily overview',
+        },
+      warnings: warnings,
+    };
+  }
+
   function createTenantOnboardingV4Model(source) {
     const state = source && typeof source === 'object' ? source : {};
     const checklist = buildChecklist(state);
     const completed = checklist.filter(function (row) { return row.done; }).length;
     const activeServer = state && state.activeServer && typeof state.activeServer === 'object' ? state.activeServer : null;
     const primaryAction = buildPrimaryAction(checklist);
+    const readiness = buildSystemReadiness(state, checklist);
+    const subscriptionStatus = normalizeSubscriptionStatus(
+      state && state.featureEntitlements && (state.featureEntitlements.subscriptionStatus
+      || state.featureEntitlements.subscription && (state.featureEntitlements.subscription.lifecycleStatus || state.featureEntitlements.subscription.status))
+      || state && state.billingOverview && (state.billingOverview.subscriptionStatus || state.billingOverview.lifecycleStatus)
+      || state && state.quota && state.quota.subscription && (state.quota.subscription.lifecycleStatus || state.quota.subscription.status)
+    );
+    const currentPackageLabel = packageLabel(state);
 
     return {
       shell: {
@@ -227,14 +444,22 @@
         statusChips: [
           { label: formatNumber(completed) + ' of ' + formatNumber(checklist.length) + ' complete', tone: completed === checklist.length ? 'success' : 'info' },
           { label: activeServer ? 'Server ready' : 'No server connected', tone: activeServer ? 'success' : 'warning' },
+          { label: 'Subscription ' + subscriptionStatusLabel(subscriptionStatus), tone: subscriptionTone(subscriptionStatus) },
         ],
       },
       summaryStrip: [
         { label: 'Checklist', value: formatNumber(completed) + '/' + formatNumber(checklist.length), detail: 'Setup steps completed inside this tenant', tone: completed === checklist.length ? 'success' : 'info' },
+        { label: 'Package', value: currentPackageLabel, detail: 'Current package and feature access for this tenant', tone: subscriptionTone(subscriptionStatus) },
         { label: 'Server', value: activeServer ? firstNonEmpty([activeServer.name, activeServer.slug, activeServer.id], 'Connected') : 'Missing', detail: activeServer ? 'Current tenant server target' : 'Create or connect a server first', tone: activeServer ? 'success' : 'warning' },
         { label: 'Server Bot', value: checklist[1] && checklist[1].done ? 'Online' : (checklist[0] && checklist[0].done ? 'Pending' : 'Missing'), detail: 'Needed for config apply, sync, and restart jobs', tone: checklist[1] && checklist[1].done ? 'success' : ((checklist[0] && checklist[0].done) ? 'warning' : 'danger') },
         { label: 'Delivery Agent', value: checklist[3] && checklist[3].done ? 'Online' : (checklist[2] && checklist[2].done ? 'Pending' : 'Missing'), detail: 'Needed for live in-game item handoff', tone: checklist[3] && checklist[3].done ? 'success' : ((checklist[2] && checklist[2].done) ? 'warning' : 'danger') },
       ],
+      progress: {
+        completed: completed,
+        total: checklist.length,
+        percent: readiness.percent,
+      },
+      readiness: readiness,
       checklist: checklist,
     };
   }
@@ -262,14 +487,31 @@
       '<p class="tdv4-section-copy">Finish the missing steps in order. Each step opens the real workspace you will use every day after setup.</p>',
       safe.checklist.map(function (item) {
         return [
-          '<article class="tdv4-list-item tdv4-tone-' + escapeHtml(item.done ? 'success' : 'warning') + '">',
-          '<div class="tdv4-list-main"><strong>' + escapeHtml(item.title) + '</strong><p>' + escapeHtml(item.detail) + '</p><div class="tdv4-chip-row">' + renderBadge(item.done ? 'complete' : 'needs setup', item.done ? 'success' : 'warning') + '</div></div>',
+          '<article class="tdv4-list-item tdv4-tone-' + escapeHtml(item.tone || 'warning') + '">',
+          '<div class="tdv4-list-main"><strong>' + escapeHtml(item.title) + '</strong><p>' + escapeHtml(item.detail) + '</p><div class="tdv4-chip-row">' + renderBadge(item.stateLabel, item.tone || 'warning') + '</div><p>' + escapeHtml(item.reason || '') + '</p></div>',
+          '<div class="tdv4-action-list">',
           '<a class="tdv4-button tdv4-button-secondary" href="' + escapeHtml(item.href) + '">' + escapeHtml(item.actionLabel) + '</a>',
+          item.upgradeAction
+            ? '<a class="tdv4-button tdv4-button-secondary" href="' + escapeHtml(item.upgradeAction.href) + '">' + escapeHtml(item.upgradeAction.label) + '</a>'
+            : '',
+          '</div>',
           '</article>',
         ].join('');
       }).join(''),
       '</section>',
       '<section class="tdv4-panel">',
+      '<div class="tdv4-section-kicker">Primary action</div>',
+      '<h2 class="tdv4-section-title">' + escapeHtml(safe.readiness.title) + '</h2>',
+      '<p class="tdv4-section-copy">' + escapeHtml(safe.readiness.detail) + '</p>',
+      '<div class="tdv4-chip-row">' + renderBadge('Readiness ' + escapeHtml(String(safe.progress.percent)) + '%', safe.readiness.ready ? 'success' : 'warning') + renderBadge(String(safe.progress.completed) + ' / ' + String(safe.progress.total) + ' steps complete', 'info') + '</div>',
+      '<div class="tdv4-list">',
+      '<article class="tdv4-list-item tdv4-tone-' + escapeHtml(safe.readiness.ready ? 'success' : 'warning') + '"><div class="tdv4-list-main"><strong>' + escapeHtml(safe.readiness.nextStep.title) + '</strong><p>' + escapeHtml(safe.readiness.nextStep.detail) + '</p></div><a class="tdv4-button tdv4-button-primary" href="' + escapeHtml(safe.readiness.nextStep.href) + '">' + escapeHtml(safe.readiness.nextStep.actionLabel) + '</a></article>',
+      (Array.isArray(safe.readiness.warnings) && safe.readiness.warnings.length
+        ? safe.readiness.warnings.map(function (warning) {
+          return '<article class="tdv4-list-item tdv4-tone-' + escapeHtml(warning.tone || 'warning') + '"><div class="tdv4-list-main"><strong>' + escapeHtml(warning.title) + '</strong><p>' + escapeHtml(warning.detail) + '</p></div></article>';
+        }).join('')
+        : '<article class="tdv4-list-item tdv4-tone-success"><div class="tdv4-list-main"><strong>No blocking setup issues right now</strong><p>The tenant can move forward without package or runtime blockers at the moment.</p></div></article>') +
+      '</div>',
       '<div class="tdv4-section-kicker">Details / history</div>',
       '<h2 class="tdv4-section-title">What happens after setup</h2>',
       '<div class="tdv4-list">',

@@ -6,6 +6,7 @@ function createAdminRuntimeConfigGetRouteHandler(deps) {
     resolveScopedTenantId,
     getAuthTenantId,
     asInt,
+    listServerConfigJobs,
     listServerConfigBackups,
     getServerConfigCategory,
     getServerConfigWorkspace,
@@ -22,6 +23,30 @@ function createAdminRuntimeConfigGetRouteHandler(deps) {
       urlObj,
       pathname,
     } = context;
+
+    const serverConfigJobsMatch = pathname.match(/^\/admin\/api\/platform\/servers\/([^/]+)\/config\/jobs$/);
+    if (serverConfigJobsMatch) {
+      const auth = ensureRole(req, urlObj, 'mod', res);
+      if (!auth) return true;
+      const requestedTenantId = requiredString(urlObj.searchParams.get('tenantId'));
+      const tenantId = resolveScopedTenantId(req, res, auth, requestedTenantId || getAuthTenantId(auth), {
+        required: true,
+      });
+      if (!tenantId) return true;
+      sendJson(res, 200, {
+        ok: true,
+        data: await listServerConfigJobs({
+          tenantId,
+          serverId: serverConfigJobsMatch[1],
+          jobId: requiredString(urlObj.searchParams.get('jobId')),
+          status: requiredString(urlObj.searchParams.get('status')),
+          queueStatus: requiredString(urlObj.searchParams.get('queueStatus')),
+          jobType: requiredString(urlObj.searchParams.get('jobType')),
+          limit: asInt(urlObj.searchParams.get('limit'), 20) || 20,
+        }),
+      });
+      return true;
+    }
 
     const serverConfigBackupsMatch = pathname.match(/^\/admin\/api\/platform\/servers\/([^/]+)\/config\/backups$/);
     if (serverConfigBackupsMatch) {

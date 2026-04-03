@@ -103,7 +103,11 @@
 
   function buildSelectedPlayer(state) {
     const players = Array.isArray(state?.players) ? state.players : [];
-    const selected = players[0] || null;
+    const requestedUserId = firstNonEmpty([state?.selectedUserId], '');
+    const selected = players.find((row) => {
+      const rowUserId = firstNonEmpty([row?.discordId, row?.userId, row?.id], '');
+      return requestedUserId && rowUserId === requestedUserId;
+    }) || players[0] || null;
     if (!selected) return null;
 
     const userId = firstNonEmpty([selected?.discordId, selected?.userId, selected?.id]);
@@ -113,6 +117,7 @@
     const lastPurchase = purchases[0] || null;
 
     return {
+      userId,
       name: extractPlayerName(selected),
       discordId: firstNonEmpty([selected?.discordId, selected?.userId, '-']),
       steamId: firstNonEmpty([selected?.steamId, '-']),
@@ -121,6 +126,10 @@
       updatedAt: formatDateTime(selected?.updatedAt || selected?.createdAt),
       linked: Boolean(selected?.steamId || selected?.steam?.id),
       lastPurchase,
+      ordersHref: userId ? `/tenant/orders?userId=${encodeURIComponent(userId)}` : '/tenant/orders',
+      deliveryHref: lastPurchase
+        ? `/tenant/orders?userId=${encodeURIComponent(userId)}&code=${encodeURIComponent(firstNonEmpty([lastPurchase?.code, lastPurchase?.purchaseCode], ''))}`
+        : (userId ? `/tenant/orders?userId=${encodeURIComponent(userId)}` : '/tenant/orders'),
       recentDeliveryIssue: state?.deliveryCase && String(state.deliveryCase?.purchase?.userId || '').trim() === userId
         ? firstNonEmpty([state.deliveryCase?.deadLetter?.reason, state.deliveryCase?.latestCommandSummary, 'Open delivery case'])
         : '',
@@ -170,6 +179,9 @@
         steam: firstNonEmpty([row?.steamId, row?.inGameName, '-']),
         status: playerStatusLabel(row),
         updatedAt: formatDateTime(row?.updatedAt || row?.createdAt),
+        ordersHref: firstNonEmpty([row?.discordId, row?.userId], '')
+          ? `/tenant/orders?userId=${encodeURIComponent(firstNonEmpty([row?.discordId, row?.userId], ''))}`
+          : '/tenant/orders',
       })),
       selected,
       railCards: [
@@ -236,6 +248,7 @@
       `<div>${escapeHtml(row.steam)}</div>`,
       `<div>${renderBadge(row.status, toneForStatus(row.status))}</div>`,
       `<div class="code">${escapeHtml(row.updatedAt)}</div>`,
+      `<div class="tdv4-action-list"><button class="tdv4-button tdv4-button-secondary" type="button" data-tenant-player-select="${escapeHtml(row.discordId)}">Open context</button><a class="tdv4-button tdv4-button-secondary" href="${escapeHtml(row.ordersHref)}">Open orders</a></div>`,
       '</article>',
     ].join('');
   }
@@ -330,7 +343,7 @@
       '<section class="tdv4-panel">',
       '<div class="tdv4-section-kicker">Player registry</div>',
       '<h2 class="tdv4-section-title">Known players</h2>',
-      '<div class="tdv4-data-header"><span>Player</span><span>Discord</span><span>Steam / In-game</span><span>Status</span><span>Updated</span></div>',
+      '<div class="tdv4-data-header"><span>Player</span><span>Discord</span><span>Steam / In-game</span><span>Status</span><span>Updated</span><span>Actions</span></div>',
       '<div class="tdv4-data-table">',
       ...(Array.isArray(safeModel.players) && safeModel.players.length
         ? safeModel.players.map((row) => renderPlayerRow(row, safeModel.selected?.discordId))
@@ -338,7 +351,7 @@
       '</div>',
       '</section>',
       '<section class="tdv4-panel">',
-      '<div class="tdv4-section-kicker">Selected player</div>',
+      '<div class="tdv4-section-kicker">Primary action</div>',
       '<h2 class="tdv4-section-title">Identity and support context</h2>',
       (safeModel.selected
         ? [
@@ -351,13 +364,14 @@
             safeModel.selected.lastPurchase
               ? `<div class="tdv4-kpi-detail">Latest order ${escapeHtml(firstNonEmpty([safeModel.selected.lastPurchase.code, safeModel.selected.lastPurchase.purchaseCode, '-']))} · ${escapeHtml(firstNonEmpty([safeModel.selected.lastPurchase.status, '-']))}</div>`
               : '<div class="tdv4-kpi-detail">No linked order visible for this player yet.</div>',
+            `<div class="tdv4-action-list"><button class="tdv4-button tdv4-button-primary" type="button" data-tenant-player-open-orders="${escapeHtml(safeModel.selected.userId)}">Open order history</button><a class="tdv4-button tdv4-button-secondary" href="${escapeHtml(safeModel.selected.deliveryHref)}">Open delivery case</a></div>`,
             '</div>',
           ].join('')
         : '<div class="tdv4-empty-state">Choose a player from the table first.</div>'),
       '</section>',
       '</section>',
       '<section class="tdv4-panel">',
-      '<div class="tdv4-section-kicker">Support context</div>',
+      '<div class="tdv4-section-kicker">Details / history</div>',
       '<h2 class="tdv4-section-title">Use this page as the support handoff starting point</h2>',
       '<div class="tdv4-support-grid">',
       `<article class="tdv4-mini-stat"><div class="tdv4-mini-stat-label">Discord</div><div class="tdv4-mini-stat-value">${escapeHtml(safeModel.selected ? safeModel.selected.discordId : '-')}</div></article>`,
@@ -367,7 +381,7 @@
       '</div>',
       '</section>',
       '<section class="tdv4-panel tdv4-staff-panel">',
-      '<div class="tdv4-section-kicker">Team access</div>',
+      '<div class="tdv4-section-kicker">Secondary actions</div>',
       '<h2 class="tdv4-section-title">Manage team access from the dedicated team pages</h2>',
       '<p class="tdv4-page-subtitle">Keep this page focused on player support. Open the Staff page to invite users, and open Roles to review permissions.</p>',
       '<div class="tdv4-action-list">',

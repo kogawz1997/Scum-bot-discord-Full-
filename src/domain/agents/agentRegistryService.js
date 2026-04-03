@@ -536,6 +536,48 @@ function createAgentRegistryService(deps = {}) {
     return result;
   }
 
+  async function revokeManagedRuntime(input = {}, actor = 'system') {
+    const scopedTenantId = trimText(input.tenantId, 120);
+    const deviceId = trimText(input.deviceId || input.id, 120);
+    const apiKeyId = trimText(input.apiKeyId, 120);
+    if (!deviceId && !apiKeyId) {
+      return { ok: false, reason: 'invalid-agent-runtime-reference' };
+    }
+
+    let deviceResult = null;
+    if (deviceId) {
+      deviceResult = await revokeManagedAgentDevice({
+        tenantId: scopedTenantId,
+        deviceId,
+        revokeReason: trimText(input.revokeReason, 120) || 'manual-runtime-revoke',
+      }, actor);
+      if (!deviceResult.ok && !apiKeyId) {
+        return deviceResult;
+      }
+    }
+
+    let tokenResult = null;
+    if (apiKeyId && !deviceId) {
+      tokenResult = await revokeAgentToken({
+        tenantId: scopedTenantId,
+        apiKeyId,
+      }, actor);
+      if (!tokenResult.ok) {
+        return tokenResult;
+      }
+    }
+
+    return {
+      ok: true,
+      revoked: {
+        deviceId: deviceId || null,
+        apiKeyId: apiKeyId || null,
+      },
+      device: deviceResult?.device || null,
+      binding: tokenResult?.binding || null,
+    };
+  }
+
   async function registerAgent(input = {}, auth = {}, actor = 'platform-agent') {
     const normalized = normalizeAgentRegistrationInput({
       ...input,
@@ -773,6 +815,7 @@ function createAgentRegistryService(deps = {}) {
     recordSession,
     registerAgent,
     revokeManagedAgentDevice,
+    revokeManagedRuntime,
     revokeProvisioningToken,
     revokeAgentToken,
     rotateAgentToken,

@@ -832,13 +832,13 @@
     return [
       {
         key: 'create-server-bot',
-        label: 'เปิดหน้า Server Bot',
+        label: 'สร้าง Server Bot',
         href: '#server-bots',
         detail: 'สร้างหรือเชื่อมบอทเซิร์ฟเวอร์สำหรับ log การซิงก์ และงานควบคุมเซิร์ฟเวอร์',
       },
       {
         key: 'create-delivery-agent',
-        label: 'เปิดหน้า Delivery Agent',
+        label: 'สร้าง Delivery Agent',
         href: '#delivery-agents',
         detail: 'สร้างหรือเชื่อมตัวส่งของในเกมสำหรับงานส่งของและประกาศสำคัญ',
       },
@@ -850,7 +850,7 @@
       },
       {
         key: 'restart-server',
-        label: 'เปิดหน้าควบคุมการรีสตาร์ต',
+        label: 'รีสตาร์ตเซิร์ฟเวอร์',
         href: '#restart-control',
         detail: nextHref === '#restart-control'
           ? 'เปิดหน้าควบคุมการรีสตาร์ตเพื่อทำขั้นถัดไปให้เสร็จ'

@@ -5,6 +5,11 @@ const { Prisma } = require('@prisma/client');
 
 const { prisma, getTenantScopedPrismaClient } = require('../prisma');
 const { resolveDatabaseRuntime } = require('../utils/dbEngine');
+const {
+  getCompatibilityClientKey,
+  ensureSqliteDateTimeSchemaCompatibility,
+  reconcileSqliteDateColumns,
+} = require('../utils/sqliteDateTimeCompatibility');
 
 function trimText(value, maxLen = 240) {
   const text = String(value || '').trim();
@@ -19,6 +24,10 @@ function createId(prefix = 'bill') {
 
 function createSessionToken(prefix = 'chk') {
   return `${prefix}_${crypto.randomBytes(12).toString('hex')}.${crypto.randomBytes(20).toString('hex')}`;
+}
+
+function createStableHash(value) {
+  return crypto.createHash('sha256').update(String(value || ''), 'utf8').digest('hex');
 }
 
 function normalizeCurrency(value) {
@@ -47,7 +56,8 @@ function normalizePaymentStatus(value, fallback = 'pending') {
 
 function normalizeSubscriptionStatus(value, fallback = 'active') {
   const normalized = trimText(value, 40).toLowerCase();
-  return ['active', 'trialing', 'pending', 'past_due', 'canceled', 'expired'].includes(normalized)
+  if (normalized === 'trial') return 'trialing';
+  return ['active', 'trialing', 'pending', 'past_due', 'suspended', 'canceled', 'expired'].includes(normalized)
     ? normalized
     : fallback;
 }
@@ -349,6 +359,57 @@ function buildCheckoutSession(attempt, invoice = null) {
   };
 }
 
+function resolveCheckoutIdempotencyKey(input = {}) {
+  return trimText(
+    input.idempotencyKey
+      || input?.metadata?.idempotencyKey,
+    200,
+  ) || null;
+}
+
+function buildCheckoutFingerprint(input = {}) {
+  return createStableHash(JSON.stringify({
+    tenantId: trimText(input.tenantId, 160) || null,
+    subscriptionId: trimText(input.subscriptionId, 160) || null,
+    customerId: trimText(input.customerId, 160) || null,
+    invoiceId: trimText(input.invoiceId, 160) || null,
+    planId: trimText(input.planId, 120) || null,
+    packageId: trimText(input.packageId, 120) || null,
+    billingCycle: normalizeBillingCycle(input.billingCycle),
+    amountCents: asInt(input.amountCents, 0, 0),
+    currency: normalizeCurrency(input.currency),
+    provider: normalizeProvider(input.provider || getConfiguredBillingProvider()),
+  }));
+}
+
+function canReuseCheckoutAttempt(attempt, invoice = null) {
+  const status = normalizePaymentStatus(attempt?.status, '');
+  if (!['pending', 'requires_action', 'processing'].includes(status)) {
+    return false;
+  }
+  const metadata = parseJsonObject(attempt?.metadata || attempt?.metadataJson);
+  if (metadata.checkoutSession !== true) return false;
+  const expiresAt = parseDate(metadata.expiresAt);
+  if (expiresAt && expiresAt.getTime() <= Date.now()) return false;
+  const invoiceStatus = normalizeInvoiceStatus(invoice?.status, 'open');
+  if (['paid', 'void', 'canceled', 'refunded'].includes(invoiceStatus)) {
+    return false;
+  }
+  return true;
+}
+
+function matchesCheckoutShape(metadata = {}, input = {}) {
+  return (
+    trimText(metadata.subscriptionId, 160) === (trimText(input.subscriptionId, 160) || null)
+    && trimText(metadata.customerId, 160) === (trimText(input.customerId, 160) || null)
+    && trimText(metadata.planId, 120) === (trimText(input.planId, 120) || null)
+    && trimText(metadata.packageId, 120) === (trimText(input.packageId, 120) || null)
+    && normalizeBillingCycle(metadata.billingCycle) === normalizeBillingCycle(input.billingCycle)
+    && asInt(metadata.targetAmountCents, 0, 0) === asInt(input.amountCents, 0, 0)
+    && normalizeCurrency(metadata.currency || input.currency) === normalizeCurrency(input.currency)
+  );
+}
+
 function getBillingCustomerDelegate(client = null) {
   const delegate = client && typeof client === 'object' ? client.platformBillingCustomer : null;
   if (!delegate || typeof delegate.findUnique !== 'function' || typeof delegate.create !== 'function') {
@@ -403,18 +464,187 @@ function getBillingDelegatesOrThrow(client = null) {
   throw new Error('platform-billing-lifecycle-delegates-unavailable');
 }
 
-function getBillingPersistenceMode() {
+function isSharedBillingPrismaClient(client = null) {
+  if (!client || !prisma) return false;
+  if (client === prisma) return true;
+  const clientOriginal = client && typeof client === 'object' ? client._originalClient : null;
+  const sharedOriginal = prisma && typeof prisma === 'object' ? prisma._originalClient : null;
+  return Boolean(clientOriginal && sharedOriginal && clientOriginal === sharedOriginal);
+}
+
+const sharedBillingSqliteCompatibilityReady = new WeakSet();
+const BILLING_SQLITE_COMPATIBILITY_TABLES = [
+  {
+    tableName: 'platform_billing_customers',
+    columns: ['id', 'tenantId', 'userId', 'email', 'displayName', 'externalRef', 'status', 'metadataJson', 'createdAt', 'updatedAt'],
+    dateColumns: ['createdAt', 'updatedAt'],
+    createTableSql: `
+      CREATE TABLE "platform_billing_customers" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "tenantId" TEXT NOT NULL,
+        "userId" TEXT,
+        "email" TEXT,
+        "displayName" TEXT,
+        "externalRef" TEXT,
+        "status" TEXT NOT NULL DEFAULT 'active',
+        "metadataJson" TEXT,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `,
+    indexSql: [
+      'CREATE UNIQUE INDEX "platform_billing_customers_tenantId_key" ON "platform_billing_customers"("tenantId");',
+      'CREATE INDEX "platform_billing_customers_status_updatedAt_idx" ON "platform_billing_customers"("status", "updatedAt");',
+      'CREATE INDEX "platform_billing_customers_userId_updatedAt_idx" ON "platform_billing_customers"("userId", "updatedAt");',
+    ],
+  },
+  {
+    tableName: 'platform_billing_invoices',
+    columns: ['id', 'tenantId', 'subscriptionId', 'customerId', 'status', 'currency', 'amountCents', 'dueAt', 'paidAt', 'externalRef', 'metadataJson', 'createdAt', 'updatedAt'],
+    dateColumns: ['dueAt', 'paidAt', 'createdAt', 'updatedAt'],
+    createTableSql: `
+      CREATE TABLE "platform_billing_invoices" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "tenantId" TEXT NOT NULL,
+        "subscriptionId" TEXT,
+        "customerId" TEXT,
+        "status" TEXT NOT NULL DEFAULT 'draft',
+        "currency" TEXT NOT NULL DEFAULT 'THB',
+        "amountCents" INTEGER NOT NULL DEFAULT 0,
+        "dueAt" DATETIME,
+        "paidAt" DATETIME,
+        "externalRef" TEXT,
+        "metadataJson" TEXT,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `,
+    indexSql: [
+      'CREATE INDEX "platform_billing_invoices_tenant_createdAt_idx" ON "platform_billing_invoices"("tenantId", "createdAt");',
+      'CREATE INDEX "platform_billing_invoices_subscription_status_updatedAt_idx" ON "platform_billing_invoices"("subscriptionId", "status", "updatedAt");',
+      'CREATE INDEX "platform_billing_invoices_customer_status_updatedAt_idx" ON "platform_billing_invoices"("customerId", "status", "updatedAt");',
+    ],
+  },
+  {
+    tableName: 'platform_billing_payment_attempts',
+    columns: ['id', 'invoiceId', 'tenantId', 'provider', 'status', 'amountCents', 'currency', 'externalRef', 'errorCode', 'errorDetail', 'attemptedAt', 'completedAt', 'metadataJson', 'createdAt', 'updatedAt'],
+    dateColumns: ['attemptedAt', 'completedAt', 'createdAt', 'updatedAt'],
+    createTableSql: `
+      CREATE TABLE "platform_billing_payment_attempts" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "invoiceId" TEXT,
+        "tenantId" TEXT NOT NULL,
+        "provider" TEXT NOT NULL,
+        "status" TEXT NOT NULL DEFAULT 'pending',
+        "amountCents" INTEGER NOT NULL DEFAULT 0,
+        "currency" TEXT NOT NULL DEFAULT 'THB',
+        "externalRef" TEXT,
+        "errorCode" TEXT,
+        "errorDetail" TEXT,
+        "attemptedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "completedAt" DATETIME,
+        "metadataJson" TEXT,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `,
+    indexSql: [
+      'CREATE INDEX "platform_billing_payment_attempts_tenant_attemptedAt_idx" ON "platform_billing_payment_attempts"("tenantId", "attemptedAt");',
+      'CREATE INDEX "platform_billing_payment_attempts_invoice_status_attemptedAt_idx" ON "platform_billing_payment_attempts"("invoiceId", "status", "attemptedAt");',
+      'CREATE INDEX "platform_billing_payment_attempts_provider_status_attemptedAt_idx" ON "platform_billing_payment_attempts"("provider", "status", "attemptedAt");',
+    ],
+  },
+  {
+    tableName: 'platform_subscription_events',
+    columns: ['id', 'tenantId', 'subscriptionId', 'eventType', 'billingStatus', 'actor', 'payloadJson', 'occurredAt', 'createdAt', 'updatedAt'],
+    dateColumns: ['occurredAt', 'createdAt', 'updatedAt'],
+    createTableSql: `
+      CREATE TABLE "platform_subscription_events" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "tenantId" TEXT NOT NULL,
+        "subscriptionId" TEXT NOT NULL,
+        "eventType" TEXT NOT NULL,
+        "billingStatus" TEXT,
+        "actor" TEXT,
+        "payloadJson" TEXT,
+        "occurredAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `,
+    indexSql: [
+      'CREATE INDEX "platform_subscription_events_tenant_occurredAt_idx" ON "platform_subscription_events"("tenantId", "occurredAt");',
+      'CREATE INDEX "platform_subscription_events_subscription_occurredAt_idx" ON "platform_subscription_events"("subscriptionId", "occurredAt");',
+      'CREATE INDEX "platform_subscription_events_type_occurredAt_idx" ON "platform_subscription_events"("eventType", "occurredAt");',
+    ],
+  },
+];
+
+function hasSharedBillingSqliteCompatibility(client = null) {
+  const key = getCompatibilityClientKey(client);
+  return Boolean(key && sharedBillingSqliteCompatibilityReady.has(key));
+}
+
+async function ensureSharedBillingSqliteCompatibility(client = prisma) {
+  const runtime = resolveDatabaseRuntime();
+  if (!runtime.isSqlite) return { ok: false, reason: 'runtime-not-sqlite' };
+  if (!isSharedBillingPrismaClient(client) || !getBillingDelegates(client)) {
+    return { ok: false, reason: 'shared-billing-client-unavailable' };
+  }
+  const key = getCompatibilityClientKey(client);
+  if (key && sharedBillingSqliteCompatibilityReady.has(key)) {
+    return { ok: true, reused: true, tables: [] };
+  }
+
+  if (runtime.filePath) {
+    ensureSqliteDateTimeSchemaCompatibility(runtime.filePath, BILLING_SQLITE_COMPATIBILITY_TABLES);
+  }
+
+  const tables = [];
+  tables.push(await reconcileSqliteDateColumns(client, {
+    tableName: 'platform_billing_customers',
+    idColumn: 'id',
+    dateColumns: ['createdAt', 'updatedAt'],
+  }));
+  tables.push(await reconcileSqliteDateColumns(client, {
+    tableName: 'platform_billing_invoices',
+    idColumn: 'id',
+    dateColumns: ['dueAt', 'paidAt', 'createdAt', 'updatedAt'],
+  }));
+  tables.push(await reconcileSqliteDateColumns(client, {
+    tableName: 'platform_billing_payment_attempts',
+    idColumn: 'id',
+    dateColumns: ['attemptedAt', 'completedAt', 'createdAt', 'updatedAt'],
+  }));
+  tables.push(await reconcileSqliteDateColumns(client, {
+    tableName: 'platform_subscription_events',
+    idColumn: 'id',
+    dateColumns: ['occurredAt', 'createdAt', 'updatedAt'],
+  }));
+
+  if (key) {
+    sharedBillingSqliteCompatibilityReady.add(key);
+  }
+  return { ok: true, reused: false, tables };
+}
+
+function getBillingPersistenceMode(client = null) {
+  if (client && getBillingDelegates(client)) {
+    if (!isSharedBillingPrismaClient(client)) return 'prisma';
+    if (hasSharedBillingSqliteCompatibility(client)) return 'prisma';
+  }
   const runtime = resolveDatabaseRuntime();
   return runtime.isServerEngine ? 'prisma' : 'sql';
 }
 
 async function ensurePlatformBillingLifecycleTables(db = prisma) {
-  if (getBillingPersistenceMode() !== 'prisma') return;
+  await ensureSharedBillingSqliteCompatibility(db).catch(() => null);
+  if (getBillingPersistenceMode(db) !== 'prisma') return;
   getBillingDelegatesOrThrow(db);
 }
 
 async function getCustomerRowByTenantRaw(db, tenantId) {
-  if (getBillingPersistenceMode() !== 'prisma') {
+  if (getBillingPersistenceMode(db) !== 'prisma') {
     const rows = await db.$queryRaw`
       SELECT id, tenantId, userId, email, displayName, externalRef, status, metadataJson, createdAt, updatedAt
       FROM platform_billing_customers
@@ -431,7 +661,7 @@ async function getCustomerRowByTenantRaw(db, tenantId) {
 }
 
 async function getInvoiceRowByIdRaw(db, invoiceId) {
-  if (getBillingPersistenceMode() !== 'prisma') {
+  if (getBillingPersistenceMode(db) !== 'prisma') {
     const rows = await db.$queryRaw`
       SELECT id, tenantId, subscriptionId, customerId, status, currency, amountCents, dueAt, paidAt, externalRef, metadataJson, createdAt, updatedAt
       FROM platform_billing_invoices
@@ -448,7 +678,7 @@ async function getInvoiceRowByIdRaw(db, invoiceId) {
 }
 
 async function getPaymentAttemptRowByIdRaw(db, attemptId) {
-  if (getBillingPersistenceMode() !== 'prisma') {
+  if (getBillingPersistenceMode(db) !== 'prisma') {
     const rows = await db.$queryRaw`
       SELECT id, invoiceId, tenantId, provider, status, amountCents, currency, externalRef, errorCode, errorDetail, attemptedAt, completedAt, metadataJson, createdAt, updatedAt
       FROM platform_billing_payment_attempts
@@ -465,7 +695,7 @@ async function getPaymentAttemptRowByIdRaw(db, attemptId) {
 }
 
 async function getPaymentAttemptRowByExternalRefRaw(db, externalRef) {
-  if (getBillingPersistenceMode() !== 'prisma') {
+  if (getBillingPersistenceMode(db) !== 'prisma') {
     const rows = await db.$queryRaw`
       SELECT id, invoiceId, tenantId, provider, status, amountCents, currency, externalRef, errorCode, errorDetail, attemptedAt, completedAt, metadataJson, createdAt, updatedAt
       FROM platform_billing_payment_attempts
@@ -489,7 +719,7 @@ async function listBillingInvoices(options = {}, db = prisma) {
   const limit = Math.max(1, Math.min(500, asInt(options.limit, 50, 1)));
   const scopedDb = getScopedBillingDb(tenantId, db);
   await ensurePlatformBillingLifecycleTables(scopedDb);
-  if (getBillingPersistenceMode() !== 'prisma') {
+  if (getBillingPersistenceMode(scopedDb) !== 'prisma') {
     const filters = [];
     if (tenantId) filters.push(Prisma.sql`tenantId = ${tenantId}`);
     if (status) filters.push(Prisma.sql`status = ${status}`);
@@ -524,18 +754,14 @@ async function listBillingPaymentAttempts(options = {}, db = prisma) {
   const limit = Math.max(1, Math.min(500, asInt(options.limit, 50, 1)));
   const scopedDb = getScopedBillingDb(tenantId, db);
   await ensurePlatformBillingLifecycleTables(scopedDb);
-  if (getBillingPersistenceMode() !== 'prisma') {
-    const filters = [];
-    if (tenantId) filters.push(Prisma.sql`tenantId = ${tenantId}`);
-    if (status) filters.push(Prisma.sql`status = ${status}`);
-    if (provider) filters.push(Prisma.sql`provider = ${provider}`);
-    const whereSql = filters.length > 0
-      ? Prisma.sql`WHERE ${Prisma.join(filters, Prisma.sql` AND `)}`
-      : Prisma.empty;
+  if (getBillingPersistenceMode(scopedDb) !== 'prisma') {
     const rows = await scopedDb.$queryRaw(Prisma.sql`
       SELECT id, invoiceId, tenantId, provider, status, amountCents, currency, externalRef, errorCode, errorDetail, attemptedAt, completedAt, metadataJson, createdAt, updatedAt
       FROM platform_billing_payment_attempts
-      ${whereSql}
+      ${tenantId || status || provider ? Prisma.sql`WHERE 1 = 1` : Prisma.empty}
+      ${tenantId ? Prisma.sql`AND tenantId = ${tenantId}` : Prisma.empty}
+      ${status ? Prisma.sql`AND status = ${status}` : Prisma.empty}
+      ${provider ? Prisma.sql`AND provider = ${provider}` : Prisma.empty}
       ORDER BY updatedAt DESC, createdAt DESC
       LIMIT ${limit}
     `);
@@ -571,8 +797,22 @@ function getBillingProviderConfigSummary() {
   };
 }
 
+function normalizeDedupeKey(value) {
+  return trimText(value, 240) || null;
+}
+
+function escapeSqlLikePattern(value) {
+  return String(value || '').replace(/[\\%_]/g, '\\$&');
+}
+
+function buildSubscriptionEventDedupeNeedle(dedupeKey) {
+  const normalized = normalizeDedupeKey(dedupeKey);
+  if (!normalized) return null;
+  return `"dedupeKey":"${normalized.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
 async function getSubscriptionEventRowByIdRaw(db, eventId) {
-  if (getBillingPersistenceMode() !== 'prisma') {
+  if (getBillingPersistenceMode(db) !== 'prisma') {
     const rows = await db.$queryRaw`
       SELECT id, tenantId, subscriptionId, eventType, billingStatus, actor, payloadJson, occurredAt, createdAt, updatedAt
       FROM platform_subscription_events
@@ -588,12 +828,50 @@ async function getSubscriptionEventRowByIdRaw(db, eventId) {
   return normalizeSubscriptionEventRow(row);
 }
 
+async function findSubscriptionEventByDedupeKey(db, tenantId, subscriptionId, dedupeKey) {
+  const normalizedTenantId = trimText(tenantId, 160);
+  const normalizedSubscriptionId = trimText(subscriptionId, 160);
+  const normalizedDedupeKey = normalizeDedupeKey(dedupeKey);
+  const dedupeNeedle = buildSubscriptionEventDedupeNeedle(normalizedDedupeKey);
+  if (!normalizedTenantId || !normalizedSubscriptionId || !normalizedDedupeKey || !dedupeNeedle) {
+    return null;
+  }
+  if (getBillingPersistenceMode(db) !== 'prisma') {
+    const likePattern = `%${escapeSqlLikePattern(dedupeNeedle)}%`;
+    const rows = await db.$queryRaw`
+      SELECT id, tenantId, subscriptionId, eventType, billingStatus, actor, payloadJson, occurredAt, createdAt, updatedAt
+      FROM platform_subscription_events
+      WHERE tenantId = ${normalizedTenantId}
+        AND subscriptionId = ${normalizedSubscriptionId}
+        AND payloadJson LIKE ${likePattern} ESCAPE '\\'
+      ORDER BY occurredAt DESC, createdAt DESC
+      LIMIT 1
+    `;
+    return normalizeSubscriptionEventRow(Array.isArray(rows) ? rows[0] : null);
+  }
+  const { subscriptionEvent } = getBillingDelegatesOrThrow(db);
+  const row = await subscriptionEvent.findFirst({
+    where: {
+      tenantId: normalizedTenantId,
+      subscriptionId: normalizedSubscriptionId,
+      payloadJson: {
+        contains: dedupeNeedle,
+      },
+    },
+    orderBy: [
+      { occurredAt: 'desc' },
+      { createdAt: 'desc' },
+    ],
+  }).catch(() => null);
+  return normalizeSubscriptionEventRow(row);
+}
+
 async function ensureBillingCustomer(input = {}, db = prisma) {
   const tenantId = trimText(input.tenantId, 160);
   if (!tenantId) return { ok: false, reason: 'tenant-required' };
   const scopedDb = getScopedBillingDb(tenantId, db);
   await ensurePlatformBillingLifecycleTables(scopedDb);
-  if (getBillingPersistenceMode() !== 'prisma') {
+  if (getBillingPersistenceMode(scopedDb) !== 'prisma') {
     const existing = await getCustomerRowByTenantRaw(scopedDb, tenantId);
     const nextId = existing?.id || trimText(input.id, 160) || createId('cust');
     const metadataJson = buildJson(mergeMeta(existing?.metadata, input.metadata));
@@ -681,12 +959,53 @@ async function findPaymentAttemptByExternalRef(db, externalRef) {
   return getPaymentAttemptRowByExternalRefRaw(db, ref);
 }
 
+async function findReusableCheckoutSession(input = {}, db = prisma) {
+  const tenantId = trimText(input.tenantId, 160);
+  if (!tenantId) return null;
+  const scopedDb = getScopedBillingDb(tenantId, db);
+  const provider = normalizeProvider(input.provider || getConfiguredBillingProvider());
+  const targetInvoiceId = trimText(input.invoiceId, 160) || null;
+  const idempotencyKey = resolveCheckoutIdempotencyKey(input);
+  const checkoutFingerprint = buildCheckoutFingerprint({
+    ...input,
+    tenantId,
+    provider,
+  });
+  const attempts = await listBillingPaymentAttempts({
+    tenantId,
+    limit: 40,
+  }, scopedDb).catch(() => []);
+
+  for (const attempt of Array.isArray(attempts) ? attempts : []) {
+    if (normalizeProvider(attempt?.provider) !== provider) continue;
+    const metadata = parseJsonObject(attempt?.metadata || attempt?.metadataJson);
+    const invoice = attempt?.invoiceId
+      ? await findInvoiceById(scopedDb, attempt.invoiceId).catch(() => null)
+      : null;
+    if (!canReuseCheckoutAttempt(attempt, invoice)) continue;
+    const matchesInvoice = targetInvoiceId && trimText(attempt?.invoiceId, 160) === targetInvoiceId;
+    const matchesIdempotencyKey =
+      idempotencyKey
+      && trimText(metadata.idempotencyKey, 200) === idempotencyKey;
+    const matchesFingerprint =
+      trimText(metadata.checkoutFingerprint, 120) === checkoutFingerprint;
+    const matchesShape = matchesCheckoutShape(metadata, input);
+    if (!matchesInvoice && !matchesIdempotencyKey && !matchesFingerprint && !matchesShape) continue;
+    return {
+      invoice,
+      attempt,
+      session: buildCheckoutSession(attempt, invoice),
+    };
+  }
+  return null;
+}
+
 async function createInvoiceDraft(input = {}, db = prisma) {
   const tenantId = trimText(input.tenantId, 160);
   if (!tenantId) return { ok: false, reason: 'tenant-required' };
   const scopedDb = getScopedBillingDb(tenantId, db);
   await ensurePlatformBillingLifecycleTables(scopedDb);
-  if (getBillingPersistenceMode() !== 'prisma') {
+  if (getBillingPersistenceMode(scopedDb) !== 'prisma') {
     const invoiceId = trimText(input.id, 160) || createId('inv');
     const now = new Date().toISOString();
     await scopedDb.$executeRaw`
@@ -746,7 +1065,7 @@ async function updateInvoiceStatus(input = {}, db = prisma) {
     : parseDate(input.paidAt) || (nextStatus === 'paid' ? new Date() : parseDate(existing.paidAt));
   const externalRef = trimText(input.externalRef, 200) || existing.externalRef || null;
   const mergedMetadata = mergeMeta(existing.metadata, input.metadata);
-  if (getBillingPersistenceMode() !== 'prisma') {
+  if (getBillingPersistenceMode(scopedDb) !== 'prisma') {
     await scopedDb.$executeRaw`
       UPDATE platform_billing_invoices
       SET
@@ -897,7 +1216,7 @@ async function recordPaymentAttempt(input = {}, db = prisma) {
   if (!tenantId) return { ok: false, reason: 'tenant-required' };
   const scopedDb = getScopedBillingDb(tenantId, db);
   await ensurePlatformBillingLifecycleTables(scopedDb);
-  if (getBillingPersistenceMode() !== 'prisma') {
+  if (getBillingPersistenceMode(scopedDb) !== 'prisma') {
     const attemptId = trimText(input.id, 160) || createId('pay');
     const now = new Date().toISOString();
     await scopedDb.$executeRaw`
@@ -963,7 +1282,7 @@ async function updatePaymentAttempt(input = {}, db = prisma) {
   const errorCode = trimText(input.errorCode, 120) || null;
   const errorDetail = trimText(input.errorDetail, 600) || null;
   const mergedMetadata = mergeMeta(existing.metadata, input.metadata);
-  if (getBillingPersistenceMode() !== 'prisma') {
+  if (getBillingPersistenceMode(scopedDb) !== 'prisma') {
     await scopedDb.$executeRaw`
       UPDATE platform_billing_payment_attempts
       SET
@@ -1129,7 +1448,23 @@ async function recordSubscriptionEvent(input = {}, db = prisma) {
   if (!tenantId || !subscriptionId) return { ok: false, reason: 'subscription-event-invalid' };
   const scopedDb = getScopedBillingDb(tenantId, db);
   await ensurePlatformBillingLifecycleTables(scopedDb);
-  if (getBillingPersistenceMode() !== 'prisma') {
+  const payload = input.payload && typeof input.payload === 'object' && !Array.isArray(input.payload)
+    ? { ...input.payload }
+    : {};
+  const dedupeKey = normalizeDedupeKey(input.dedupeKey || payload.dedupeKey);
+  if (dedupeKey) {
+    payload.dedupeKey = dedupeKey;
+    const existingEvent = await findSubscriptionEventByDedupeKey(
+      scopedDb,
+      tenantId,
+      subscriptionId,
+      dedupeKey,
+    ).catch(() => null);
+    if (existingEvent) {
+      return { ok: true, reused: true, event: existingEvent };
+    }
+  }
+  if (getBillingPersistenceMode(scopedDb) !== 'prisma') {
     const eventId = trimText(input.id, 160) || createId('subevt');
     const now = new Date().toISOString();
     await scopedDb.$executeRaw`
@@ -1143,7 +1478,7 @@ async function recordSubscriptionEvent(input = {}, db = prisma) {
         ${trimText(input.eventType, 120) || 'subscription.updated'},
         ${trimText(input.billingStatus, 40) || null},
         ${trimText(input.actor, 200) || null},
-        ${buildJson(input.payload)},
+        ${buildJson(payload)},
         ${toIso(input.occurredAt) || now},
         ${now},
         ${now}
@@ -1162,7 +1497,7 @@ async function recordSubscriptionEvent(input = {}, db = prisma) {
       eventType: trimText(input.eventType, 120) || 'subscription.updated',
       billingStatus: trimText(input.billingStatus, 40) || null,
       actor: trimText(input.actor, 200) || null,
-      payloadJson: buildJson(input.payload),
+      payloadJson: buildJson(payload),
       occurredAt: parseDate(input.occurredAt) || now,
       createdAt: now,
       updatedAt: now,
@@ -1195,7 +1530,7 @@ async function updateSubscriptionBillingState(input = {}, db = prisma) {
     ? (input.renewsAt === null ? null : parseDate(input.renewsAt) || currentRenewsAt)
     : (
       nextStatus === 'active'
-      && ['canceled', 'past_due', 'expired'].includes(normalizeSubscriptionStatus(existing.status, 'active'))
+      && ['canceled', 'past_due', 'suspended', 'expired'].includes(normalizeSubscriptionStatus(existing.status, 'active'))
       && (!currentRenewsAt || currentRenewsAt.getTime() <= now.getTime())
         ? (() => {
           const renewDays = resolveBillingCycleDays(nextBillingCycle);
@@ -1206,7 +1541,19 @@ async function updateSubscriptionBillingState(input = {}, db = prisma) {
   const nextCanceledAt = hasOwn(input, 'canceledAt')
     ? (input.canceledAt === null ? null : parseDate(input.canceledAt) || currentCanceledAt)
     : (nextStatus === 'canceled' ? currentCanceledAt || now : null);
-  const nextMetadataJson = buildJson(mergeMeta(existing.metadataJson, input.metadata));
+  const previousStatus = normalizeSubscriptionStatus(existing.status, 'active');
+  const nextMetadata = mergeMeta(existing.metadataJson, input.metadata);
+  nextMetadata.currentPeriodStart = (
+    nextStatus === 'active' && previousStatus !== 'active'
+      ? now
+      : parseDate(nextMetadata.currentPeriodStart) || parseDate(existing.startedAt) || now
+  ).toISOString();
+  nextMetadata.currentPeriodEnd = toIso(nextRenewsAt);
+  nextMetadata.trialEndsAt = nextBillingCycle === 'trial' || nextStatus === 'trialing'
+    ? toIso(nextRenewsAt)
+    : null;
+  nextMetadata.billingCycle = nextBillingCycle;
+  const nextMetadataJson = buildJson(nextMetadata);
   const row = await scopedDb.platformSubscription.update({
     where: { id: existing.id },
     data: {
@@ -1223,11 +1570,14 @@ async function updateSubscriptionBillingState(input = {}, db = prisma) {
   });
   let event = null;
   if (input.recordEvent !== false) {
-    const previousStatus = normalizeSubscriptionStatus(existing.status, 'active');
     const eventType = nextStatus === 'canceled' && previousStatus !== 'canceled'
       ? 'subscription.canceled'
       : previousStatus === 'canceled' && nextStatus === 'active'
         ? 'subscription.reactivated'
+        : nextStatus === 'suspended' && previousStatus !== 'suspended'
+          ? 'subscription.suspended'
+          : previousStatus === 'suspended' && nextStatus === 'active'
+            ? 'subscription.reactivated'
         : previousStatus === 'past_due' && nextStatus === 'active'
           ? 'subscription.recovered'
           : nextStatus === 'past_due' && previousStatus !== 'past_due'
@@ -1327,6 +1677,27 @@ async function createCheckoutSession(input = {}, db = prisma) {
   if (!tenantId) return { ok: false, reason: 'tenant-required' };
   const scopedDb = getScopedBillingDb(tenantId, db);
   await ensurePlatformBillingLifecycleTables(scopedDb);
+  const provider = normalizeProvider(input.provider || getConfiguredBillingProvider());
+  const idempotencyKey = resolveCheckoutIdempotencyKey(input);
+  const checkoutFingerprint = buildCheckoutFingerprint({
+    ...input,
+    tenantId,
+    provider,
+  });
+  const existingSession = await findReusableCheckoutSession({
+    ...input,
+    tenantId,
+    provider,
+    idempotencyKey,
+  }, scopedDb);
+  if (existingSession?.session) {
+    return {
+      ok: true,
+      reused: true,
+      session: existingSession.session,
+      invoice: existingSession.invoice || null,
+    };
+  }
   let invoice = input.invoiceId ? await findInvoiceById(scopedDb, input.invoiceId) : null;
   if (!invoice) {
     const created = await createInvoiceDraft({
@@ -1347,7 +1718,6 @@ async function createCheckoutSession(input = {}, db = prisma) {
     if (!created?.ok) return { ok: false, reason: 'invoice-create-failed' };
     invoice = created.invoice;
   }
-  const provider = normalizeProvider(input.provider || getConfiguredBillingProvider());
   const customer = await getCustomerRowByTenantRaw(scopedDb, tenantId).catch(() => null);
   const sessionToken = trimText(input.sessionToken, 200) || createSessionToken('chk');
   const providerSession = provider === 'stripe'
@@ -1394,6 +1764,8 @@ async function createCheckoutSession(input = {}, db = prisma) {
     customerId: invoice.customerId || trimText(input.customerId, 160) || null,
     provider,
     providerSessionId: trimText(providerSession?.providerSessionId, 200) || null,
+    idempotencyKey,
+    checkoutFingerprint,
     planId: trimText(input.planId, 120) || null,
     packageId: trimText(input.packageId, 120) || null,
     billingCycle: normalizeBillingCycle(input.billingCycle),
@@ -1492,6 +1864,26 @@ async function processBillingWebhookEvent(input = {}, db = prisma) {
     }, scopedDb).catch(() => null);
   }
   const subscriptionId = trimText(input.subscriptionId || payload.subscriptionId || stripeMetadata.subscriptionId || invoice.subscriptionId, 160) || null;
+  const providerEventId = trimText(input.eventId || payload.id, 200) || null;
+  const webhookDedupeKey = providerEventId ? `webhook:${provider}:${providerEventId}` : null;
+  if (subscriptionId && webhookDedupeKey) {
+    const existingEvent = await findSubscriptionEventByDedupeKey(
+      scopedDb,
+      invoice.tenantId,
+      subscriptionId,
+      webhookDedupeKey,
+    ).catch(() => null);
+    if (existingEvent) {
+      return {
+        ok: true,
+        reused: true,
+        invoice,
+        attempt: existingAttempt || null,
+        subscription: await findTenantSubscription(scopedDb, invoice.tenantId, subscriptionId).catch(() => null),
+        event: existingEvent,
+      };
+    }
+  }
   let invoiceStatus = invoice.status;
   let paymentStatus = existingAttempt?.status || 'pending';
   let subscriptionPatch = null;
@@ -1599,7 +1991,14 @@ async function processBillingWebhookEvent(input = {}, db = prisma) {
       eventType: eventType || 'billing.webhook',
       billingStatus: subscriptionPatch?.status || invoiceStatus,
       actor: trimText(input.actor, 200) || 'billing-webhook',
-      payload: { invoiceId: invoice.id, provider, externalRef, webhookPayload: payload },
+      dedupeKey: webhookDedupeKey,
+      payload: {
+        invoiceId: invoice.id,
+        provider,
+        externalRef,
+        providerEventId,
+        webhookPayload: payload,
+      },
     }, scopedDb).catch(() => null)
     : null;
 

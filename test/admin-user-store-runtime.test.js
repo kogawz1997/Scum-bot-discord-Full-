@@ -96,6 +96,66 @@ function createMockPrisma() {
   };
 }
 
+function createPrismaClientLikeFallbackHarness(options = {}) {
+  let rawUnsafeCalls = 0;
+  let rawInsertCalls = 0;
+  let rawQueryCalls = 0;
+  const legacyRows = Array.isArray(options.legacyRows) ? options.legacyRows : [];
+  const delegateError = options.delegateError || (() => {
+    const error = new Error('no such table: admin_web_users');
+    error.code = 'P2021';
+    return error;
+  })();
+
+  return {
+    prisma: {
+      adminWebUser: {
+        async upsert() {
+          throw delegateError;
+        },
+        async findMany() {
+          throw delegateError;
+        },
+        async findUnique() {
+          throw delegateError;
+        },
+        async count() {
+          throw delegateError;
+        },
+        async create() {
+          throw delegateError;
+        },
+        async update() {
+          throw delegateError;
+        },
+      },
+      async $executeRawUnsafe() {
+        rawUnsafeCalls += 1;
+        return [];
+      },
+      async $executeRaw() {
+        rawInsertCalls += 1;
+        return [];
+      },
+      async $queryRaw() {
+        rawQueryCalls += 1;
+        return legacyRows;
+      },
+      async $transaction(work) {
+        return work(this);
+      },
+      async $disconnect() {},
+    },
+    getSnapshot() {
+      return {
+        rawUnsafeCalls,
+        rawInsertCalls,
+        rawQueryCalls,
+      };
+    },
+  };
+}
+
 function normalizeRole(value) {
   const role = String(value || '').trim().toLowerCase();
   return ['owner', 'admin', 'mod'].includes(role) ? role : 'mod';
@@ -132,7 +192,7 @@ test('admin user store seeds and authenticates through Prisma delegate when avai
   assert.equal(auth?.role, 'owner');
   assert.equal(snapshot.rawInsertCalls, 0);
   assert.equal(snapshot.rawQueryCalls, 0);
-  assert.ok(snapshot.rawUnsafeCalls >= 1);
+  assert.equal(snapshot.rawUnsafeCalls, 0);
 });
 
 test('admin user store updates existing admin users through Prisma delegate', async () => {
@@ -211,6 +271,165 @@ test('admin user store falls back to env-backed users when prisma is unavailable
   assert.equal(users[0].role, 'owner');
   assert.equal(auth?.username, 'env_owner');
   assert.equal(auth?.role, 'owner');
+});
+
+test('admin user store bootstraps legacy table path only when delegate persistence falls back', async () => {
+  let rawUnsafeCalls = 0;
+  let rawInsertCalls = 0;
+  const runtime = createAdminUserStoreRuntime({
+    prisma: {
+      adminWebUser: {
+        async upsert() {
+          const error = new Error('no such table: admin_web_users');
+          error.code = 'P2021';
+          throw error;
+        },
+      },
+      async $executeRawUnsafe() {
+        rawUnsafeCalls += 1;
+        return [];
+      },
+      async $executeRaw() {
+        rawInsertCalls += 1;
+        return [];
+      },
+      async $queryRaw() {
+        return [{
+          username: 'legacy_owner',
+          role: 'owner',
+          tenantId: null,
+          isActive: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }];
+      },
+    },
+    crypto,
+    secureEqual: (left, right) => String(left) === String(right),
+    normalizeRole,
+    resolveDatabaseRuntime: () => ({ engine: 'sqlite' }),
+    adminWebUser: 'fallback_owner',
+    adminWebUserRole: 'owner',
+    adminWebUsersJson: JSON.stringify([
+      {
+        username: 'legacy_owner',
+        password: 'legacy-secret',
+        role: 'owner',
+      },
+    ]),
+    logger: { warn() {} },
+  });
+
+  await runtime.ensureAdminUsersReady();
+  assert.ok(rawUnsafeCalls >= 1);
+  assert.ok(rawInsertCalls >= 1);
+});
+
+test('admin user store requires migrated schema for prisma-client runtimes unless bootstrap is explicitly enabled', async () => {
+  const originalNodeEnv = process.env.NODE_ENV;
+  const originalBootstrap = process.env.ADMIN_WEB_RUNTIME_BOOTSTRAP;
+  process.env.NODE_ENV = 'test';
+  delete process.env.ADMIN_WEB_RUNTIME_BOOTSTRAP;
+
+  try {
+    const harness = createPrismaClientLikeFallbackHarness();
+    const runtime = createAdminUserStoreRuntime({
+      prisma: harness.prisma,
+      crypto,
+      secureEqual: (left, right) => String(left) === String(right),
+      normalizeRole,
+      resolveDatabaseRuntime: () => ({ engine: 'sqlite' }),
+      adminWebUser: 'fallback_owner',
+      adminWebUserRole: 'owner',
+      adminWebUsersJson: JSON.stringify([
+        {
+          username: 'schema_owner',
+          password: 'schema-secret',
+          role: 'owner',
+        },
+      ]),
+      logger: { warn() {} },
+    });
+
+    await assert.rejects(
+      () => runtime.ensureAdminUsersReady(),
+      (error) => {
+        assert.equal(error?.code, 'ADMIN_WEB_USERS_SCHEMA_REQUIRED');
+        assert.equal(error?.adminUserSchema?.bootstrapPolicy?.reason, 'prisma-client-runtime');
+        assert.equal(error?.adminUserSchema?.bootstrapPolicy?.env, 'ADMIN_WEB_RUNTIME_BOOTSTRAP');
+        return true;
+      },
+    );
+
+    const snapshot = harness.getSnapshot();
+    assert.equal(snapshot.rawUnsafeCalls, 0);
+    assert.equal(snapshot.rawInsertCalls, 0);
+  } finally {
+    if (originalNodeEnv == null) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = originalNodeEnv;
+    }
+    if (originalBootstrap == null) {
+      delete process.env.ADMIN_WEB_RUNTIME_BOOTSTRAP;
+    } else {
+      process.env.ADMIN_WEB_RUNTIME_BOOTSTRAP = originalBootstrap;
+    }
+  }
+});
+
+test('admin user store can still bootstrap legacy table path for prisma-client runtimes when explicitly enabled', async () => {
+  const originalNodeEnv = process.env.NODE_ENV;
+  const originalBootstrap = process.env.ADMIN_WEB_RUNTIME_BOOTSTRAP;
+  process.env.NODE_ENV = 'test';
+  process.env.ADMIN_WEB_RUNTIME_BOOTSTRAP = '1';
+
+  try {
+    const harness = createPrismaClientLikeFallbackHarness({
+      delegateError: Object.assign(new Error('no such table: admin_web_users'), { code: 'P2021' }),
+      legacyRows: [{
+        username: 'legacy_schema_owner',
+        role: 'owner',
+        tenantId: null,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }],
+    });
+    const runtime = createAdminUserStoreRuntime({
+      prisma: harness.prisma,
+      crypto,
+      secureEqual: (left, right) => String(left) === String(right),
+      normalizeRole,
+      resolveDatabaseRuntime: () => ({ engine: 'sqlite' }),
+      adminWebUser: 'fallback_owner',
+      adminWebUserRole: 'owner',
+      adminWebUsersJson: JSON.stringify([
+        {
+          username: 'legacy_schema_owner',
+          password: 'legacy-secret',
+          role: 'owner',
+        },
+      ]),
+      logger: { warn() {} },
+    });
+
+    await runtime.ensureAdminUsersReady();
+    const snapshot = harness.getSnapshot();
+    assert.ok(snapshot.rawUnsafeCalls >= 1);
+    assert.ok(snapshot.rawInsertCalls >= 1);
+  } finally {
+    if (originalNodeEnv == null) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = originalNodeEnv;
+    }
+    if (originalBootstrap == null) {
+      delete process.env.ADMIN_WEB_RUNTIME_BOOTSTRAP;
+    } else {
+      process.env.ADMIN_WEB_RUNTIME_BOOTSTRAP = originalBootstrap;
+    }
+  }
 });
 
 test('admin user store refuses ephemeral token and password fallback in production', () => {

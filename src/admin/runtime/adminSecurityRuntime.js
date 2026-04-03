@@ -1,5 +1,28 @@
 'use strict';
 
+const DEFAULT_ACTION_RATE_LIMIT_POLICIES = Object.freeze({
+  'platform-agent-activate': Object.freeze({ windowMs: 10 * 60 * 1000, maxAttempts: 10 }),
+  'server-config-retry': Object.freeze({ windowMs: 5 * 60 * 1000, maxAttempts: 12 }),
+  'server-config-save': Object.freeze({ windowMs: 5 * 60 * 1000, maxAttempts: 20 }),
+  'server-config-apply': Object.freeze({ windowMs: 5 * 60 * 1000, maxAttempts: 12 }),
+  'server-config-rollback': Object.freeze({ windowMs: 10 * 60 * 1000, maxAttempts: 8 }),
+  'server-restart': Object.freeze({ windowMs: 5 * 60 * 1000, maxAttempts: 8 }),
+  'server-control': Object.freeze({ windowMs: 5 * 60 * 1000, maxAttempts: 8 }),
+  'server-bot-probe': Object.freeze({ windowMs: 5 * 60 * 1000, maxAttempts: 12 }),
+  'delivery-enqueue': Object.freeze({ windowMs: 5 * 60 * 1000, maxAttempts: 12 }),
+  'delivery-mutate': Object.freeze({ windowMs: 5 * 60 * 1000, maxAttempts: 20 }),
+  'delivery-preview': Object.freeze({ windowMs: 2 * 60 * 1000, maxAttempts: 20 }),
+  'delivery-command-template': Object.freeze({ windowMs: 5 * 60 * 1000, maxAttempts: 10 }),
+  'delivery-capability': Object.freeze({ windowMs: 5 * 60 * 1000, maxAttempts: 10 }),
+  'delivery-test-send': Object.freeze({ windowMs: 5 * 60 * 1000, maxAttempts: 6 }),
+});
+
+function clampPositiveInt(value, fallback) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.trunc(parsed);
+}
+
 function createAdminSecurityRuntime(options = {}) {
   const {
     loginRateLimitWindowMs,
@@ -8,6 +31,8 @@ function createAdminSecurityRuntime(options = {}) {
     loginSpikeThreshold,
     loginSpikeIpThreshold,
     loginSpikeAlertCooldownMs,
+    actionRateLimitPolicies = DEFAULT_ACTION_RATE_LIMIT_POLICIES,
+    actionRateLimitAlertCooldownMs = 60 * 1000,
     discordOauthStates = null,
     ssoStateTtlMs = 0,
     getClientIp,
@@ -19,6 +44,8 @@ function createAdminSecurityRuntime(options = {}) {
 
   const loginAttemptsByIp = new Map();
   const loginFailureEvents = [];
+  const actionAttemptsByKey = new Map();
+  const actionAlertStateByKey = new Map();
   let lastLoginSpikeAlertAt = 0;
 
   function cleanupLoginAttempts(now = Date.now()) {
@@ -43,6 +70,138 @@ function createAdminSecurityRuntime(options = {}) {
         discordOauthStates.delete(state);
       }
     }
+  }
+
+  function cleanupActionAttempts(now = Date.now()) {
+    for (const [key, entry] of actionAttemptsByKey.entries()) {
+      if (!entry || now - Number(entry.firstAt || 0) > Number(entry.windowMs || 0)) {
+        actionAttemptsByKey.delete(key);
+      }
+    }
+    for (const [key, entry] of actionAlertStateByKey.entries()) {
+      if (!entry || now - Number(entry.at || 0) > Number(entry.windowMs || 0)) {
+        actionAlertStateByKey.delete(key);
+      }
+    }
+  }
+
+  function resolveActionRateLimitPolicy(actionKey, override = {}) {
+    const basePolicy = actionRateLimitPolicies?.[actionKey] || null;
+    const windowMs = clampPositiveInt(
+      override?.windowMs,
+      clampPositiveInt(basePolicy?.windowMs, 5 * 60 * 1000),
+    );
+    const maxAttempts = clampPositiveInt(
+      override?.maxAttempts,
+      clampPositiveInt(basePolicy?.maxAttempts, 10),
+    );
+    return {
+      actionKey: String(actionKey || '').trim() || 'admin-action',
+      windowMs,
+      maxAttempts,
+    };
+  }
+
+  function buildActionRateLimitBucket(actionKey, context = {}) {
+    const tenantId = String(context.tenantId || 'global').trim() || 'global';
+    const actor = String(context.actor || 'anonymous').trim() || 'anonymous';
+    const ip = String(context.ip || 'unknown').trim() || 'unknown';
+    const identityKey = String(context.identityKey || '').trim().toLowerCase();
+    return [
+      String(actionKey || 'admin-action').trim() || 'admin-action',
+      `tenant:${tenantId}`,
+      `actor:${actor}`,
+      `ip:${ip}`,
+      identityKey ? `identity:${identityKey}` : '',
+    ].filter(Boolean).join('|');
+  }
+
+  function maybeAlertActionRateLimit(actionState, context = {}) {
+    const now = Number(actionState?.now || Date.now());
+    const existingAlert = actionAlertStateByKey.get(actionState.key);
+    if (existingAlert && now - Number(existingAlert.at || 0) < actionRateLimitAlertCooldownMs) {
+      return;
+    }
+    actionAlertStateByKey.set(actionState.key, {
+      at: now,
+      windowMs: actionState.windowMs,
+    });
+
+    recordAdminSecuritySignal('admin-action-rate-limited', {
+      severity: 'warn',
+      actor: context.actor || null,
+      targetUser: context.targetUser || null,
+      ip: context.ip || null,
+      path: context.path || null,
+      reason: 'too-many-requests',
+      detail: `${actionState.actionKey} was rate limited`,
+      notify: true,
+      title: 'Sensitive action rate limited',
+      data: {
+        actionKey: actionState.actionKey,
+        tenantId: context.tenantId || null,
+        retryAfterMs: actionState.retryAfterMs,
+        maxAttempts: actionState.maxAttempts,
+        windowMs: actionState.windowMs,
+      },
+    });
+  }
+
+  function consumeActionRateLimit(actionKey, context = {}) {
+    const normalizedActionKey = String(actionKey || '').trim() || 'admin-action';
+    const policy = resolveActionRateLimitPolicy(normalizedActionKey, context.policy);
+    const now = Date.now();
+    cleanupActionAttempts(now);
+
+    const key = buildActionRateLimitBucket(normalizedActionKey, context);
+    const existing = actionAttemptsByKey.get(key);
+
+    if (!existing || now - Number(existing.firstAt || 0) > policy.windowMs) {
+      actionAttemptsByKey.set(key, {
+        count: 1,
+        firstAt: now,
+        lastAt: now,
+        windowMs: policy.windowMs,
+      });
+      return {
+        limited: false,
+        actionKey: normalizedActionKey,
+        key,
+        retryAfterMs: 0,
+        maxAttempts: policy.maxAttempts,
+        windowMs: policy.windowMs,
+      };
+    }
+
+    if (existing.count >= policy.maxAttempts) {
+      const retryAfterMs = Math.max(0, policy.windowMs - (now - Number(existing.firstAt || now)));
+      const state = {
+        limited: true,
+        now,
+        actionKey: normalizedActionKey,
+        key,
+        retryAfterMs,
+        maxAttempts: policy.maxAttempts,
+        windowMs: policy.windowMs,
+      };
+      maybeAlertActionRateLimit(state, context);
+      return state;
+    }
+
+    actionAttemptsByKey.set(key, {
+      ...existing,
+      count: Number(existing.count || 0) + 1,
+      lastAt: now,
+      windowMs: policy.windowMs,
+    });
+    return {
+      limited: false,
+      actionKey: normalizedActionKey,
+      key,
+      retryAfterMs: 0,
+      maxAttempts: policy.maxAttempts,
+      windowMs: policy.windowMs,
+    };
   }
 
   function getLoginFailureMetrics(now = Date.now()) {
@@ -80,6 +239,9 @@ function createAdminSecurityRuntime(options = {}) {
     const normalizedType = String(type || 'security-event').trim() || 'security-event';
     const severity =
       String(optionsArg.severity || (optionsArg.notify ? 'warn' : 'info')).trim() || 'info';
+    const shouldNotify = optionsArg.suppressNotification === true
+      ? false
+      : optionsArg.notify === true || severity === 'warn' || severity === 'error';
     const event = recordAdminSecurityEvent({
       type: normalizedType,
       severity,
@@ -95,7 +257,7 @@ function createAdminSecurityRuntime(options = {}) {
       data: optionsArg.data || null,
     });
     publishAdminLiveUpdate('admin-security', event);
-    if (optionsArg.notify === true || severity === 'warn' || severity === 'error') {
+    if (shouldNotify) {
       addAdminNotification({
         type: 'security',
         source: 'admin-auth',
@@ -196,6 +358,7 @@ function createAdminSecurityRuntime(options = {}) {
 
   return {
     cleanupDiscordOauthStates,
+    consumeActionRateLimit,
     getLoginFailureMetrics,
     getLoginRateLimitState,
     recordAdminSecuritySignal,

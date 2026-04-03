@@ -36,6 +36,9 @@ function buildRoutes(overrides = {}) {
       res.end(content);
     },
     ensureRole: () => ({ user: 'owner', role: 'owner', tenantId: null }),
+    getAuthTenantId(auth) {
+      return auth?.tenantId || null;
+    },
     listAdminNotifications: () => ([
       {
         id: 'note-1',
@@ -96,4 +99,36 @@ test('admin notifications export returns CSV payload', async () => {
   assert.match(String(res.headers['content-type'] || ''), /text\/csv/i);
   assert.match(String(res.body || ''), /queue-pressure/);
   assert.match(String(res.body || ''), /severity/);
+});
+
+test('tenant notification route forwards tenant scope to the notification store', async () => {
+  let seenOptions = null;
+  const handler = buildRoutes({
+    ensureRole: () => ({ user: 'tenant-admin', role: 'admin', tenantId: 'tenant-scope-1' }),
+    listAdminNotifications: (options) => {
+      seenOptions = options;
+      return [{
+        id: 'note-tenant-1',
+        kind: 'subscription-expiring',
+        severity: 'warn',
+        title: 'Subscription Expiring Soon',
+        message: 'Tenant-scoped notification',
+        tenantId: 'tenant-scope-1',
+      }];
+    },
+  });
+  const res = createMockRes();
+
+  const handled = await handler({
+    client: null,
+    req: { method: 'GET', headers: {} },
+    res,
+    urlObj: new URL('https://admin.example.com/admin/api/notifications?limit=10'),
+    pathname: '/admin/api/notifications',
+  });
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 200);
+  assert.equal(String(seenOptions?.tenantId || ''), 'tenant-scope-1');
+  assert.match(String(res.body || ''), /note-tenant-1/);
 });

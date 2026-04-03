@@ -212,6 +212,7 @@ const {
   deletePackageCatalogEntry,
   dispatchPlatformWebhookEvent,
   emitPlatformEvent,
+  findPlanById,
   getFeatureCatalog: getFeatureCatalogSummary,
   getPlanCatalog,
   getPackageCatalog: getPackageCatalogSummary,
@@ -232,6 +233,7 @@ const {
   listPlatformWebhookEndpoints,
   recordPlatformAgentHeartbeat,
   reconcileDeliveryState,
+  resolvePackageForPlan,
   revokePlatformApiKey,
   rotatePlatformApiKey,
   updatePackageCatalogEntry,
@@ -255,6 +257,9 @@ const {
 const {
   buildTenantDonationOverview,
 } = require('./services/tenantDonationOverviewService');
+const {
+  buildTenantModuleOverview,
+} = require('./services/tenantModuleOverviewService');
 const {
   buildSecretRotationReport,
   buildSecretRotationCsv,
@@ -609,6 +614,7 @@ const {
 
 const {
   cleanupDiscordOauthStates,
+  consumeActionRateLimit: consumeAdminActionRateLimit,
   getLoginFailureMetrics,
   getLoginRateLimitState,
   recordAdminSecuritySignal,
@@ -649,6 +655,8 @@ const {
   setRequestMeta: (...args) => setRequestMeta(...args),
   getAdminPermissionForPath,
   resolveItemIconUrl,
+  getClientIp,
+  recordAdminSecuritySignal,
 });
 
 const adminAuthRuntime = createAdminAuthRuntime({
@@ -854,6 +862,7 @@ const {
   resolveAdminEditableRootEnvFilePath,
   resolveAdminEditablePortalEnvFilePath,
   recordAdminSecuritySignal,
+  consumeAdminActionRateLimit,
   getClientIp,
   upsertAdminUserInDb,
   revokeSessionsForUser,
@@ -879,10 +888,12 @@ const {
   ensurePlatformApiKey,
   readJsonBody,
   getTenantQuotaSnapshot,
+  findPlanById,
   getPlatformPublicOverview,
   getPlatformAnalyticsOverview,
   getPackageCatalogSummary,
   getFeatureCatalogSummary,
+  resolvePackageForPlan,
   verifyPlatformApiKey,
   SSO_DISCORD_ACTIVE,
   cleanupDiscordOauthStates,
@@ -948,11 +959,12 @@ const {
   buildTenantDiagnosticsBundle,
   buildTenantDiagnosticsCsv,
   buildTenantSupportCaseBundle,
-  buildTenantSupportCaseCsv,
-  buildDeliveryLifecycleReport,
-  buildDeliveryLifecycleCsv,
-  buildTenantDonationOverview,
-  getPlatformPermissionCatalog,
+    buildTenantSupportCaseCsv,
+    buildDeliveryLifecycleReport,
+    buildDeliveryLifecycleCsv,
+    buildTenantDonationOverview,
+    buildTenantModuleOverview,
+    getPlatformPermissionCatalog,
   getPlanCatalog,
   listPersistedPackageCatalog,
   buildTenantActorAccessSummary,

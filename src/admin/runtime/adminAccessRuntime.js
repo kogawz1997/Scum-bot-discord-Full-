@@ -10,6 +10,8 @@ function createAdminAccessRuntime(options = {}) {
     setRequestMeta,
     getAdminPermissionForPath,
     resolveItemIconUrl,
+    getClientIp,
+    recordAdminSecuritySignal,
   } = options;
 
   function asInt(value, fallback = null) {
@@ -89,6 +91,30 @@ function createAdminAccessRuntime(options = {}) {
     return auth;
   }
 
+  function maybeRecordTenantScopeMismatch(req, auth, requestedTenantId, result) {
+    if (typeof recordAdminSecuritySignal !== 'function') return;
+    if (Number(result?.statusCode || 0) !== 403) return;
+    const authTenantId = String(auth?.tenantId || '').trim();
+    const normalizedRequested = String(requestedTenantId || '').trim();
+    if (!authTenantId || !normalizedRequested || normalizedRequested === authTenantId) return;
+
+    recordAdminSecuritySignal('tenant-scope-mismatch', {
+      severity: 'warn',
+      suppressNotification: true,
+      actor:
+        String(auth?.user || auth?.username || auth?.email || auth?.name || '').trim() || 'unknown',
+      role: String(auth?.role || '').trim() || null,
+      ip: typeof getClientIp === 'function' ? getClientIp(req) : null,
+      path: String(req?.url || req?.pathname || '').trim() || null,
+      reason: 'tenant-scope-mismatch',
+      detail: 'Tenant-scoped admin attempted to access another tenant scope',
+      data: {
+        authTenantId,
+        requestedTenantId: normalizedRequested,
+      },
+    });
+  }
+
   function resolveScopedTenantId(req, res, auth, requestedTenantId = '', optionsArg = {}) {
     const result = resolveTenantScope({
       auth,
@@ -96,6 +122,7 @@ function createAdminAccessRuntime(options = {}) {
       required: optionsArg.required === true,
     });
     if (!result.ok) {
+      maybeRecordTenantScopeMismatch(req, auth, requestedTenantId, result);
       sendJson(res, result.statusCode || 400, {
         ok: false,
         error: result.error || 'Invalid tenant scope',

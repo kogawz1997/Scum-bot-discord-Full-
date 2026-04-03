@@ -10,6 +10,19 @@ const {
   requireTenantPermission,
 } = require('./tenantRoutePermissions');
 
+const MAX_DELIVERY_BATCH_CODES = 50;
+
+function sendRateLimitResponse(sendJson, res, rateLimit, message) {
+  const retryAfterSec = Math.max(1, Math.ceil(Number(rateLimit?.retryAfterMs || 0) / 1000));
+  sendJson(res, 429, {
+    ok: false,
+    error: message || `Too many requests. Please wait ${retryAfterSec}s and try again.`,
+    retryAfterSec,
+  }, {
+    'Retry-After': String(retryAfterSec),
+  });
+}
+
 function createAdminCommerceDeliveryPostRoutes(deps) {
   const {
     sendJson,
@@ -53,6 +66,8 @@ function createAdminCommerceDeliveryPostRoutes(deps) {
     getDeliveryDetailsByPurchaseCode,
     getTenantFeatureAccess,
     buildTenantProductEntitlements,
+    consumeAdminActionRateLimit,
+    getClientIp,
   } = deps;
 
   async function getScopedDeliveryCase(code, tenantId) {
@@ -68,6 +83,50 @@ function createAdminCommerceDeliveryPostRoutes(deps) {
 
   function hasScopedDeliveryCase(detail) {
     return Boolean(detail?.purchase || detail?.queueJob || detail?.deadLetter);
+  }
+
+  function enforceActionRateLimit({ req, res, auth, tenantId, actionKey, identityKey, message, pathname }) {
+    if (typeof consumeAdminActionRateLimit !== 'function') return false;
+    let ip = '';
+    try {
+      ip = req?.headers && typeof getClientIp === 'function' ? getClientIp(req) : '';
+    } catch {
+      ip = '';
+    }
+    const rateLimit = consumeAdminActionRateLimit(actionKey, {
+      tenantId,
+      actor: String(auth?.user || 'unknown').trim() || 'unknown',
+      ip,
+      identityKey: identityKey || '',
+      path: pathname,
+    });
+    if (!rateLimit?.limited) return false;
+    sendRateLimitResponse(sendJson, res, rateLimit, message);
+    return true;
+  }
+
+  async function requireDeliveryToolAccess({ req, res, auth, tenantId, pathname, message }) {
+    const ordersPermission = requireTenantPermission({
+      sendJson,
+      res,
+      auth,
+      permissionKey: 'manage_orders',
+      message: 'Your tenant role cannot run delivery actions.',
+    });
+    if (!ordersPermission.allowed) return false;
+    if (tenantId) {
+      const deliveryCheck = await requireTenantActionEntitlement({
+        sendJson,
+        res,
+        getTenantFeatureAccess,
+        buildTenantProductEntitlements,
+        tenantId,
+        actionKey: 'can_use_delivery',
+        message: message || 'Delivery actions are locked until the current package includes delivery support.',
+      });
+      if (!deliveryCheck.allowed) return false;
+    }
+    return true;
   }
 
   return async function handleAdminCommerceDeliveryPostRoute(context) {
@@ -614,26 +673,25 @@ function createAdminCommerceDeliveryPostRoutes(deps) {
           return true;
         }
       }
-      const ordersPermission = requireTenantPermission({
-        sendJson,
+      const deliveryAccess = await requireDeliveryToolAccess({
+        req,
         res,
         auth,
-        permissionKey: 'manage_orders',
-        message: 'Your tenant role cannot enqueue delivery jobs.',
+        tenantId,
+        pathname,
+        message: 'Delivery enqueue is locked until the current package includes delivery support.',
       });
-      if (!ordersPermission.allowed) return true;
-      if (tenantId) {
-        const orderCheck = await requireTenantActionEntitlement({
-          sendJson,
-          res,
-          getTenantFeatureAccess,
-          buildTenantProductEntitlements,
-          tenantId,
-          actionKey: 'can_manage_orders',
-          message: 'Delivery retries are locked until the current package includes order tools.',
-        });
-        if (!orderCheck.allowed) return true;
-      }
+      if (!deliveryAccess) return true;
+      if (enforceActionRateLimit({
+        req,
+        res,
+        auth,
+        tenantId,
+        actionKey: 'delivery-enqueue',
+        identityKey: code,
+        message: 'Too many delivery enqueue requests. Please wait and try again.',
+        pathname,
+      })) return true;
       const result = await enqueuePurchaseDeliveryByCode(code, {
         guildId: requiredString(body, 'guildId') || undefined,
         tenantId: tenantId || undefined,
@@ -666,26 +724,25 @@ function createAdminCommerceDeliveryPostRoutes(deps) {
           return true;
         }
       }
-      const ordersPermission = requireTenantPermission({
-        sendJson,
+      const deliveryAccess = await requireDeliveryToolAccess({
+        req,
         res,
         auth,
-        permissionKey: 'manage_orders',
-        message: 'Your tenant role cannot retry failed deliveries.',
+        tenantId,
+        pathname,
+        message: 'Delivery retries are locked until the current package includes delivery support.',
       });
-      if (!ordersPermission.allowed) return true;
-      if (tenantId) {
-        const orderCheck = await requireTenantActionEntitlement({
-          sendJson,
-          res,
-          getTenantFeatureAccess,
-          buildTenantProductEntitlements,
-          tenantId,
-          actionKey: 'can_manage_orders',
-          message: 'Delivery retries are locked until the current package includes order tools.',
-        });
-        if (!orderCheck.allowed) return true;
-      }
+      if (!deliveryAccess) return true;
+      if (enforceActionRateLimit({
+        req,
+        res,
+        auth,
+        tenantId,
+        actionKey: 'delivery-mutate',
+        identityKey: code,
+        message: 'Too many delivery retry requests. Please wait and try again.',
+        pathname,
+      })) return true;
       const result = retryDeliveryNow(code, { tenantId: tenantId || undefined });
       if (!result) {
         sendJson(res, 404, { ok: false, error: 'Resource not found' });
@@ -703,31 +760,34 @@ function createAdminCommerceDeliveryPostRoutes(deps) {
         requiredString(body, 'tenantId'),
       );
       if (tenantId === null && getAuthTenantId(auth)) return true;
-      const ordersPermission = requireTenantPermission({
-        sendJson,
+      const deliveryAccess = await requireDeliveryToolAccess({
+        req,
         res,
         auth,
-        permissionKey: 'manage_orders',
-        message: 'Your tenant role cannot retry failed deliveries.',
+        tenantId,
+        pathname,
+        message: 'Delivery retries are locked until the current package includes delivery support.',
       });
-      if (!ordersPermission.allowed) return true;
-      if (tenantId) {
-        const orderCheck = await requireTenantActionEntitlement({
-          sendJson,
-          res,
-          getTenantFeatureAccess,
-          buildTenantProductEntitlements,
-          tenantId,
-          actionKey: 'can_manage_orders',
-          message: 'Delivery retries are locked until the current package includes order tools.',
-        });
-        if (!orderCheck.allowed) return true;
-      }
+      if (!deliveryAccess) return true;
       const codes = parseStringArray(body?.codes);
       if (codes.length === 0) {
         sendJson(res, 400, { ok: false, error: 'codes is required' });
         return true;
       }
+      if (codes.length > MAX_DELIVERY_BATCH_CODES) {
+        sendJson(res, 400, { ok: false, error: `codes cannot contain more than ${MAX_DELIVERY_BATCH_CODES} entries` });
+        return true;
+      }
+      if (enforceActionRateLimit({
+        req,
+        res,
+        auth,
+        tenantId,
+        actionKey: 'delivery-mutate',
+        identityKey: String(codes.length),
+        message: 'Too many delivery retry requests. Please wait and try again.',
+        pathname,
+      })) return true;
       sendJson(res, 200, {
         ok: true,
         data: retryDeliveryNowMany(codes, { tenantId: tenantId || undefined }),
@@ -755,26 +815,25 @@ function createAdminCommerceDeliveryPostRoutes(deps) {
           return true;
         }
       }
-      const ordersPermission = requireTenantPermission({
-        sendJson,
+      const deliveryAccess = await requireDeliveryToolAccess({
+        req,
         res,
         auth,
-        permissionKey: 'manage_orders',
-        message: 'Your tenant role cannot retry dead-letter deliveries.',
+        tenantId,
+        pathname,
+        message: 'Dead-letter delivery retries are locked until the current package includes delivery support.',
       });
-      if (!ordersPermission.allowed) return true;
-      if (tenantId) {
-        const orderCheck = await requireTenantActionEntitlement({
-          sendJson,
-          res,
-          getTenantFeatureAccess,
-          buildTenantProductEntitlements,
-          tenantId,
-          actionKey: 'can_manage_orders',
-          message: 'Delivery retries are locked until the current package includes order tools.',
-        });
-        if (!orderCheck.allowed) return true;
-      }
+      if (!deliveryAccess) return true;
+      if (enforceActionRateLimit({
+        req,
+        res,
+        auth,
+        tenantId,
+        actionKey: 'delivery-mutate',
+        identityKey: code,
+        message: 'Too many dead-letter retry requests. Please wait and try again.',
+        pathname,
+      })) return true;
       const result = await retryDeliveryDeadLetter(code, {
         guildId: requiredString(body, 'guildId') || undefined,
         tenantId: tenantId || undefined,
@@ -798,31 +857,34 @@ function createAdminCommerceDeliveryPostRoutes(deps) {
         requiredString(body, 'tenantId'),
       );
       if (tenantId === null && getAuthTenantId(auth)) return true;
-      const ordersPermission = requireTenantPermission({
-        sendJson,
+      const deliveryAccess = await requireDeliveryToolAccess({
+        req,
         res,
         auth,
-        permissionKey: 'manage_orders',
-        message: 'Your tenant role cannot retry dead-letter deliveries.',
+        tenantId,
+        pathname,
+        message: 'Dead-letter delivery retries are locked until the current package includes delivery support.',
       });
-      if (!ordersPermission.allowed) return true;
-      if (tenantId) {
-        const orderCheck = await requireTenantActionEntitlement({
-          sendJson,
-          res,
-          getTenantFeatureAccess,
-          buildTenantProductEntitlements,
-          tenantId,
-          actionKey: 'can_manage_orders',
-          message: 'Delivery retries are locked until the current package includes order tools.',
-        });
-        if (!orderCheck.allowed) return true;
-      }
+      if (!deliveryAccess) return true;
       const codes = parseStringArray(body?.codes);
       if (codes.length === 0) {
         sendJson(res, 400, { ok: false, error: 'codes is required' });
         return true;
       }
+      if (codes.length > MAX_DELIVERY_BATCH_CODES) {
+        sendJson(res, 400, { ok: false, error: `codes cannot contain more than ${MAX_DELIVERY_BATCH_CODES} entries` });
+        return true;
+      }
+      if (enforceActionRateLimit({
+        req,
+        res,
+        auth,
+        tenantId,
+        actionKey: 'delivery-mutate',
+        identityKey: String(codes.length),
+        message: 'Too many dead-letter retry requests. Please wait and try again.',
+        pathname,
+      })) return true;
       sendJson(res, 200, {
         ok: true,
         data: await retryDeliveryDeadLetterMany(codes, {
@@ -853,26 +915,25 @@ function createAdminCommerceDeliveryPostRoutes(deps) {
           return true;
         }
       }
-      const ordersPermission = requireTenantPermission({
-        sendJson,
+      const deliveryAccess = await requireDeliveryToolAccess({
+        req,
         res,
         auth,
-        permissionKey: 'manage_orders',
-        message: 'Your tenant role cannot clear dead-letter deliveries.',
+        tenantId,
+        pathname,
+        message: 'Delivery cleanup is locked until the current package includes delivery support.',
       });
-      if (!ordersPermission.allowed) return true;
-      if (tenantId) {
-        const orderCheck = await requireTenantActionEntitlement({
-          sendJson,
-          res,
-          getTenantFeatureAccess,
-          buildTenantProductEntitlements,
-          tenantId,
-          actionKey: 'can_manage_orders',
-          message: 'Delivery cleanup is locked until the current package includes order tools.',
-        });
-        if (!orderCheck.allowed) return true;
-      }
+      if (!deliveryAccess) return true;
+      if (enforceActionRateLimit({
+        req,
+        res,
+        auth,
+        tenantId,
+        actionKey: 'delivery-mutate',
+        identityKey: code,
+        message: 'Too many delivery cleanup requests. Please wait and try again.',
+        pathname,
+      })) return true;
       const removed = removeDeliveryDeadLetter(code, { tenantId: tenantId || undefined });
       if (!removed) {
         sendJson(res, 404, { ok: false, error: 'Resource not found' });
@@ -902,26 +963,25 @@ function createAdminCommerceDeliveryPostRoutes(deps) {
           return true;
         }
       }
-      const ordersPermission = requireTenantPermission({
-        sendJson,
+      const deliveryAccess = await requireDeliveryToolAccess({
+        req,
         res,
         auth,
-        permissionKey: 'manage_orders',
-        message: 'Your tenant role cannot cancel deliveries.',
+        tenantId,
+        pathname,
+        message: 'Delivery cancellation is locked until the current package includes delivery support.',
       });
-      if (!ordersPermission.allowed) return true;
-      if (tenantId) {
-        const orderCheck = await requireTenantActionEntitlement({
-          sendJson,
-          res,
-          getTenantFeatureAccess,
-          buildTenantProductEntitlements,
-          tenantId,
-          actionKey: 'can_manage_orders',
-          message: 'Delivery cancellation is locked until the current package includes order tools.',
-        });
-        if (!orderCheck.allowed) return true;
-      }
+      if (!deliveryAccess) return true;
+      if (enforceActionRateLimit({
+        req,
+        res,
+        auth,
+        tenantId,
+        actionKey: 'delivery-mutate',
+        identityKey: code,
+        message: 'Too many delivery cancel requests. Please wait and try again.',
+        pathname,
+      })) return true;
       const result = cancelDeliveryJob(
         code,
         requiredString(body, 'reason') || 'admin-web',
@@ -949,6 +1009,25 @@ function createAdminCommerceDeliveryPostRoutes(deps) {
         sendJson(res, 400, { ok: false, error: 'itemId or gameItemId is required' });
         return true;
       }
+      const deliveryAccess = await requireDeliveryToolAccess({
+        req,
+        res,
+        auth,
+        tenantId,
+        pathname,
+        message: 'Delivery preview is locked until the current package includes delivery support.',
+      });
+      if (!deliveryAccess) return true;
+      if (enforceActionRateLimit({
+        req,
+        res,
+        auth,
+        tenantId,
+        actionKey: 'delivery-preview',
+        identityKey: itemId || gameItemId,
+        message: 'Too many delivery preview requests. Please wait and try again.',
+        pathname,
+      })) return true;
       try {
         sendJson(res, 200, {
           ok: true,
@@ -982,6 +1061,25 @@ function createAdminCommerceDeliveryPostRoutes(deps) {
         requiredString(body, 'tenantId'),
       );
       if (tenantId === null && getAuthTenantId(auth)) return true;
+      const deliveryAccess = await requireDeliveryToolAccess({
+        req,
+        res,
+        auth,
+        tenantId,
+        pathname,
+        message: 'Delivery checks are locked until the current package includes delivery support.',
+      });
+      if (!deliveryAccess) return true;
+      if (enforceActionRateLimit({
+        req,
+        res,
+        auth,
+        tenantId,
+        actionKey: 'delivery-preview',
+        identityKey: requiredString(body, 'purchaseCode') || requiredString(body, 'itemId') || requiredString(body, 'gameItemId'),
+        message: 'Too many delivery check requests. Please wait and try again.',
+        pathname,
+      })) return true;
       try {
         sendJson(res, 200, {
           ok: true,
@@ -1025,6 +1123,25 @@ function createAdminCommerceDeliveryPostRoutes(deps) {
         sendJson(res, 400, { ok: false, error: 'itemId or gameItemId is required' });
         return true;
       }
+      const deliveryAccess = await requireDeliveryToolAccess({
+        req,
+        res,
+        auth,
+        tenantId,
+        pathname,
+        message: 'Delivery simulation is locked until the current package includes delivery support.',
+      });
+      if (!deliveryAccess) return true;
+      if (enforceActionRateLimit({
+        req,
+        res,
+        auth,
+        tenantId,
+        actionKey: 'delivery-preview',
+        identityKey: itemId || gameItemId,
+        message: 'Too many delivery simulation requests. Please wait and try again.',
+        pathname,
+      })) return true;
       try {
         sendJson(res, 200, {
           ok: true,
@@ -1055,6 +1172,32 @@ function createAdminCommerceDeliveryPostRoutes(deps) {
     }
 
     if (pathname === '/admin/api/delivery/command-template') {
+      const tenantId = resolveScopedTenantId(
+        req,
+        res,
+        auth,
+        requiredString(body, 'tenantId'),
+      );
+      if (tenantId === null && getAuthTenantId(auth)) return true;
+      const deliveryAccess = await requireDeliveryToolAccess({
+        req,
+        res,
+        auth,
+        tenantId,
+        pathname,
+        message: 'Delivery command templates are locked until the current package includes delivery support.',
+      });
+      if (!deliveryAccess) return true;
+      if (enforceActionRateLimit({
+        req,
+        res,
+        auth,
+        tenantId,
+        actionKey: 'delivery-command-template',
+        identityKey: requiredString(body, 'lookupKey') || requiredString(body, 'itemId') || requiredString(body, 'gameItemId'),
+        message: 'Too many delivery template updates. Please wait and try again.',
+        pathname,
+      })) return true;
       try {
         sendJson(res, 200, {
           ok: true,
@@ -1091,6 +1234,25 @@ function createAdminCommerceDeliveryPostRoutes(deps) {
         sendJson(res, 400, { ok: false, error: 'itemId or gameItemId is required' });
         return true;
       }
+      const deliveryAccess = await requireDeliveryToolAccess({
+        req,
+        res,
+        auth,
+        tenantId,
+        pathname,
+        message: 'Test delivery is locked until the current package includes delivery support.',
+      });
+      if (!deliveryAccess) return true;
+      if (enforceActionRateLimit({
+        req,
+        res,
+        auth,
+        tenantId,
+        actionKey: 'delivery-test-send',
+        identityKey: itemId || gameItemId,
+        message: 'Too many test delivery requests. Please wait and try again.',
+        pathname,
+      })) return true;
       try {
         sendJson(res, 200, {
           ok: true,
@@ -1117,6 +1279,32 @@ function createAdminCommerceDeliveryPostRoutes(deps) {
     }
 
     if (pathname === '/admin/api/delivery/capability-preset') {
+      const tenantId = resolveScopedTenantId(
+        req,
+        res,
+        auth,
+        requiredString(body, 'tenantId'),
+      );
+      if (tenantId === null && getAuthTenantId(auth)) return true;
+      const deliveryAccess = await requireDeliveryToolAccess({
+        req,
+        res,
+        auth,
+        tenantId,
+        pathname,
+        message: 'Delivery capability presets are locked until the current package includes delivery support.',
+      });
+      if (!deliveryAccess) return true;
+      if (enforceActionRateLimit({
+        req,
+        res,
+        auth,
+        tenantId,
+        actionKey: 'delivery-capability',
+        identityKey: requiredString(body, 'id') || requiredString(body, 'name'),
+        message: 'Too many capability preset changes. Please wait and try again.',
+        pathname,
+      })) return true;
       try {
         sendJson(res, 200, {
           ok: true,
@@ -1148,11 +1336,37 @@ function createAdminCommerceDeliveryPostRoutes(deps) {
     }
 
     if (pathname === '/admin/api/delivery/capability-preset/delete') {
+      const tenantId = resolveScopedTenantId(
+        req,
+        res,
+        auth,
+        requiredString(body, 'tenantId'),
+      );
+      if (tenantId === null && getAuthTenantId(auth)) return true;
+      const deliveryAccess = await requireDeliveryToolAccess({
+        req,
+        res,
+        auth,
+        tenantId,
+        pathname,
+        message: 'Delivery capability presets are locked until the current package includes delivery support.',
+      });
+      if (!deliveryAccess) return true;
       const presetId = requiredString(body, 'presetId') || requiredString(body, 'id');
       if (!presetId) {
         sendJson(res, 400, { ok: false, error: 'presetId is required' });
         return true;
       }
+      if (enforceActionRateLimit({
+        req,
+        res,
+        auth,
+        tenantId,
+        actionKey: 'delivery-capability',
+        identityKey: presetId,
+        message: 'Too many capability preset changes. Please wait and try again.',
+        pathname,
+      })) return true;
       const removed = deleteAdminCommandCapabilityPreset(presetId);
       if (!removed) {
         sendJson(res, 404, { ok: false, error: 'Resource not found' });
@@ -1169,12 +1383,38 @@ function createAdminCommerceDeliveryPostRoutes(deps) {
     }
 
     if (pathname === '/admin/api/delivery/capability-test') {
+      const tenantId = resolveScopedTenantId(
+        req,
+        res,
+        auth,
+        requiredString(body, 'tenantId'),
+      );
+      if (tenantId === null && getAuthTenantId(auth)) return true;
+      const deliveryAccess = await requireDeliveryToolAccess({
+        req,
+        res,
+        auth,
+        tenantId,
+        pathname,
+        message: 'Delivery capability tests are locked until the current package includes delivery support.',
+      });
+      if (!deliveryAccess) return true;
       const presetId = requiredString(body, 'presetId');
       const preset = presetId ? getAdminCommandCapabilityPresetById(presetId) : null;
       if (presetId && !preset) {
         sendJson(res, 404, { ok: false, error: 'Resource not found' });
         return true;
       }
+      if (enforceActionRateLimit({
+        req,
+        res,
+        auth,
+        tenantId,
+        actionKey: 'delivery-capability',
+        identityKey: preset?.id || requiredString(body, 'capabilityId'),
+        message: 'Too many capability tests. Please wait and try again.',
+        pathname,
+      })) return true;
       try {
         sendJson(res, 200, {
           ok: true,
@@ -1208,6 +1448,32 @@ function createAdminCommerceDeliveryPostRoutes(deps) {
     }
 
     if (pathname === '/admin/api/rentbike/reset-now') {
+      const tenantId = resolveScopedTenantId(
+        req,
+        res,
+        auth,
+        requiredString(body, 'tenantId'),
+      );
+      if (tenantId === null && getAuthTenantId(auth)) return true;
+      const deliveryAccess = await requireDeliveryToolAccess({
+        req,
+        res,
+        auth,
+        tenantId,
+        pathname,
+        message: 'Rent bike delivery reset is locked until the current package includes delivery support.',
+      });
+      if (!deliveryAccess) return true;
+      if (enforceActionRateLimit({
+        req,
+        res,
+        auth,
+        tenantId,
+        actionKey: 'delivery-mutate',
+        identityKey: 'rentbike-reset-now',
+        message: 'Too many rent bike reset requests. Please wait and try again.',
+        pathname,
+      })) return true;
       const reason = requiredString(body, 'reason') || `admin-web:${auth?.user || 'unknown'}`;
       await runRentBikeMidnightReset(reason);
       sendJson(res, 200, {
@@ -1222,6 +1488,37 @@ function createAdminCommerceDeliveryPostRoutes(deps) {
     }
 
     if (pathname === '/admin/api/scum/status') {
+      const tenantId = authTenantId || requiredString(body, 'tenantId');
+      const runtimePermission = requireTenantPermission({
+        sendJson,
+        res,
+        auth,
+        permissionKey: 'manage_runtimes',
+        message: 'Your tenant role cannot change runtime status signals.',
+      });
+      if (!runtimePermission.allowed) return true;
+      if (tenantId) {
+        const runtimeCheck = await requireTenantActionEntitlement({
+          sendJson,
+          res,
+          getTenantFeatureAccess,
+          buildTenantProductEntitlements,
+          tenantId,
+          actionKey: 'can_view_sync_status',
+          message: 'Runtime status updates are locked until the current package includes sync visibility.',
+        });
+        if (!runtimeCheck.allowed) return true;
+      }
+      if (enforceActionRateLimit({
+        req,
+        res,
+        auth,
+        tenantId,
+        actionKey: 'server-bot-probe',
+        identityKey: 'scum-status',
+        message: 'Too many runtime status updates. Please wait and try again.',
+        pathname,
+      })) return true;
       const onlinePlayers = asInt(body.onlinePlayers, undefined);
       const maxPlayers = asInt(body.maxPlayers, undefined);
       const pingMs = asInt(body.pingMs, undefined);

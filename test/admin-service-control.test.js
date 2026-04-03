@@ -10,14 +10,18 @@ test('managed runtime services expose standalone admin web separately from disco
   const adminWeb = services.find((entry) => entry.key === 'admin-web');
   const bot = services.find((entry) => entry.key === 'bot');
   const serverBot = services.find((entry) => entry.key === 'server-bot');
+  const deliveryAgent = services.find((entry) => entry.key === 'console-agent');
 
   assert.ok(adminWeb);
   assert.ok(bot);
   assert.ok(serverBot);
+  assert.ok(deliveryAgent);
   assert.equal(adminWeb.pm2Name, 'scum-admin-web');
   assert.equal(bot.pm2Name, 'scum-bot');
   assert.equal(serverBot.pm2Name, 'scum-server-bot');
+  assert.equal(deliveryAgent.pm2Name, 'scum-console-agent');
   assert.match(String(adminWeb.label || ''), /admin web/i);
   assert.match(String(bot.label || ''), /discord bot/i);
   assert.match(String(serverBot.label || ''), /server bot/i);
+  assert.match(String(deliveryAgent.label || ''), /delivery agent/i);
 });

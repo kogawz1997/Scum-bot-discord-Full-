@@ -182,3 +182,64 @@ test('restoreAdminBackup rolls back when restore fails after writes start', asyn
   const restored = await buildAdminSnapshot();
   assert.equal(Number(restored.status?.onlinePlayers || 0), expectedOnlinePlayers);
 });
+
+test('previewAdminBackupRestore dedupes duplicate delivery audit ids in expected counts', async (t) => {
+  clearSnapshotModules();
+  const {
+    buildAdminSnapshot,
+    createAdminBackup,
+    jsonReplacer,
+    previewAdminBackupRestore,
+  } = require('../src/services/adminSnapshotService');
+
+  const baseline = await buildAdminSnapshot();
+  const targetSnapshot = JSON.parse(JSON.stringify(baseline));
+  targetSnapshot.deliveryAudit = [
+    {
+      id: 'audit-preview-dup',
+      tenantId: 'tenant-preview',
+      level: 'info',
+      action: 'delivery-preview',
+      message: 'first',
+    },
+    {
+      id: 'audit-preview-dup',
+      tenantId: 'tenant-preview',
+      level: 'warn',
+      action: 'delivery-preview',
+      message: 'second',
+    },
+  ];
+
+  const backup = await createAdminBackup({
+    actor: 'snapshot-regression',
+    role: 'owner',
+    note: 'delivery-audit-dedupe-preview',
+    includeSnapshot: false,
+  });
+  const backupPayload = {
+    schemaVersion: 1,
+    createdAt: new Date().toISOString(),
+    createdBy: 'snapshot-regression',
+    role: 'owner',
+    note: 'delivery-audit-dedupe-preview',
+    snapshot: targetSnapshot,
+  };
+  fs.writeFileSync(backup.absolutePath, JSON.stringify(backupPayload, jsonReplacer, 2), 'utf8');
+
+  t.after(() => {
+    if (backup.absolutePath) {
+      fs.rmSync(backup.absolutePath, { force: true });
+    }
+    clearSnapshotModules();
+  });
+
+  const preview = await previewAdminBackupRestore(backup.file, {
+    actor: 'snapshot-regression',
+    role: 'owner',
+    issuePreviewToken: true,
+  });
+
+  assert.equal(Number(preview.counts?.deliveryAudit || 0), 1);
+  assert.equal(Number(preview.verificationPlan?.expectedCounts?.deliveryAudit || 0), 1);
+});

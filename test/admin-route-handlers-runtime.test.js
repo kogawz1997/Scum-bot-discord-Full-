@@ -23,6 +23,7 @@ test('admin route handlers runtime wires service outputs into route factories', 
   let configServiceDeps = null;
   let publicRouteDeps = null;
   let getRouteDeps = null;
+  let commerceRouteDeps = null;
   let platformPostDeps = null;
   let routeRuntimeDeps = null;
 
@@ -61,7 +62,9 @@ test('admin route handlers runtime wires service outputs into route factories', 
       configServiceDeps = deps;
       return {
         getServerConfigCategory: 'get-server-config-category-marker',
+        getServerConfigJob: 'get-server-config-job-marker',
         getServerConfigWorkspace: 'get-server-config-workspace-marker',
+        listServerConfigJobs: 'list-server-config-jobs-marker',
         listServerConfigBackups: 'list-server-config-backups-marker',
         createServerConfigSaveJob: 'create-server-config-save-job-marker',
         createServerConfigApplyJob: 'create-server-config-apply-job-marker',
@@ -69,6 +72,7 @@ test('admin route handlers runtime wires service outputs into route factories', 
         createServerBotActionJob: 'create-server-bot-action-job-marker',
         claimNextServerConfigJob: 'claim-next-server-config-job-marker',
         completeServerConfigJob: 'complete-server-config-job-marker',
+        retryServerConfigJob: 'retry-server-config-job-marker',
         upsertServerConfigSnapshot: 'upsert-server-config-snapshot-marker',
       };
     },
@@ -83,7 +87,10 @@ test('admin route handlers runtime wires service outputs into route factories', 
       return getMarker;
     },
     createAdminAuthPostRoutes: () => authMarker,
-    createAdminCommerceDeliveryPostRoutes: () => commerceMarker,
+    createAdminCommerceDeliveryPostRoutes: (deps) => {
+      commerceRouteDeps = deps;
+      return commerceMarker;
+    },
     createAdminPortalPostRoutes: () => portalMarker,
     createAdminPlatformPostRoutes: (deps) => {
       platformPostDeps = deps;
@@ -151,6 +158,7 @@ test('admin route handlers runtime wires service outputs into route factories', 
     resolveAdminEditableRootEnvFilePath: 'resolve-root-env-path-marker',
     resolveAdminEditablePortalEnvFilePath: 'resolve-portal-env-path-marker',
     recordAdminSecuritySignal: 'record-admin-security-signal-marker',
+    consumeAdminActionRateLimit: 'consume-admin-action-rate-limit-marker',
     getClientIp: 'get-client-ip-marker',
     upsertAdminUserInDb: 'upsert-admin-user-marker',
     revokeSessionsForUser: 'revoke-sessions-for-user-marker',
@@ -233,6 +241,7 @@ test('admin route handlers runtime wires service outputs into route factories', 
     buildDeliveryLifecycleReport: 'build-delivery-lifecycle-report-marker',
     buildDeliveryLifecycleCsv: 'build-delivery-lifecycle-csv-marker',
     buildTenantDonationOverview: 'build-tenant-donation-overview-marker',
+    buildTenantModuleOverview: 'build-tenant-module-overview-marker',
     getPlatformPermissionCatalog: 'get-platform-permission-catalog-marker',
     getPlanCatalog: 'get-plan-catalog-marker',
     listPersistedPackageCatalog: 'list-persisted-package-catalog-marker',
@@ -389,11 +398,18 @@ test('admin route handlers runtime wires service outputs into route factories', 
   assert.equal(publicRouteDeps.registerPlatformAgent, 'register-agent-marker');
   assert.equal(publicRouteDeps.ingestPlatformAgentSync, 'ingest-platform-agent-sync-marker');
   assert.equal(publicRouteDeps.getPackageCatalog, 'get-package-catalog-summary-marker');
+  assert.equal(publicRouteDeps.consumeAdminActionRateLimit, 'consume-admin-action-rate-limit-marker');
   assert.equal(getRouteDeps.listPlatformServerRegistry, 'list-server-registry-marker');
   assert.equal(getRouteDeps.listPlatformSyncRuns, 'list-control-plane-sync-runs-marker');
+  assert.equal(getRouteDeps.listServerConfigJobs, 'list-server-config-jobs-marker');
   assert.equal(getRouteDeps.buildTenantDonationOverview, 'build-tenant-donation-overview-marker');
+  assert.equal(getRouteDeps.buildTenantModuleOverview, 'build-tenant-module-overview-marker');
   assert.equal(platformPostDeps.createServer, 'create-server-marker');
+  assert.equal(platformPostDeps.getServerConfigJob, 'get-server-config-job-marker');
   assert.equal(platformPostDeps.createServerConfigApplyJob, 'create-server-config-apply-job-marker');
+  assert.equal(platformPostDeps.retryServerConfigJob, 'retry-server-config-job-marker');
+  assert.equal(platformPostDeps.consumeAdminActionRateLimit, 'consume-admin-action-rate-limit-marker');
+  assert.equal(commerceRouteDeps.consumeAdminActionRateLimit, 'consume-admin-action-rate-limit-marker');
   assert.equal(routeRuntimeDeps.handleAdminPlatformPostRoute, platformMarker);
   assert.equal(routeRuntimeDeps.handleAdminCommerceDeliveryPostRoute, commerceMarker);
 

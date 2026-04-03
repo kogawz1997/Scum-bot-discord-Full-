@@ -20,6 +20,16 @@ function getClientIp(req) {
   return trimText(req?.socket?.remoteAddress, 120) || 'unknown';
 }
 
+function matchPublicServerOverviewPath(pathname) {
+  const match = /^\/api\/public\/servers\/([^/]+)\/overview\/?$/.exec(String(pathname || ''));
+  if (!match) return null;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return match[1];
+  }
+}
+
 /**
  * Public product-site routes for signup, pricing, and pre-auth commercial
  * flows. The public site should hand users into the real Tenant or Player
@@ -46,6 +56,7 @@ function createPublicPlatformRoutes(deps = {}) {
     processBillingWebhookEvent,
     billingWebhookSecret,
     buildAdminProductUrl,
+    getPublicServerPortalSnapshot,
     createPreviewSession,
     getPreviewSession,
     buildPreviewSessionCookie,
@@ -141,6 +152,30 @@ function createPublicPlatformRoutes(deps = {}) {
           tenantSignupTarget: resolveAdminUrl('/tenant/onboarding'),
           playerLoginUrl: '/player/login',
         },
+      });
+      return true;
+    }
+
+    const publicServerSlug = matchPublicServerOverviewPath(pathname);
+    if (publicServerSlug && method === 'GET') {
+      if (typeof getPublicServerPortalSnapshot !== 'function') {
+        sendJson(res, 503, {
+          ok: false,
+          error: 'public-server-pages-unavailable',
+        });
+        return true;
+      }
+      const snapshot = await getPublicServerPortalSnapshot(publicServerSlug);
+      if (!snapshot?.tenant?.id) {
+        sendJson(res, 404, {
+          ok: false,
+          error: 'public-server-not-found',
+        });
+        return true;
+      }
+      sendJson(res, 200, {
+        ok: true,
+        data: snapshot,
       });
       return true;
     }
