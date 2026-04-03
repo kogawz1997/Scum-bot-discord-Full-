@@ -1,5 +1,10 @@
 # Changelog
 
+Language:
+
+- English: `CHANGELOG.md`
+- Thai: [CHANGELOG_TH.md](./CHANGELOG_TH.md)
+
 All notable changes to this project will be documented in this file.
 
 Operator-facing release notes live under `docs/releases/` and are written separately from this changelog.

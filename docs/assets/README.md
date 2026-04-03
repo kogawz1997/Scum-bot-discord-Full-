@@ -1,9 +1,4 @@
-﻿# Visual Assets
-
-Language:
-
-- English: `README.md`
-- Thai: [README_TH.md](./README_TH.md)
+# Visual Assets
 
 This folder contains the visual artifacts used by the repository docs.  
 Think of it as the gallery for architecture maps, surface captures, and live proof evidence.
@@ -133,4 +128,3 @@ If someone is new to this repository, this order gives the fastest path from hig
 - the current capture flow exports local admin login, authenticated admin dashboard, player landing, player login, authenticated player dashboard, and player showcase
 - the current Windows capture flow also builds `platform-demo.gif`
 - delivery-class proof expectations are documented in [../DELIVERY_NATIVE_PROOF_COVERAGE.md](../DELIVERY_NATIVE_PROOF_COVERAGE.md)
-

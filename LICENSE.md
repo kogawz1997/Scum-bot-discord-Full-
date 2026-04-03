@@ -1,5 +1,10 @@
 SCUM TH Platform License
 
+Language:
+
+- English: `LICENSE.md`
+- Thai: [LICENSE_TH.md](./LICENSE_TH.md)
+
 Copyright (c) Taweporn Chok
 All rights reserved.
 

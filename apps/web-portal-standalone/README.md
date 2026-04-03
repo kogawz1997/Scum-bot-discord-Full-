@@ -1,4 +1,4 @@
-﻿# Standalone SCUM Player Portal
+# Standalone SCUM Player Portal
 
 Language:
 
@@ -113,4 +113,3 @@ See also:
 - [../../README.md](../../README.md)
 - [../../docs/OPERATOR_QUICKSTART.md](../../docs/OPERATOR_QUICKSTART.md)
 - [../../docs/PRODUCT_READY_GAP_MATRIX.md](../../docs/PRODUCT_READY_GAP_MATRIX.md)
-

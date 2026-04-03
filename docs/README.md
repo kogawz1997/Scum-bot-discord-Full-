@@ -1,9 +1,4 @@
-﻿# Docs Index
-
-Language:
-
-- English: `README.md`
-- Thai: [README_TH.md](./README_TH.md)
+# Docs Index
 
 Use this index to find the right document set by audience instead of scanning the whole repository.
 
@@ -101,4 +96,3 @@ Use this index to find the right document set by audience instead of scanning th
 - [LEGAL_TERMS_TH.md](./LEGAL_TERMS_TH.md)
 - [PRIVACY_POLICY_TH.md](./PRIVACY_POLICY_TH.md)
 - [SUBSCRIPTION_POLICY_TH.md](./SUBSCRIPTION_POLICY_TH.md)
-

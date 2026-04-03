@@ -1,9 +1,4 @@
-﻿# Release Notes
-
-Language:
-
-- English: `README.md`
-- Thai: [README_TH.md](./README_TH.md)
+# Release Notes
 
 This folder contains per-version release notes.
 
@@ -20,4 +15,3 @@ Current entries:
 Guardrail:
 
 - `npm run check:release-notes` verifies that `docs/releases/v<package-version>.md` exists for the current `package.json` version
-
