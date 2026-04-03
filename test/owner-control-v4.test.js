@@ -498,7 +498,10 @@ test('owner analytics workspace surfaces support queue pressure', () => {
   assert.match(html, /Appeals waiting/);
   assert.match(html, /Revenue this month/);
   assert.match(html, /All customer workspaces currently tracked by the platform\./);
-  assert.doesNotMatch(html, new RegExp('\\u00C3|\\u00E0\\u00B8'));
+  assert.doesNotMatch(
+    html,
+    new RegExp(`${String.fromCharCode(0x00C3)}|${String.fromCharCode(0x00E0, 0x00B8)}`),
+  );
   assert.match(html, /data-owner-support-ticket="ticket-001"/);
   assert.match(html, /\/owner\/support\/tenant-1/);
 });

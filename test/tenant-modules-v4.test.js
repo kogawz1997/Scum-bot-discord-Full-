@@ -98,5 +98,8 @@ test('tenant modules v4 html includes next actions, module statuses, and quick l
   assert.match(html, /href="\/tenant\/events"/);
   assert.match(html, /Save changes/);
   assert.match(html, /Reset to package defaults/);
-  assert.doesNotMatch(html, new RegExp('\\u00C3|\\u00E0\\u00B8'));
+  assert.doesNotMatch(
+    html,
+    new RegExp(`${String.fromCharCode(0x00C3)}|${String.fromCharCode(0x00E0, 0x00B8)}`),
+  );
 });
