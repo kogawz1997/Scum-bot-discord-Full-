@@ -47,6 +47,25 @@ function normalizeTicket(row = {}) {
   };
 }
 
+function normalizeTicketChanges(changes = {}) {
+  const next = {};
+  if (Object.prototype.hasOwnProperty.call(changes, 'status')) {
+    next.status = String(changes.status || '').trim() || 'open';
+  }
+  if (Object.prototype.hasOwnProperty.call(changes, 'claimedBy')) {
+    const claimedBy = String(changes.claimedBy || '').trim();
+    next.claimedBy = claimedBy || null;
+  }
+  if (Object.prototype.hasOwnProperty.call(changes, 'reason')) {
+    const reason = String(changes.reason || '').trim();
+    next.reason = reason || null;
+  }
+  if (Object.prototype.hasOwnProperty.call(changes, 'closedAt')) {
+    next.closedAt = normalizeDate(changes.closedAt, null);
+  }
+  return next;
+}
+
 function queueDbWrite(scope, work, label) {
   const { state } = scope;
   state.dbWriteQueue = state.dbWriteQueue
@@ -269,6 +288,40 @@ function closeTicket(channelId, options = {}) {
   return t;
 }
 
+function updateTicket(channelId, changes = {}, options = {}) {
+  const scope = ensureTicketScope(options);
+  void initTicketStore(options);
+  const t = scope.state.tickets.get(channelId);
+  if (!t) return null;
+  const nextChanges = normalizeTicketChanges(changes);
+  if (Object.keys(nextChanges).length === 0) return t;
+  if (Object.prototype.hasOwnProperty.call(nextChanges, 'status')) {
+    t.status = nextChanges.status;
+  }
+  if (Object.prototype.hasOwnProperty.call(nextChanges, 'claimedBy')) {
+    t.claimedBy = nextChanges.claimedBy;
+  }
+  if (Object.prototype.hasOwnProperty.call(nextChanges, 'reason')) {
+    t.reason = nextChanges.reason;
+  }
+  if (Object.prototype.hasOwnProperty.call(nextChanges, 'closedAt')) {
+    t.closedAt = nextChanges.closedAt;
+  }
+  scope.state.mutationVersion += 1;
+
+  queueDbWrite(
+    scope,
+    async () => {
+      await scope.db.ticketRecord.updateMany({
+        where: { channelId },
+        data: nextChanges,
+      });
+    },
+    'update-ticket',
+  );
+  return t;
+}
+
 function replaceTickets(nextTickets = [], nextCounter = null, options = {}) {
   const scope = ensureTicketScope(options);
   void initTicketStore(options);
@@ -321,6 +374,7 @@ module.exports = {
   listTickets,
   claimTicket,
   closeTicket,
+  updateTicket,
   replaceTickets,
   initTicketStore,
   flushTicketStoreWrites,

@@ -37,7 +37,7 @@ test('tenant modules v4 model surfaces package locks, runtime follow-up, and nex
     },
   });
 
-  assert.equal(model.header.title, 'โมดูลของระบบ');
+  assert.equal(model.header.title, 'Bot modules');
   assert.equal(model.summaryStrip.length, 5);
   assert.equal(model.runtimeHealth.syncCount, 1);
   assert.equal(model.runtimeHealth.syncOnline, false);
@@ -47,14 +47,14 @@ test('tenant modules v4 model surfaces package locks, runtime follow-up, and nex
   const botLog = model.modules.find((row) => row.featureKey === 'bot_log');
   const donation = model.modules.find((row) => row.featureKey === 'donation_module');
   const events = model.modules.find((row) => row.featureKey === 'event_module');
-  const runtimeGroup = model.rolloutGroups.find((row) => row.title === 'ยังต้องให้บอทเชื่อมก่อน');
-  const upgradeGroup = model.rolloutGroups.find((row) => row.title === 'ต้องอัปเกรดแพ็กเกจ');
+  const runtimeGroup = model.rolloutGroups.find((row) => row.title === 'Waiting on runtime');
+  const upgradeGroup = model.rolloutGroups.find((row) => row.title === 'Upgrade required');
 
-  assert.equal(botLog.stateLabel, 'Server Bot ยังไม่พร้อม');
+  assert.equal(botLog.stateLabel, 'Server Bot is offline');
   assert.equal(botLog.nextAction.href, '/tenant/server-bots');
-  assert.equal(donation.stateLabel, 'พร้อมใช้งาน');
+  assert.equal(donation.stateLabel, 'Live');
   assert.equal(donation.nextAction.href, '/tenant/donations');
-  assert.equal(events.stateLabel, 'ต้องอัปเกรดแพ็กเกจ');
+  assert.equal(events.stateLabel, 'Package upgrade required');
   assert.equal(events.nextAction.href, '/tenant/billing');
   assert.ok(runtimeGroup.rows.some((row) => row.featureKey === 'bot_log'));
   assert.ok(upgradeGroup.rows.some((row) => row.featureKey === 'event_module'));
@@ -85,10 +85,10 @@ test('tenant modules v4 html includes next actions, module statuses, and quick l
     },
   }));
 
-  assert.match(html, /คิวติดตามงานของโมดูล/);
-  assert.match(html, /บอร์ดความพร้อมของโมดูล/);
+  assert.match(html, /Module follow-up queue/);
+  assert.match(html, /Module rollout board/);
   assert.match(html, /data-tenant-modules-rollout-board/);
-  assert.match(html, /data-tenant-module-rollout-group="เปิดใช้ได้เลย"/);
+  assert.match(html, /data-tenant-module-rollout-group="Ready to enable"/);
   assert.match(html, /data-tenant-modules-next-actions/);
   assert.match(html, /data-tenant-module-card="analytics_module"/);
   assert.match(html, /data-tenant-module-rollout-item="donation_module"/);
@@ -96,6 +96,7 @@ test('tenant modules v4 html includes next actions, module statuses, and quick l
   assert.match(html, /data-tenant-module-action-link="analytics_module"/);
   assert.match(html, /href="\/tenant\/analytics"/);
   assert.match(html, /href="\/tenant\/events"/);
-  assert.match(html, /บันทึกการเปลี่ยนแปลง/);
-  assert.match(html, /รีเซ็ตกลับตามแพ็กเกจ/);
+  assert.match(html, /Save changes/);
+  assert.match(html, /Reset to package defaults/);
+  assert.doesNotMatch(html, new RegExp('\\u00C3|\\u00E0\\u00B8'));
 });

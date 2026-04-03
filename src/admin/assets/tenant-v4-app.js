@@ -951,6 +951,7 @@
         deadLetters,
         deliveryLifecycle,
         players,
+        supportTickets,
         staffMemberships,
         tenantRoleMatrix,
         notifications,
@@ -1017,6 +1018,7 @@
         api(`/admin/api/delivery/dead-letter?tenantId=${encodeURIComponent(scopedTenantId)}&limit=20`, { items: [] }),
         api(`/admin/api/delivery/lifecycle?tenantId=${encodeURIComponent(scopedTenantId)}&limit=80&pendingOverdueMs=1200000`, {}),
         api(`/admin/api/player/accounts?tenantId=${encodeURIComponent(scopedTenantId)}&limit=20`, { items: [] }).catch(() => ({ items: [] })),
+        api(`/admin/api/platform/support-tickets?tenantId=${encodeURIComponent(scopedTenantId)}&limit=24`, { items: [] }).catch(() => ({ items: [] })),
         api(`/admin/api/platform/tenant-staff?tenantId=${encodeURIComponent(scopedTenantId)}&limit=50`, []).catch(() => []),
         api(`/admin/api/platform/tenant-role-matrix?tenantId=${encodeURIComponent(scopedTenantId)}`, { roles: [], currentAccess: null }).catch(() => ({ roles: [], currentAccess: null })),
         api('/admin/api/notifications?acknowledged=false&limit=10', { items: [] }),
@@ -1105,6 +1107,12 @@
           { items: [], userId: selectedUserId, status: selectedStatus },
         ).catch(() => ({ items: [], userId: selectedUserId, status: selectedStatus }))
         : { items: [], userId: '', status: '' };
+      const playerSupportTickets = selectedUserId
+        ? await api(
+          `/admin/api/platform/support-tickets?tenantId=${encodeURIComponent(scopedTenantId)}&userId=${encodeURIComponent(selectedUserId)}&limit=12`,
+          { items: [], total: 0, openCount: 0, appealCount: 0 },
+        ).catch(() => ({ items: [], total: 0, openCount: 0, appealCount: 0 }))
+        : { items: [], total: 0, openCount: 0, appealCount: 0 };
       const selectedCode = readPurchaseCodeFromUrl() || pickFirstPurchaseCode(purchaseLookup?.items);
       const deliveryCase = selectedCode
         ? await api(`/admin/api/delivery/detail?tenantId=${encodeURIComponent(scopedTenantId)}&code=${encodeURIComponent(selectedCode)}&limit=80`, null).catch(() => null)
@@ -1142,6 +1150,8 @@
         deadLetters: Array.isArray(deadLetters?.items) ? deadLetters.items : [],
         deliveryLifecycle,
         players: playerRows,
+        supportTickets: Array.isArray(supportTickets?.items) ? supportTickets.items : [],
+        playerSupportTickets: Array.isArray(playerSupportTickets?.items) ? playerSupportTickets.items : [],
         staffMemberships: Array.isArray(staffMemberships) ? staffMemberships : [],
         tenantRoleMatrix: tenantRoleMatrix && typeof tenantRoleMatrix === 'object'
           ? tenantRoleMatrix
@@ -3932,7 +3942,13 @@
     return String(value || '').trim().toLowerCase();
   }
 
+  const moduleRuntimeApi = () => window.TenantModulesRuntime || {};
+
   function collectModuleFeatureFlags(renderState) {
+    const runtimeApi = moduleRuntimeApi();
+    if (typeof runtimeApi.collectTenantModuleFeatureFlags === 'function') {
+      return runtimeApi.collectTenantModuleFeatureFlags(renderState);
+    }
     return renderState?.tenantConfig?.featureFlags && typeof renderState.tenantConfig.featureFlags === 'object'
       ? { ...renderState.tenantConfig.featureFlags }
       : {};
@@ -3974,59 +3990,28 @@
   }
 
   function computeModuleSaveState(renderState) {
-    const toggles = Array.from(document.querySelectorAll('[data-module-toggle][data-module-feature-key]'));
-    const baseFeatureSet = new Set(
-      Array.isArray(renderState?.overview?.tenantFeatureAccess?.package?.features)
-        ? renderState.overview.tenantFeatureAccess.package.features.map((value) => String(value || '').trim()).filter(Boolean)
-        : [],
-    );
-    const nextFeatureFlags = collectModuleFeatureFlags(renderState);
-    const moduleKeys = new Set();
-
-    toggles.forEach((toggle) => {
-      const featureKey = String(toggle.getAttribute('data-module-feature-key') || '').trim();
-      const packageEnabled = String(toggle.getAttribute('data-module-package-enabled') || '').trim() === 'true';
-      if (!featureKey) return;
-      moduleKeys.add(featureKey);
-      if (toggle.disabled) return;
-      if (toggle.checked === packageEnabled) {
-        delete nextFeatureFlags[featureKey];
-      } else {
-        nextFeatureFlags[featureKey] = toggle.checked;
-      }
-    });
-
-    const effectiveFeatureSet = new Set(baseFeatureSet);
-    Object.entries(nextFeatureFlags).forEach(([featureKey, rawValue]) => {
-      if (rawValue === true) effectiveFeatureSet.add(featureKey);
-      if (rawValue === false) effectiveFeatureSet.delete(featureKey);
-    });
-
-    const dependencyIssues = toggles.reduce((rows, toggle) => {
-      const featureKey = String(toggle.getAttribute('data-module-feature-key') || '').trim();
-      const dependsOnRaw = String(toggle.getAttribute('data-module-depends-on') || '').trim();
-      const dependsOn = dependsOnRaw ? dependsOnRaw.split(',').map((value) => String(value || '').trim()).filter(Boolean) : [];
-      if (!featureKey || !toggle.checked || !dependsOn.length) return rows;
-      const missing = dependsOn.filter((dependency) => !effectiveFeatureSet.has(dependency));
-      if (!missing.length) return rows;
-      rows.push({
-        featureKey,
-        missing,
+    const runtimeApi = moduleRuntimeApi();
+    const toggles = typeof runtimeApi.collectModuleToggleSnapshots === 'function'
+      ? runtimeApi.collectModuleToggleSnapshots(document)
+      : Array.from(document.querySelectorAll('[data-module-toggle][data-module-feature-key]')).map((toggle) => ({
+        featureKey: String(toggle.getAttribute('data-module-feature-key') || '').trim(),
+        packageEnabled: String(toggle.getAttribute('data-module-package-enabled') || '').trim() === 'true',
+        checked: toggle.checked === true,
+        disabled: toggle.disabled === true,
+        dependsOn: String(toggle.getAttribute('data-module-depends-on') || '').trim(),
+      }));
+    if (typeof runtimeApi.computeTenantModuleSaveState === 'function') {
+      return runtimeApi.computeTenantModuleSaveState({
+        packageFeatures: Array.isArray(renderState?.overview?.tenantFeatureAccess?.package?.features)
+          ? renderState.overview.tenantFeatureAccess.package.features
+          : [],
+        currentFeatureFlags: collectModuleFeatureFlags(renderState),
+        toggles,
       });
-      return rows;
-    }, []);
-
-    moduleKeys.forEach((featureKey) => {
-      if (!Object.prototype.hasOwnProperty.call(nextFeatureFlags, featureKey)) return;
-      const rawValue = nextFeatureFlags[featureKey];
-      if (rawValue !== true && rawValue !== false) {
-        delete nextFeatureFlags[featureKey];
-      }
-    });
-
+    }
     return {
-      nextFeatureFlags,
-      dependencyIssues,
+      nextFeatureFlags: collectModuleFeatureFlags(renderState),
+      dependencyIssues: [],
     };
   }
 
@@ -4552,14 +4537,35 @@
     const previewMode = isSurfacePreview(surfaceState, renderState);
     const form = document.querySelector('[data-tenant-settings-form]');
     const saveButton = document.querySelector('[data-tenant-settings-save]');
+    const publishButton = document.querySelector('[data-tenant-branding-publish]');
+    const restoreButton = document.querySelector('[data-tenant-branding-restore]');
+    const restoreVersionButtons = Array.from(document.querySelectorAll('[data-tenant-branding-restore-version][data-branding-version]'));
     const configLockReason = getTenantActionLockReason(
       renderState,
       'can_edit_config',
       'Tenant settings changes are locked in the current package.',
     );
+    const readTenantSettingsDraft = () => ({
+      configPatch: parseConfigJsonInput(
+        document.querySelector('[data-tenant-settings-config-patch]')?.value,
+        'Tenant settings changes',
+        { emptyAsObject: true },
+      ),
+      portalEnvPatch: parseConfigJsonInput(
+        document.querySelector('[data-tenant-settings-portal-env-patch]')?.value,
+        'Portal settings',
+        { emptyAsObject: true },
+      ),
+    });
     if (previewMode || getTenantActionEntitlement(renderState, 'can_edit_config')?.locked) {
-      disableActionNodes([saveButton], previewMode ? 'Preview mode cannot save tenant settings.' : configLockReason);
+      disableActionNodes(
+        [saveButton, publishButton, restoreButton, ...restoreVersionButtons],
+        previewMode ? 'Preview mode cannot save tenant settings.' : configLockReason,
+      );
       return;
+    }
+    if (restoreButton && restoreButton.getAttribute('data-has-published-branding') !== 'true') {
+      disableActionNodes([restoreButton], 'No published branding snapshot is available yet.');
     }
 
     form?.addEventListener('submit', async (event) => {
@@ -4570,16 +4576,7 @@
         return;
       }
       try {
-        const configPatch = parseConfigJsonInput(
-          document.querySelector('[data-tenant-settings-config-patch]')?.value,
-          'Tenant settings changes',
-          { emptyAsObject: true },
-        );
-        const portalEnvPatch = parseConfigJsonInput(
-          document.querySelector('[data-tenant-settings-portal-env-patch]')?.value,
-          'Portal settings',
-          { emptyAsObject: true },
-        );
+        const { configPatch, portalEnvPatch } = readTenantSettingsDraft();
         setActionButtonBusy(saveButton, true, 'Saving...');
         await apiRequest('/admin/api/platform/tenant-config', {
           method: 'POST',
@@ -4601,10 +4598,171 @@
         setActionButtonBusy(saveButton, false);
       }
     });
+
+    publishButton?.addEventListener('click', async () => {
+      const tenantId = getRenderTenantId(renderState);
+      if (!tenantId) {
+        setStatus('Tenant settings could not find the tenant scope.', 'danger');
+        return;
+      }
+      try {
+        const { portalEnvPatch } = readTenantSettingsDraft();
+        setActionButtonBusy(publishButton, true, 'Publishing...');
+        await apiRequest('/admin/api/platform/tenant-config', {
+          method: 'POST',
+          body: {
+            tenantId,
+            updateScope: 'branding-publish',
+            portalEnvPatch,
+          },
+        }, null);
+        setStatus('Published the current portal branding.', 'success');
+        await refreshState({ silent: true });
+      } catch (error) {
+        setStatus(String(error?.message || error), 'danger');
+      } finally {
+        setActionButtonBusy(publishButton, false);
+      }
+    });
+
+    restoreButton?.addEventListener('click', async () => {
+      const tenantId = getRenderTenantId(renderState);
+      if (!tenantId) {
+        setStatus('Tenant settings could not find the tenant scope.', 'danger');
+        return;
+      }
+      if (restoreButton.getAttribute('data-has-published-branding') !== 'true') {
+        setStatus('No published branding snapshot is available yet.', 'warning');
+        return;
+      }
+      if (!window.confirm('Restore the last published branding back into the draft editor?')) {
+        return;
+      }
+      try {
+        setActionButtonBusy(restoreButton, true, 'Restoring...');
+        await apiRequest('/admin/api/platform/tenant-config', {
+          method: 'POST',
+          body: {
+            tenantId,
+            updateScope: 'branding-restore-draft',
+          },
+        }, null);
+        setStatus('Restored the published branding into the draft editor.', 'success');
+        await refreshState({ silent: true });
+      } catch (error) {
+        setStatus(String(error?.message || error), 'danger');
+      } finally {
+        setActionButtonBusy(restoreButton, false);
+      }
+    });
+
+    restoreVersionButtons.forEach((button) => {
+      button.addEventListener('click', async () => {
+        const tenantId = getRenderTenantId(renderState);
+        const brandingVersion = Number(button.getAttribute('data-branding-version') || 0);
+        if (!tenantId || !Number.isFinite(brandingVersion) || brandingVersion <= 0) {
+          setStatus('The selected branding version is invalid.', 'warning');
+          return;
+        }
+        if (!window.confirm(`Restore branding version ${brandingVersion} into the draft editor?`)) {
+          return;
+        }
+        try {
+          setActionButtonBusy(button, true, 'Restoring...');
+          await apiRequest('/admin/api/platform/tenant-config', {
+            method: 'POST',
+            body: {
+              tenantId,
+              updateScope: 'branding-restore-version',
+              brandingVersion,
+            },
+          }, null);
+          setStatus(`Restored branding version ${brandingVersion} into the draft editor.`, 'success');
+          await refreshState({ silent: true });
+        } catch (error) {
+          setStatus(String(error?.message || error), 'danger');
+        } finally {
+          setActionButtonBusy(button, false);
+        }
+      });
+    });
   }
 
-  function wireBillingPage() {
+  function wireBillingPage(renderState, surfaceState) {
+    const previewMode = isSurfacePreview(surfaceState, renderState);
     const refreshButton = document.querySelector('[data-tenant-billing-refresh]');
+    const tenantId = getRenderTenantId(renderState);
+    const subscriptions = Array.isArray(renderState?.subscriptions) ? renderState.subscriptions : [];
+    const invoices = Array.isArray(renderState?.billingInvoices) ? renderState.billingInvoices : [];
+    const currentSubscription = subscriptions[0] || null;
+    const actionableInvoice = invoices.find((row) => ['draft', 'open', 'past_due', 'failed'].includes(String(row?.status || '').trim().toLowerCase())) || null;
+    const checkoutLabel = actionableInvoice
+      ? 'Open billing checkout'
+      : (['suspended', 'expired'].includes(String(currentSubscription?.status || '').trim().toLowerCase())
+        ? 'Renew current plan'
+        : 'Update billing');
+    const checkoutDetail = actionableInvoice
+      ? `Invoice ${String(actionableInvoice.id || '').trim() || 'pending'} is ready for payment.`
+      : 'Start a self-service checkout session for the current subscription.';
+    const buildBillingCheckoutButton = () => {
+      const button = document.createElement('button');
+      button.className = 'tdv4-button tdv4-button-primary';
+      button.type = 'button';
+      button.textContent = checkoutLabel;
+      button.setAttribute('data-tenant-billing-start-checkout', '');
+      if (actionableInvoice?.id) button.dataset.invoiceId = String(actionableInvoice.id).trim();
+      if (currentSubscription?.id) button.dataset.subscriptionId = String(currentSubscription.id).trim();
+      if (currentSubscription?.planId) button.dataset.planId = String(currentSubscription.planId).trim();
+      if (currentSubscription?.billingCycle) button.dataset.billingCycle = String(currentSubscription.billingCycle).trim();
+      if (currentSubscription?.packageId) button.dataset.packageId = String(currentSubscription.packageId).trim();
+      const amountValue = actionableInvoice?.amountCents ?? currentSubscription?.amountCents ?? 0;
+      button.dataset.amountCents = String(Number.isFinite(Number(amountValue)) ? Number(amountValue) : 0);
+      button.dataset.currency = String(actionableInvoice?.currency || currentSubscription?.currency || 'USD').trim() || 'USD';
+      return button;
+    };
+    const ensureBillingCheckoutUi = () => {
+      const existing = Array.from(document.querySelectorAll('[data-tenant-billing-start-checkout]'));
+      if (existing.length) return existing;
+      const created = [];
+      const headActions = document.querySelector('.tdv4-pagehead-actions');
+      if (headActions && (currentSubscription || actionableInvoice)) {
+        const button = buildBillingCheckoutButton();
+        headActions.prepend(button);
+        created.push(button);
+      }
+      const actionList = document.querySelector('.tdv4-action-list');
+      if (actionList && (currentSubscription || actionableInvoice)) {
+        const button = buildBillingCheckoutButton();
+        actionList.prepend(button);
+        created.push(button);
+        if (!document.querySelector('[data-tenant-billing-checkout-detail]')) {
+          const detail = document.createElement('p');
+          detail.className = 'tdv4-section-copy';
+          detail.setAttribute('data-tenant-billing-checkout-detail', '');
+          detail.textContent = checkoutDetail;
+          actionList.insertAdjacentElement('afterend', detail);
+        }
+      }
+      return created;
+    };
+    const checkoutButtons = ensureBillingCheckoutUi();
+    if (previewMode) {
+      disableActionNodes(checkoutButtons, 'Preview mode cannot start tenant billing checkout.');
+    }
+
+    const url = new URL(window.location.href);
+    const checkoutState = String(url.searchParams.get('checkout') || '').trim().toLowerCase();
+    if (checkoutState === 'success' || checkoutState === 'canceled' || checkoutState === 'cancelled') {
+      setStatus(
+        checkoutState === 'success'
+          ? 'Billing checkout completed. Refreshing the latest subscription state...'
+          : 'Billing checkout was canceled.',
+        checkoutState === 'success' ? 'success' : 'warning',
+      );
+      url.searchParams.delete('checkout');
+      window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+    }
+
     refreshButton?.addEventListener('click', async () => {
       setActionButtonBusy(refreshButton, true, 'Refreshing...');
       try {
@@ -4612,6 +4770,51 @@
       } finally {
         setActionButtonBusy(refreshButton, false);
       }
+    });
+
+    checkoutButtons.forEach((button) => {
+      if (!button || button.dataset.checkoutBound === 'true') return;
+      button.dataset.checkoutBound = 'true';
+      button.addEventListener('click', async () => {
+        if (previewMode) {
+          setStatus('Preview mode cannot start tenant billing checkout.', 'warning');
+          return;
+        }
+        if (!tenantId) {
+          setStatus('Tenant billing could not find the tenant scope.', 'danger');
+          return;
+        }
+        try {
+          setActionButtonBusy(button, true, 'Opening checkout...');
+          const result = await apiRequest('/admin/api/platform/billing/tenant-checkout-session', {
+            method: 'POST',
+            body: {
+              tenantId,
+              invoiceId: String(button.dataset.invoiceId || '').trim() || undefined,
+              subscriptionId: String(button.dataset.subscriptionId || '').trim() || undefined,
+              packageId: String(button.dataset.packageId || '').trim() || undefined,
+              planId: String(button.dataset.planId || '').trim() || undefined,
+              billingCycle: String(button.dataset.billingCycle || '').trim() || undefined,
+              amountCents: Number(button.dataset.amountCents || 0) || 0,
+              currency: String(button.dataset.currency || 'USD').trim() || 'USD',
+            },
+          }, null);
+          const checkoutUrl = String(
+            result?.session?.checkoutUrl
+            || result?.session?.url
+            || result?.checkoutUrl
+            || '',
+          ).trim();
+          if (!checkoutUrl) {
+            throw new Error('Billing checkout did not return a checkout URL.');
+          }
+          window.location.href = checkoutUrl;
+        } catch (error) {
+          setStatus(String(error?.message || error), 'danger');
+        } finally {
+          setActionButtonBusy(button, false);
+        }
+      });
     });
   }
 
@@ -4839,7 +5042,7 @@
       return;
     }
     if (page === 'billing') {
-      wireBillingPage();
+      wireBillingPage(renderState, surfaceState);
       return;
     }
     if (page === 'delivery-agents') {
@@ -4857,6 +5060,8 @@
     const previewMode = isSurfacePreview(surfaceState, renderState);
     const manageStaffLocked = Boolean(getTenantActionEntitlement(renderState, 'can_manage_staff')?.locked)
       || !hasTenantPermission(renderState, 'manage_staff');
+    const managePlayersLocked = Boolean(getTenantActionEntitlement(renderState, 'can_manage_players')?.locked)
+      || !hasTenantPermission(renderState, 'manage_players');
     const manageStaffLockReason = !hasTenantPermission(renderState, 'manage_staff')
       ? getTenantPermissionLockReason(
         renderState,
@@ -4868,9 +5073,25 @@
         'can_manage_staff',
         'Staff management is locked in the current package.',
       );
+    const managePlayersLockReason = !hasTenantPermission(renderState, 'manage_players')
+      ? getTenantPermissionLockReason(
+        renderState,
+        'manage_players',
+        'Your tenant role cannot manage player support actions.',
+      )
+      : getTenantActionLockReason(
+        renderState,
+        'can_manage_players',
+        'Player support actions are locked in the current package.',
+      );
     const tenantId = String(renderState?.tenantId || '').trim();
     const inviteForm = document.querySelector('[data-tenant-staff-invite-form]');
     const inviteButton = inviteForm?.querySelector('[data-tenant-staff-invite-submit]');
+    const claimButtons = Array.from(document.querySelectorAll('[data-tenant-player-ticket-claim]'));
+    const assignButtons = Array.from(document.querySelectorAll('[data-tenant-player-ticket-assign]'));
+    const escalationButtons = Array.from(document.querySelectorAll('[data-tenant-player-ticket-escalate][data-escalated]'));
+    const reviewButtons = Array.from(document.querySelectorAll('[data-tenant-player-ticket-review][data-channel-id]'));
+    const closeButtons = Array.from(document.querySelectorAll('[data-tenant-player-ticket-close]'));
 
     if (previewMode || manageStaffLocked) {
       disableActionNodes(
@@ -4884,6 +5105,18 @@
           ...Array.from(document.querySelectorAll('[data-tenant-staff-invite-form] input, [data-tenant-staff-invite-form] select')),
         ],
         previewMode ? 'Preview mode cannot change staff access yet.' : manageStaffLockReason,
+      );
+    }
+    if (previewMode || managePlayersLocked) {
+      disableActionNodes(
+        [
+          ...claimButtons,
+          ...assignButtons,
+          ...escalationButtons,
+          ...reviewButtons,
+          ...closeButtons,
+        ],
+        previewMode ? 'Preview mode cannot manage player support yet.' : managePlayersLockReason,
       );
     }
 
@@ -5013,6 +5246,163 @@
             },
           });
           setStatus('Tenant staff access revoked.', 'success');
+          await refreshState({ silent: true });
+        } catch (error) {
+          setStatus(String(error?.message || error), 'danger');
+        } finally {
+          setActionButtonBusy(button, false);
+        }
+      });
+    });
+
+    claimButtons.forEach((button) => {
+      button.addEventListener('click', async () => {
+        if (previewMode || managePlayersLocked) {
+          setStatus(previewMode ? 'Preview tenants cannot manage player support yet.' : managePlayersLockReason, 'warning');
+          return;
+        }
+        const channelId = String(button.getAttribute('data-tenant-player-ticket-claim') || '').trim();
+        if (!tenantId || !channelId) return;
+        setActionButtonBusy(button, true, 'Claiming...');
+        try {
+          await apiRequest('/admin/api/ticket/claim', {
+            method: 'POST',
+            body: {
+              tenantId,
+              channelId,
+            },
+          }, null);
+          setStatus(`Support ticket ${channelId} claimed.`, 'success');
+          await refreshState({ silent: true });
+        } catch (error) {
+          setStatus(String(error?.message || error), 'danger');
+        } finally {
+          setActionButtonBusy(button, false);
+        }
+      });
+    });
+
+    assignButtons.forEach((button) => {
+      button.addEventListener('click', async () => {
+        if (previewMode || managePlayersLocked) {
+          setStatus(previewMode ? 'Preview tenants cannot manage player support yet.' : managePlayersLockReason, 'warning');
+          return;
+        }
+        const channelId = String(button.getAttribute('data-tenant-player-ticket-assign') || '').trim();
+        if (!tenantId || !channelId) return;
+        setActionButtonBusy(button, true, 'Assigning...');
+        try {
+          await apiRequest('/admin/api/ticket/assign', {
+            method: 'POST',
+            body: {
+              tenantId,
+              channelId,
+            },
+          }, null);
+          setStatus(`Support ticket ${channelId} assigned to the current operator.`, 'success');
+          await refreshState({ silent: true });
+        } catch (error) {
+          setStatus(String(error?.message || error), 'danger');
+        } finally {
+          setActionButtonBusy(button, false);
+        }
+      });
+    });
+
+    escalationButtons.forEach((button) => {
+      button.addEventListener('click', async () => {
+        if (previewMode || managePlayersLocked) {
+          setStatus(previewMode ? 'Preview tenants cannot manage player support yet.' : managePlayersLockReason, 'warning');
+          return;
+        }
+        const channelId = String(button.getAttribute('data-tenant-player-ticket-escalate') || '').trim();
+        const escalated = String(button.getAttribute('data-escalated') || '').trim().toLowerCase();
+        if (!tenantId || !channelId || !['true', 'false'].includes(escalated)) return;
+        const nextEscalated = escalated === 'true';
+        setActionButtonBusy(button, true, nextEscalated ? 'Escalating...' : 'Returning...');
+        try {
+          await apiRequest('/admin/api/ticket/escalate', {
+            method: 'POST',
+            body: {
+              tenantId,
+              channelId,
+              escalated: nextEscalated,
+            },
+          }, null);
+          setStatus(
+            nextEscalated
+              ? `Support ticket ${channelId} escalated.`
+              : `Support ticket ${channelId} returned to the active queue.`,
+            nextEscalated ? 'warning' : 'success',
+          );
+          await refreshState({ silent: true });
+        } catch (error) {
+          setStatus(String(error?.message || error), 'danger');
+        } finally {
+          setActionButtonBusy(button, false);
+        }
+      });
+    });
+
+    reviewButtons.forEach((button) => {
+      button.addEventListener('click', async () => {
+        if (previewMode || managePlayersLocked) {
+          setStatus(previewMode ? 'Preview tenants cannot review appeals yet.' : managePlayersLockReason, 'warning');
+          return;
+        }
+        const channelId = String(button.getAttribute('data-channel-id') || '').trim();
+        const resolution = String(button.getAttribute('data-tenant-player-ticket-review') || '').trim().toLowerCase();
+        if (!tenantId || !channelId || !['approved', 'rejected'].includes(resolution)) return;
+        const actionLabel = resolution === 'approved' ? 'approve' : 'reject';
+        const note = window.prompt(`Optional note for this appeal ${actionLabel}:`, '');
+        if (note === null) return;
+        setActionButtonBusy(button, true, resolution === 'approved' ? 'Approving...' : 'Rejecting...');
+        try {
+          await apiRequest('/admin/api/ticket/appeal-review', {
+            method: 'POST',
+            body: {
+              tenantId,
+              channelId,
+              resolution,
+              note,
+            },
+          }, null);
+          setStatus(
+            resolution === 'approved'
+              ? `Appeal ${channelId} approved.`
+              : `Appeal ${channelId} rejected.`,
+            resolution === 'approved' ? 'success' : 'warning',
+          );
+          await refreshState({ silent: true });
+        } catch (error) {
+          setStatus(String(error?.message || error), 'danger');
+        } finally {
+          setActionButtonBusy(button, false);
+        }
+      });
+    });
+
+    closeButtons.forEach((button) => {
+      button.addEventListener('click', async () => {
+        if (previewMode || managePlayersLocked) {
+          setStatus(previewMode ? 'Preview tenants cannot close support tickets yet.' : managePlayersLockReason, 'warning');
+          return;
+        }
+        const channelId = String(button.getAttribute('data-tenant-player-ticket-close') || '').trim();
+        if (!tenantId || !channelId) return;
+        if (!window.confirm(`Close support ticket ${channelId}?`)) {
+          return;
+        }
+        setActionButtonBusy(button, true, 'Closing...');
+        try {
+          await apiRequest('/admin/api/ticket/close', {
+            method: 'POST',
+            body: {
+              tenantId,
+              channelId,
+            },
+          }, null);
+          setStatus(`Support ticket ${channelId} closed.`, 'success');
           await refreshState({ silent: true });
         } catch (error) {
           setStatus(String(error?.message || error), 'danger');

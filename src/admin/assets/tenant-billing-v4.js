@@ -66,6 +66,11 @@
     return 'muted';
   }
 
+  function isActionableInvoiceStatus(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    return ['draft', 'open', 'past_due', 'failed'].includes(normalized);
+  }
+
   function humanizeFeatureKey(value) {
     const key = String(value || '').trim();
     if (!key) return 'ฟีเจอร์ที่ไม่ทราบชื่อ';
@@ -156,6 +161,9 @@
       : {};
     const currentSubscription = subscriptions[0] || quotaSnapshot.subscription || null;
     const subscriptionState = normalizeSubscriptionState(currentSubscription && currentSubscription.status);
+    const actionableInvoice = invoices.find(function (row) {
+      return isActionableInvoiceStatus(row && row.status);
+    }) || null;
     const featureKeys = Array.isArray(quotaSnapshot.enabledFeatureKeys) && quotaSnapshot.enabledFeatureKeys.length
       ? quotaSnapshot.enabledFeatureKeys
       : Array.isArray(packageInfo.features)
@@ -212,6 +220,41 @@
       features: features.slice(0, 24),
       quotaRows: quotaRows.slice(0, 12),
       currentSubscriptionState: subscriptionState,
+      checkoutAction: currentSubscription || actionableInvoice
+        ? {
+          available: true,
+          invoiceId: firstNonEmpty([actionableInvoice && actionableInvoice.id], ''),
+          subscriptionId: firstNonEmpty([currentSubscription && currentSubscription.id], ''),
+          packageId: firstNonEmpty([packageInfo.id, currentSubscription && currentSubscription.packageId], ''),
+          planId: firstNonEmpty([currentSubscription && currentSubscription.planId], ''),
+          billingCycle: firstNonEmpty([currentSubscription && currentSubscription.billingCycle], ''),
+          amountCents: Number(
+            actionableInvoice && actionableInvoice.amountCents != null
+              ? actionableInvoice.amountCents
+              : currentSubscription && currentSubscription.amountCents,
+          ) || 0,
+          currency: firstNonEmpty([actionableInvoice && actionableInvoice.currency, currentSubscription && currentSubscription.currency], 'USD'),
+          label: actionableInvoice
+            ? 'ชำระใบแจ้งหนี้ล่าสุด'
+            : (subscriptionState === 'suspended' || subscriptionState === 'expired'
+              ? 'ต่ออายุแพ็กเกจ'
+              : 'อัปเดตการชำระเงิน'),
+          detail: actionableInvoice
+            ? `ใบแจ้งหนี้ ${firstNonEmpty([actionableInvoice.id], '-')} ยังรอการชำระ`
+            : 'เปิด checkout เพื่อจัดการรอบบิลปัจจุบันด้วยตัวเอง',
+        }
+        : {
+          available: false,
+          invoiceId: '',
+          subscriptionId: '',
+          packageId: '',
+          planId: '',
+          billingCycle: '',
+          amountCents: 0,
+          currency: 'USD',
+          label: 'ยังไม่มีรายการให้ชำระ',
+          detail: 'เมื่อระบบสร้าง subscription หรือ invoice สำหรับ tenant นี้แล้ว จะเริ่ม checkout เองได้จากหน้านี้',
+        },
     };
   }
 

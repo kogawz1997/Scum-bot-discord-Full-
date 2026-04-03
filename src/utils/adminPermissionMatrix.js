@@ -178,6 +178,14 @@ const POST_PERMISSION_MATRIX = Object.freeze([
     description: 'Create owner-initiated checkout sessions',
   },
   {
+    path: '/admin/api/platform/billing/tenant-checkout-session',
+    permission: 'tenant:billing-checkout-self-service',
+    category: 'platform',
+    minRole: 'viewer',
+    stepUp: false,
+    description: 'Create tenant self-service checkout sessions',
+  },
+  {
     path: '/admin/api/platform/license',
     permission: 'platform:license-write',
     category: 'platform',
@@ -232,6 +240,22 @@ const POST_PERMISSION_MATRIX = Object.freeze([
     minRole: 'mod',
     stepUp: false,
     description: 'Close support tickets',
+  },
+  {
+    path: '/admin/api/ticket/assign',
+    permission: 'ticket:assign',
+    category: 'support',
+    minRole: 'mod',
+    stepUp: false,
+    description: 'Assign or reassign support tickets',
+  },
+  {
+    path: '/admin/api/ticket/escalate',
+    permission: 'ticket:escalate',
+    category: 'support',
+    minRole: 'mod',
+    stepUp: false,
+    description: 'Escalate or return support tickets to the working queue',
   },
   {
     path: '/admin/api/moderation/add',

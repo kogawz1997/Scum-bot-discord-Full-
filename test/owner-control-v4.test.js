@@ -376,6 +376,30 @@ function buildState() {
         { key: 'admin-web', label: 'Owner web', pm2Name: 'scum-owner-web', description: 'Owner web frontend' },
       ],
     },
+    supportTickets: [
+      {
+        id: 1,
+        channelId: 'ticket-001',
+        guildId: 'tenant-1',
+        userId: 'player-1',
+        category: 'support',
+        reason: 'Player cannot claim delivery reward',
+        status: 'open',
+        claimedBy: null,
+        createdAt: '2026-03-29T06:15:00.000Z',
+      },
+      {
+        id: 2,
+        channelId: 'ticket-002',
+        guildId: 'tenant-1',
+        userId: 'player-2',
+        category: 'appeal',
+        reason: 'Appeal for moderation action',
+        status: 'claimed',
+        claimedBy: 'mod-1',
+        createdAt: '2026-03-29T07:00:00.000Z',
+      },
+    ],
     supportCase: {
       tenantId: 'tenant-1',
       lifecycle: {
@@ -446,6 +470,198 @@ test('owner control support route renders a dedicated support case workspace', (
   assert.match(html, /งานดูแลที่ควรเริ่มก่อน/);
   assert.match(html, /ส่งออก JSON/);
   assert.doesNotMatch(html, /data-owner-form="update-tenant"/);
+});
+
+test('owner analytics workspace surfaces support queue pressure', () => {
+  const html = buildOwnerControlV4Html(createOwnerControlV4Model(buildState(), { currentRoute: 'analytics' }));
+
+  assert.match(html, /owner-analytics-support-queue/);
+  assert.match(html, /Combine tenant growth, package adoption, revenue visibility, and service health/);
+  assert.match(html, /Commercial and support watchlist/);
+  assert.match(html, /owner-analytics-priority-grid/);
+  assert.match(html, /data-owner-analytics-revenue-risk/);
+  assert.match(html, /Billing pressure/);
+  assert.match(html, /Open billing recovery/);
+  assert.match(html, /collection gap/i);
+  assert.match(html, /data-owner-analytics-support-pressure/);
+  assert.match(html, /Support escalation watch/);
+  assert.match(html, /Review support cases/);
+  assert.match(html, /owner-analytics-revenue-trend/);
+  assert.match(html, /Collection quality over recent months/);
+  assert.match(html, /owner-analytics-support-workload/);
+  assert.match(html, /Queue ownership and SLA pressure/);
+  assert.match(html, /owner-analytics-tenant-risk-board/);
+  assert.match(html, /Customers to pick up first/);
+  assert.match(html, /owner-analytics-support-sla-buckets/);
+  assert.match(html, /Open queue age distribution/);
+  assert.match(html, /Open support/);
+  assert.match(html, /Appeals waiting/);
+  assert.match(html, /Revenue this month/);
+  assert.match(html, /All customer workspaces currently tracked by the platform\./);
+  assert.doesNotMatch(html, new RegExp('\\u00C3|\\u00E0\\u00B8'));
+  assert.match(html, /data-owner-support-ticket="ticket-001"/);
+  assert.match(html, /\/owner\/support\/tenant-1/);
+});
+
+test('owner analytics summaries count support pressure beyond the visible queue limit', () => {
+  const state = buildState();
+  for (let index = 0; index < 6; index += 1) {
+    state.supportTickets.push({
+      id: 100 + index,
+      channelId: `ticket-extra-${index + 1}`,
+      guildId: 'tenant-1',
+      userId: `player-extra-${index + 1}`,
+      category: 'support',
+      reason: `Extra support queue ${index + 1}`,
+      status: 'open',
+      claimedBy: null,
+      createdAt: '2026-03-29T05:15:00.000Z',
+    });
+  }
+
+  const html = buildOwnerControlV4Html(createOwnerControlV4Model(state, { currentRoute: 'analytics' }));
+
+  assert.match(html, /data-owner-analytics-support-pressure/);
+  assert.match(html, /Escalations 8/);
+});
+
+test('owner analytics workspace renders revenue trends and workload ownership tables', () => {
+  const state = buildState();
+  state.billingInvoices.unshift({
+    id: 'inv-jan',
+    tenantId: 'tenant-1',
+    subscriptionId: 'sub-1',
+    status: 'paid',
+    amountCents: 79000,
+    currency: 'THB',
+    paidAt: '2026-01-11T08:15:00.000Z',
+  });
+  state.billingInvoices.unshift({
+    id: 'inv-feb',
+    tenantId: 'tenant-1',
+    subscriptionId: 'sub-1',
+    status: 'open',
+    amountCents: 89000,
+    currency: 'THB',
+    dueAt: '2026-02-15T08:15:00.000Z',
+  });
+  state.billingPaymentAttempts.unshift({
+    id: 'pay-feb',
+    tenantId: 'tenant-1',
+    invoiceId: 'inv-feb',
+    provider: 'stripe',
+    status: 'failed',
+    amountCents: 89000,
+    currency: 'THB',
+    attemptedAt: '2026-02-16T08:16:00.000Z',
+  });
+  state.supportTickets.push({
+    id: 3,
+    channelId: 'ticket-003',
+    guildId: 'tenant-1',
+    userId: 'player-3',
+    category: 'support',
+    reason: 'Delivery confirmation still pending',
+    status: 'open',
+    claimedBy: 'mod-2',
+    createdAt: '2026-03-29T04:00:00.000Z',
+  });
+
+  const html = buildOwnerControlV4Html(createOwnerControlV4Model(state, { currentRoute: 'analytics' }));
+
+  assert.match(html, /data-owner-revenue-trend="2026-01"/);
+  assert.match(html, /data-owner-revenue-trend="2026-02"/);
+  assert.match(html, /data-owner-revenue-trend="2026-03"/);
+  assert.match(html, /Jan 2026/);
+  assert.match(html, /Feb 2026/);
+  assert.match(html, /Mar 2026/);
+  assert.match(html, /data-owner-support-workload="unclaimed"/);
+  assert.match(html, /data-owner-support-workload="mod-2"/);
+  assert.match(html, /Claim queue/);
+  assert.match(html, /Open queue/);
+});
+
+test('owner analytics workspace ranks customer risk and groups SLA buckets', () => {
+  const state = buildState();
+  state.tenants.push({
+    id: 'tenant-2',
+    name: 'Bravo',
+    slug: 'bravo',
+    type: 'direct',
+    status: 'active',
+    locale: 'en',
+    ownerName: 'Mira',
+    ownerEmail: 'mira@example.com',
+  });
+  state.subscriptions.push({
+    id: 'sub-2',
+    tenantId: 'tenant-2',
+    status: 'past_due',
+    packageId: 'TRIAL',
+    planId: 'trial-14d',
+    billingCycle: 'monthly',
+    amountCents: 49000,
+    currency: 'THB',
+    renewsAt: '2026-04-02T09:00:00.000Z',
+    metadata: { packageId: 'TRIAL' },
+  });
+  state.billingInvoices.unshift({
+    id: 'inv-risk',
+    tenantId: 'tenant-2',
+    subscriptionId: 'sub-2',
+    status: 'past_due',
+    amountCents: 49000,
+    currency: 'THB',
+    dueAt: '2026-03-20T08:15:00.000Z',
+  });
+  state.billingPaymentAttempts.unshift({
+    id: 'pay-risk',
+    tenantId: 'tenant-2',
+    invoiceId: 'inv-risk',
+    provider: 'stripe',
+    status: 'failed',
+    amountCents: 49000,
+    currency: 'THB',
+    attemptedAt: '2026-03-21T08:16:00.000Z',
+  });
+  state.supportTickets.push({
+    id: 4,
+    channelId: 'ticket-risk',
+    guildId: 'tenant-2',
+    userId: 'player-risk',
+    category: 'appeal',
+    reason: 'Urgent appeal needs owner review',
+    status: 'open',
+    claimedBy: null,
+    createdAt: '2026-03-28T01:00:00.000Z',
+  });
+
+  const html = buildOwnerControlV4Html(createOwnerControlV4Model(state, { currentRoute: 'analytics' }));
+
+  assert.match(html, /data-owner-tenant-risk="tenant-2"/);
+  assert.match(html, /Urgent appeal needs owner review/);
+  assert.match(html, /Open support/);
+  assert.match(html, /data-owner-support-sla-bucket="24h-plus"/);
+  assert.match(html, /data-owner-support-sla-bucket="12h-24h"/);
+  assert.match(html, /Inspect bucket/);
+});
+
+test('owner analytics risk board includes explicitly escalated tickets in the customer reasons', () => {
+  const state = buildState();
+  state.supportTickets.push({
+    id: 10,
+    channelId: 'ticket-escalated-risk',
+    guildId: 'tenant-1',
+    userId: 'player-escalated',
+    category: 'support',
+    reason: 'Escalated support item needs owner context',
+    status: 'escalated',
+    claimedBy: 'owner-ops',
+    createdAt: '2026-03-29T08:10:00.000Z',
+  });
+
+  const html = buildOwnerControlV4Html(createOwnerControlV4Model(state, { currentRoute: 'analytics' }));
+  assert.match(html, /1 escalated tickets/);
 });
 
 test('owner control runtime workspace exposes runtime lifecycle actions', () => {

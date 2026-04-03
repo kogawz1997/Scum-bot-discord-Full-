@@ -277,6 +277,35 @@ test('player control v4 profile page shows linked account readiness and membersh
   assert.match(profileModel.mainHtml, /ผู้เล่น \(ใช้งานอยู่\)/);
 });
 
+test('player control v4 support page exposes a real support ticket form when no open ticket exists', () => {
+  const supportModel = createPlayerControlV4Model(buildSampleState(), 'support');
+
+  assert.match(supportModel.mainHtml, /data-player-support-ticket-form/);
+  assert.match(supportModel.mainHtml, /data-player-support-appeal-form/);
+  assert.match(supportModel.mainHtml, /ส่งคำขอช่วยเหลือ/);
+  assert.match(supportModel.mainHtml, /data-player-support-tickets/);
+});
+
+test('player control v4 support page lets the player close an open support ticket', () => {
+  const state = buildSampleState();
+  state.supportTickets = [
+    {
+      channelId: 'portal-tenant-prod-001-user-1-open',
+      reason: 'Need help with delivery P-001',
+      status: 'open',
+      isOpen: true,
+      createdAt: '2026-04-03T09:00:00.000Z',
+    },
+  ];
+  state.supportOpenTicket = state.supportTickets[0];
+
+  const supportModel = createPlayerControlV4Model(state, 'support');
+
+  assert.match(supportModel.mainHtml, /data-player-support-ticket-close="portal-tenant-prod-001-user-1-open"/);
+  assert.match(supportModel.mainHtml, /Need help with delivery P-001/);
+  assert.match(supportModel.mainHtml, /ประวัติคำขอช่วยเหลือ/);
+});
+
 test('player control v4 donations page exposes supporter summary, readiness, and history', () => {
   const state = buildSampleState();
   state.featureAccess.sections.donations.enabled = true;

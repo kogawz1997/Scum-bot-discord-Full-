@@ -337,6 +337,12 @@
     const serverStatus = state?.serverInfo?.status || {};
     const cart = state?.cart || {};
     const wheelState = state?.wheelState || {};
+    const supportTickets = Array.isArray(state?.supportTickets) ? state.supportTickets : [];
+    const openSupportTicket = state?.supportOpenTicket && typeof state.supportOpenTicket === 'object'
+      ? state.supportOpenTicket
+      : supportTickets.find((row) => row && row.isOpen !== false && String(row.status || '').trim().toLowerCase() !== 'closed') || null;
+    const appealTickets = supportTickets.filter((row) => row && row.isAppeal);
+    const openAppealTicket = appealTickets.find((row) => row && row.isOpen !== false) || null;
     const latestOrder = buildLatestOrder(state);
     const pendingOrders = orders.filter((row) => {
       const status = String(row?.status || '').trim().toLowerCase();
@@ -390,6 +396,10 @@
       serverStatus,
       cart,
       wheelState,
+      supportTickets,
+      openSupportTicket,
+      appealTickets,
+      openAppealTicket,
       latestOrder,
       pendingOrders,
       failedOrders,
@@ -1458,7 +1468,20 @@
     };
   }
 
+  function localizeSupportTicketStatus(value) {
+    const raw = String(value || '').trim().toLowerCase();
+    if (!raw) return 'ยังไม่ทราบสถานะ';
+    if (raw === 'open') return 'เปิดอยู่';
+    if (raw === 'claimed') return 'ทีมงานรับเรื่องแล้ว';
+    if (raw === 'closed') return 'ปิดแล้ว';
+    return localizePlayerStatus(raw);
+  }
+
   function buildSupportPageContent(facts) {
+    const supportTickets = Array.isArray(facts.supportTickets) ? facts.supportTickets : [];
+    const openSupportTicket = facts.openSupportTicket || supportTickets.find((row) => row && row.isOpen !== false) || null;
+    const appealTickets = Array.isArray(facts.appealTickets) ? facts.appealTickets : supportTickets.filter((row) => row && row.isAppeal);
+    const pendingAppeals = appealTickets.filter((row) => row && row.isOpen !== false);
     const supportTasks = [
       {
         tone: facts.failedOrders.length > 0 ? 'danger' : 'info',
@@ -1473,18 +1496,81 @@
         ],
       },
       {
-        tone: facts.steamLink.linked ? 'success' : 'warning',
-        tag: 'เช็กบัญชี',
-        title: facts.steamLink.linked ? 'การเชื่อม Steam ดูพร้อมแล้ว' : 'การเชื่อม Steam ยังต้องจัดการ',
-        detail: facts.steamLink.linked
-          ? 'ถ้าต้องให้ทีมงานช่วย ให้เตรียมชื่อในเกมและรหัสคำสั่งซื้อไว้'
-          : 'ถ้าปัญหาเกี่ยวกับการส่งของหรือจับคู่บัญชี ให้เชื่อม Steam ก่อน',
-        actions: [
-          { label: 'เปิดโปรไฟล์', href: buildCanonicalPlayerPath('profile'), primary: !facts.steamLink.linked },
-          { label: 'เปิดการส่งของ', href: buildCanonicalPlayerPath('delivery'), primary: facts.steamLink.linked },
-        ],
+        tone: openSupportTicket ? 'info' : (facts.steamLink.linked ? 'success' : 'warning'),
+        tag: openSupportTicket ? 'คำขอช่วยเหลือ' : 'เช็กบัญชี',
+        title: openSupportTicket
+          ? 'มีคำขอช่วยเหลือที่เปิดอยู่แล้ว'
+          : (facts.steamLink.linked ? 'การเชื่อม Steam ดูพร้อมแล้ว' : 'การเชื่อม Steam ยังต้องจัดการ'),
+        detail: openSupportTicket
+          ? 'อัปเดตเพิ่มเติมในคำขอนี้ได้จากหน้าประวัติด้านล่าง และปิดเองได้เมื่อทีมงานช่วยเสร็จแล้ว'
+          : (facts.steamLink.linked
+            ? 'ถ้าต้องให้ทีมงานช่วย ให้เตรียมชื่อในเกมและรหัสคำสั่งซื้อไว้'
+            : 'ถ้าปัญหาเกี่ยวกับการส่งของหรือจับคู่บัญชี ให้เชื่อม Steam ก่อน'),
+        actions: openSupportTicket
+          ? [
+            { label: 'เปิดการส่งของ', href: buildCanonicalPlayerPath('delivery'), primary: true },
+            { label: 'เปิดโปรไฟล์', href: buildCanonicalPlayerPath('profile') },
+          ]
+          : [
+            { label: 'เปิดโปรไฟล์', href: buildCanonicalPlayerPath('profile'), primary: !facts.steamLink.linked },
+            { label: 'เปิดการส่งของ', href: buildCanonicalPlayerPath('delivery'), primary: facts.steamLink.linked },
+          ],
       },
     ];
+    const supportTicketCards = supportTickets.length
+      ? supportTickets.slice(0, 6).map((ticket) => {
+        const status = String(ticket?.status || '').trim().toLowerCase();
+        const tone = ['closed', 'approved'].includes(status) ? 'success' : (status === 'claimed' ? 'info' : (status === 'rejected' ? 'danger' : 'warning'));
+        return [
+          '<article class="plv4-list-item plv4-tone-' + escapeHtml(tone) + '" data-player-support-ticket-row="' + escapeHtml(firstNonEmpty([ticket?.channelId], 'ticket')) + '">',
+          '<div class="plv4-list-main"><strong>' + escapeHtml(firstNonEmpty([ticket?.channelId], 'Support ticket')) + '</strong><p>' + escapeHtml(firstNonEmpty([ticket?.reason], 'No details yet')) + '</p><p>เปิดเมื่อ ' + escapeHtml(formatDateTime(ticket?.createdAt)) + (ticket?.closedAt ? ' | ปิดเมื่อ ' + escapeHtml(formatDateTime(ticket?.closedAt)) : '') + '</p></div>',
+          '<div class="plv4-chip-row">' + badge(ticket?.isAppeal ? 'Appeal' : 'Support', ticket?.isAppeal ? 'warning' : 'info') + badge(localizeSupportTicketStatus(ticket?.status), tone) + '</div>',
+          '</article>',
+        ].join('');
+      }).join('')
+      : '<div class="plv4-empty-state"><strong>ยังไม่มีประวัติคำขอช่วยเหลือ</strong><p>เมื่อผู้เล่นเปิด ticket หรือทีมงานปิดงานแล้ว จะเห็นประวัติในส่วนนี้</p></div>';
+
+    const openTicketPanel = openSupportTicket
+      ? [
+        '<article class="plv4-panel" id="player-support-ticket">',
+        '<div class="plv4-panel-head"><div class="plv4-stack"><span class="plv4-section-kicker">กำลังติดตามอยู่</span><h2 class="plv4-section-title">คำขอช่วยเหลือที่เปิดอยู่</h2><p class="plv4-section-copy">ใช้ ticket เดิมต่อจนกว่าทีมงานจะช่วยเสร็จ เพื่อไม่ให้ข้อมูลกระจัดกระจาย</p></div></div>',
+        renderKeyValueList([
+          { label: 'รหัส ticket', value: firstNonEmpty([openSupportTicket.channelId], '-') },
+          { label: 'สถานะ', value: localizeSupportTicketStatus(openSupportTicket.status) },
+          { label: 'เปิดเมื่อ', value: formatDateTime(openSupportTicket.createdAt) },
+          { label: 'รายละเอียดล่าสุด', value: firstNonEmpty([openSupportTicket.reason], 'ไม่มีรายละเอียด') },
+        ], 'ยังไม่มีรายละเอียด ticket'),
+        '<div class="plv4-action-row"><button class="plv4-button plv4-button-primary" type="button" data-player-support-ticket-close="' + escapeHtml(firstNonEmpty([openSupportTicket.channelId], '')) + '">ปิด ticket นี้</button><a class="plv4-button" href="' + escapeHtml(buildCanonicalPlayerPath('delivery')) + '">ดูการส่งของ</a></div>',
+        '</article>',
+      ].join('')
+      : [
+        '<article class="plv4-panel" id="player-support-ticket">',
+        '<div class="plv4-panel-head"><div class="plv4-stack"><span class="plv4-section-kicker">Primary action</span><h2 class="plv4-section-title">เปิดคำขอช่วยเหลือใหม่</h2><p class="plv4-section-copy">ส่งรายละเอียดปัญหาจากพอร์ทัลผู้เล่นได้ตรง ๆ โดยไม่ต้องพึ่งหน้าแสดงผลอย่างเดียว</p></div></div>',
+        '<form class="plv4-inline-form" data-player-support-ticket-form><div class="plv4-form-grid">',
+        '<label class="plv4-stack"><span class="plv4-section-kicker">หมวดหมู่</span><input class="plv4-input" type="text" name="category" value="player-support" readonly></label>',
+        '<label class="plv4-stack"><span class="plv4-section-kicker">อธิบายปัญหา</span><textarea class="plv4-input" name="reason" rows="4" placeholder="เช่น คำสั่งซื้อ P-001 ส่งไม่สำเร็จหลังรีสตาร์ตเซิร์ฟเวอร์ และผมเชื่อม Steam แล้ว" required></textarea></label>',
+        '<button class="plv4-button plv4-button-primary" type="submit">ส่งคำขอช่วยเหลือ</button>',
+        '</div><p class="plv4-inline-copy">ระบบจะเปิด ticket เดียวต่อผู้เล่นต่อเซิร์ฟเวอร์เพื่อให้ทีมงานตามงานได้ต่อเนื่อง</p></form>',
+        '</article>',
+      ].join('');
+
+    const appealPanel = openSupportTicket
+      ? [
+        '<article class="plv4-panel" id="player-support-appeal">',
+        '<div class="plv4-panel-head"><div class="plv4-stack"><span class="plv4-section-kicker">Appeal flow</span><h2 class="plv4-section-title">Open ticket must finish first</h2><p class="plv4-section-copy">Use the current ticket until staff finishes the follow-up. This keeps the support timeline in one place before opening a dedicated appeal.</p></div></div>',
+        '<div class="plv4-empty-state"><strong>Existing ticket is still open</strong><p>Close the current ticket first, then open a new appeal if the issue still needs a formal review.</p></div>',
+        '</article>',
+      ].join('')
+      : [
+        '<article class="plv4-panel" id="player-support-appeal">',
+        '<div class="plv4-panel-head"><div class="plv4-stack"><span class="plv4-section-kicker">Secondary action</span><h2 class="plv4-section-title">Submit an appeal</h2><p class="plv4-section-copy">Use this when you need staff to formally re-check a moderation, delivery, or rule decision.</p></div></div>',
+        '<form class="plv4-inline-form" data-player-support-appeal-form><div class="plv4-form-grid">',
+        '<label class="plv4-stack"><span class="plv4-section-kicker">Category</span><input class="plv4-input" type="text" name="category" value="appeal" readonly></label>',
+        '<label class="plv4-stack"><span class="plv4-section-kicker">Appeal detail</span><textarea class="plv4-input" name="reason" rows="4" placeholder="Explain what should be reviewed again, when it happened, and what evidence staff should check." required></textarea></label>',
+        '<button class="plv4-button plv4-button-secondary" type="submit">Submit appeal</button>',
+        '</div><p class="plv4-inline-copy">The appeal is saved into the same support system so staff can claim, review, and resolve it from the tenant workspace.</p></form>',
+        '</article>',
+      ].join('');
 
     return {
       header: {
@@ -1494,7 +1580,7 @@
           { label: `${formatNumber(facts.failedOrders.length, '0')} รายการส่งไม่สำเร็จ`, tone: facts.failedOrders.length > 0 ? 'danger' : 'muted' },
           { label: `${formatNumber(facts.supportAlerts.length, '0')} คำเตือน`, tone: facts.supportAlerts.length > 0 ? 'warning' : 'success' },
           { label: facts.steamLink.linked ? 'เชื่อม Steam แล้ว' : 'ยังไม่เชื่อม Steam', tone: facts.steamLink.linked ? 'success' : 'warning' },
-          { label: `${formatNumber(facts.pendingOrders.length, '0')} คำสั่งซื้อที่กำลังดำเนินการ`, tone: facts.pendingOrders.length > 0 ? 'info' : 'muted' },
+          { label: openSupportTicket ? 'มี ticket เปิดอยู่' : 'ยังไม่มี ticket เปิดอยู่', tone: openSupportTicket ? 'info' : 'success' },
         ],
         primaryAction: facts.failedOrders.length > 0
           ? { label: 'เปิดคำสั่งซื้อก่อน', href: buildCanonicalPlayerPath('orders') }
@@ -1508,13 +1594,18 @@
         { label: 'ส่งของไม่สำเร็จ', value: formatNumber(facts.failedOrders.length, '0'), detail: 'เช็กรหัสคำสั่งซื้อก่อนคุยกับทีมงาน', tone: facts.failedOrders.length > 0 ? 'danger' : 'muted' },
         { label: 'คำเตือน', value: formatNumber(facts.supportAlerts.length, '0'), detail: 'ประกาศในพอร์ทัลที่อาจอธิบายปัญหาได้', tone: facts.supportAlerts.length > 0 ? 'warning' : 'success' },
         { label: 'Steam พร้อมใช้งาน', value: facts.steamLink.linked ? 'ใช่' : 'ไม่', detail: 'เชื่อม Steam ถ้าปัญหาเกี่ยวกับการส่งของ', tone: facts.steamLink.linked ? 'success' : 'warning' },
-        { label: 'รหัสคำสั่งซื้อล่าสุด', value: facts.latestOrder ? facts.latestOrder.code : '-', detail: facts.latestOrder ? localizePlayerStatus(facts.latestOrder.status) : 'ยังไม่มีคำสั่งซื้อล่าสุด', tone: facts.latestOrder ? facts.latestOrder.statusTone : 'muted' },
-        { label: 'อัปเดต', value: formatNumber(facts.communityFeed.length, '0'), detail: 'การแจ้งเตือนและประกาศล่าสุด', tone: 'info' },
+        { label: 'ticket เปิดอยู่', value: openSupportTicket ? localizeSupportTicketStatus(openSupportTicket.status) : 'ไม่มี', detail: openSupportTicket ? firstNonEmpty([openSupportTicket.channelId], 'เปิดอยู่') : 'เปิด ticket ใหม่ได้จากหน้านี้', tone: openSupportTicket ? 'info' : 'success' },
+        { label: 'ประวัติ ticket', value: formatNumber(supportTickets.length, '0'), detail: 'ย้อนดูงานที่เคยเปิดกับทีมงานได้จากพอร์ทัลผู้เล่น', tone: supportTickets.length > 0 ? 'info' : 'muted' },
       ],
       railCards: buildRailCommon(facts),
       mainHtml: [
         '<section class="plv4-panel"><div class="plv4-panel-head"><div class="plv4-stack"><span class="plv4-section-kicker">ทำต่อ</span><h2 class="plv4-section-title">เปิดหน้าที่ถูกก่อนขอความช่วยเหลือ</h2><p class="plv4-section-copy">หน้าช่วยเหลือควรลดความสับสน ไม่ใช่สร้างแดชบอร์ดอีกอัน</p></div></div>',
         `<div class="plv4-task-grid">${renderTaskGroups(supportTasks)}</div></section>`,
+        '<section class="plv4-content-grid plv4-content-grid-two">',
+        openTicketPanel,
+        appealPanel,
+        '<article class="plv4-panel"><div class="plv4-panel-head"><div class="plv4-stack"><span class="plv4-section-kicker">ประวัติ</span><h2 class="plv4-section-title">ประวัติคำขอช่วยเหลือ</h2><p class="plv4-section-copy">ให้ผู้เล่นย้อนดู ticket ที่เคยเปิด ปิด และสถานะล่าสุดได้จากหน้าเดียว</p></div></div><div class="plv4-feed-list" data-player-support-tickets>' + supportTicketCards + '</div></article>',
+        '</section>',
         '<section class="plv4-content-grid plv4-content-grid-two">',
         '<article class="plv4-panel"><div class="plv4-panel-head"><div class="plv4-stack"><span class="plv4-section-kicker">เช็กลิสต์</span><h2 class="plv4-section-title">ควรเตรียมอะไรไว้</h2><p class="plv4-section-copy">เตรียมข้อมูลพวกนี้ไว้ก่อนติดต่อทีมงาน</p></div></div>',
         renderKeyValueList([

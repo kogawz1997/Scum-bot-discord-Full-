@@ -418,6 +418,7 @@
         wheelState,
         raids,
         killfeed,
+        supportTickets,
       ] = await Promise.all([
         hasAnyFeature(featureAccess, ['wallet_module'])
           ? safePlayerRead('/player/api/wallet/ledger?limit=20', { wallet: {}, items: [] }, loadWarnings, 'wallet-ledger')
@@ -455,6 +456,9 @@
         isSectionEnabled(featureAccess, 'events')
           ? safePlayerRead('/player/api/killfeed?limit=20', { items: [] }, loadWarnings, 'killfeed')
           : Promise.resolve({ items: [], locked: true }),
+        isSectionEnabled(featureAccess, 'support')
+          ? safePlayerRead('/player/api/support/tickets', { items: [], total: 0, openItem: null }, loadWarnings, 'support-tickets')
+          : Promise.resolve({ items: [], total: 0, openItem: null, locked: true }),
       ]);
 
       state.payload = {
@@ -480,6 +484,10 @@
         wheelState,
         raids,
         killfeed: Array.isArray(killfeed?.items) ? killfeed.items : (Array.isArray(killfeed) ? killfeed : []),
+        supportTickets: Array.isArray(supportTickets?.items) ? supportTickets.items : [],
+        supportOpenTicket: supportTickets?.openItem && typeof supportTickets.openItem === 'object'
+          ? supportTickets.openItem
+          : null,
         party,
         lastRefreshedAt: new Date().toISOString(),
         __loadWarnings: loadWarnings,
@@ -659,6 +667,40 @@
         }, null);
         await completePlayerAction(result?.message || `${rewardKind === 'weekly' ? 'รับรางวัลรายสัปดาห์แล้ว' : 'รับรางวัลรายวันแล้ว'}`);
       });
+      return;
+    }
+
+    if (button.hasAttribute('data-player-support-ticket-close')) {
+      const channelId = String(button.getAttribute('data-player-support-ticket-close') || '').trim();
+      if (!channelId) return;
+      await runPlayerAction(button, 'กำลังปิดคำขอช่วยเหลือ...', async () => {
+        const result = await apiRequest('/player/api/support/tickets/close', {
+          method: 'POST',
+          body: { channelId },
+        }, null);
+        await completePlayerAction(result?.message || 'ปิดคำขอช่วยเหลือแล้ว', { navigateTo: 'support' });
+      });
+      return;
+    }
+
+    if (form.hasAttribute('data-player-support-appeal-form')) {
+      const reason = String(form.elements.reason?.value || '').trim();
+      if (reason.length < 10) {
+        setStatus('Please describe the appeal in at least 10 characters before submitting', 'warning');
+        return;
+      }
+      const button = form.querySelector('button[type="submit"]');
+      await runPlayerAction(button, 'Submitting appeal...', async () => {
+        const result = await apiRequest('/player/api/support/tickets', {
+          method: 'POST',
+          body: {
+            category: 'appeal',
+            reason,
+          },
+        }, null);
+        form.reset();
+        await completePlayerAction(result?.message || 'Appeal submitted', { navigateTo: 'support' });
+      });
     }
   }
 
@@ -719,6 +761,28 @@
         form.reset();
         await completePlayerAction(result?.message || 'Raid request submitted');
       });
+      return;
+    }
+
+    if (form.hasAttribute('data-player-support-ticket-form')) {
+      const reason = String(form.elements.reason?.value || '').trim();
+      if (reason.length < 10) {
+        setStatus('อธิบายปัญหาอย่างน้อย 10 ตัวอักษรก่อนส่งคำขอช่วยเหลือ', 'warning');
+        return;
+      }
+      const category = String(form.elements.category?.value || 'player-support').trim() || 'player-support';
+      const button = form.querySelector('button[type="submit"]');
+      await runPlayerAction(button, 'กำลังส่งคำขอช่วยเหลือ...', async () => {
+        const result = await apiRequest('/player/api/support/tickets', {
+          method: 'POST',
+          body: {
+            category,
+            reason,
+          },
+        }, null);
+        form.reset();
+        await completePlayerAction(result?.message || 'ส่งคำขอช่วยเหลือแล้ว', { navigateTo: 'support' });
+      });
     }
   }
 
@@ -742,6 +806,8 @@
         !form.hasAttribute('data-player-redeem-form')
         && !form.hasAttribute('data-player-steam-link-form')
         && !form.hasAttribute('data-player-raid-request-form')
+        && !form.hasAttribute('data-player-support-ticket-form')
+        && !form.hasAttribute('data-player-support-appeal-form')
       ) {
         return;
       }
@@ -752,7 +818,7 @@
     });
     document.addEventListener('click', (event) => {
       const button = event.target instanceof Element
-        ? event.target.closest('[data-player-cart-add],[data-player-cart-remove],[data-player-cart-clear],[data-player-cart-checkout],[data-player-reward-claim]')
+        ? event.target.closest('[data-player-cart-add],[data-player-cart-remove],[data-player-cart-clear],[data-player-cart-checkout],[data-player-reward-claim],[data-player-support-ticket-close]')
         : null;
       if (!button) return;
       event.preventDefault();

@@ -73,9 +73,59 @@
     }
   }
 
+  function sanitizePortalDraftPatch(value) {
+    const patch = value && typeof value === 'object' ? { ...value } : {};
+    delete patch.publishedBranding;
+    delete patch.publishedBrandingHistory;
+    return patch;
+  }
+
+  function normalizePublishedBrandingSnapshot(raw) {
+    const published = raw && typeof raw === 'object' ? raw : null;
+    const settings = published && published.settings && typeof published.settings === 'object'
+      ? sanitizePortalDraftPatch(published.settings)
+      : null;
+    if (!settings || Object.keys(settings).length === 0) return null;
+    return {
+      version: Number.isFinite(Number(published && published.version))
+        ? Math.max(1, Math.trunc(Number(published.version)))
+        : 1,
+      publishedAt: formatDateTime(published && published.publishedAt, 'Not published yet'),
+      publishedBy: firstNonEmpty([published && published.publishedBy], 'Unknown actor'),
+      keyCount: formatNumber(Object.keys(settings).length),
+      siteName: firstNonEmpty([settings.siteName, settings.publicSiteName, settings.playerSiteName], 'Portal branding snapshot'),
+      settings: settings,
+    };
+  }
+
+  function normalizePublishedBrandingHistory(raw, currentPublishedBranding) {
+    const snapshots = Array.isArray(raw) ? raw : [];
+    const allSnapshots = currentPublishedBranding ? [currentPublishedBranding].concat(snapshots) : snapshots.slice();
+    const seenVersions = new Set();
+    return allSnapshots
+      .map(normalizePublishedBrandingSnapshot)
+      .filter(function (snapshot) {
+        if (!snapshot) return false;
+        if (seenVersions.has(snapshot.version)) return false;
+        seenVersions.add(snapshot.version);
+        return true;
+      })
+      .sort(function (left, right) { return right.version - left.version; });
+  }
+
   function createTenantSettingsV4Model(source) {
     const state = source && typeof source === 'object' ? source : {};
     const tenantConfig = state.tenantConfig && typeof state.tenantConfig === 'object' ? state.tenantConfig : {};
+    const portalEnvPatch = tenantConfig.portalEnvPatch && typeof tenantConfig.portalEnvPatch === 'object'
+      ? tenantConfig.portalEnvPatch
+      : {};
+    const draftPortalEnvPatch = sanitizePortalDraftPatch(portalEnvPatch);
+    const publishedBranding = normalizePublishedBrandingSnapshot(portalEnvPatch.publishedBranding);
+    const publishedBrandingHistory = normalizePublishedBrandingHistory(portalEnvPatch.publishedBrandingHistory, publishedBranding);
+    const latestPublishedBranding = publishedBrandingHistory[0] || publishedBranding;
+    const publishedBrandingSettings = latestPublishedBranding && latestPublishedBranding.settings && typeof latestPublishedBranding.settings === 'object'
+      ? latestPublishedBranding.settings
+      : {};
     const links = Array.isArray(state.serverDiscordLinks) ? state.serverDiscordLinks : [];
     const servers = Array.isArray(state.servers) ? state.servers : [];
 
@@ -102,12 +152,33 @@
       },
       summaryStrip: [
         { label: 'Config patch keys', value: formatNumber(Object.keys(tenantConfig.configPatch || {}).length), detail: 'Tenant-scoped config values currently saved', tone: 'info' },
-        { label: 'Portal env keys', value: formatNumber(Object.keys(tenantConfig.portalEnvPatch || {}).length), detail: 'Player portal environment values for this tenant', tone: 'info' },
+        { label: 'Portal env keys', value: formatNumber(Object.keys(draftPortalEnvPatch).length), detail: 'Player portal environment values for this tenant', tone: 'info' },
         { label: 'Feature flags', value: formatNumber(Object.keys(tenantConfig.featureFlags || {}).length), detail: 'Visible here but usually managed from Bot Modules', tone: 'info' },
+        { label: 'Branding versions', value: formatNumber(publishedBrandingHistory.length, '0'), detail: publishedBrandingHistory.length ? 'Published branding snapshots ready to restore into draft' : 'No published branding versions yet', tone: publishedBrandingHistory.length ? 'success' : 'warning' },
         { label: 'Discord links', value: formatNumber(links.length), detail: links.length ? 'Server to guild mappings already saved' : 'No Discord guild mapping saved yet', tone: links.length ? 'success' : 'warning' },
       ],
       configPatchJson: stringifyJson(tenantConfig.configPatch),
-      portalEnvPatchJson: stringifyJson(tenantConfig.portalEnvPatch),
+      portalEnvPatchJson: stringifyJson(draftPortalEnvPatch),
+      hasPublishedBranding: Boolean(latestPublishedBranding),
+      publishedBranding: {
+        version: Number.isFinite(Number(latestPublishedBranding && latestPublishedBranding.version))
+          ? Math.max(0, Math.trunc(Number(latestPublishedBranding && latestPublishedBranding.version)))
+          : 0,
+        publishedAt: latestPublishedBranding ? latestPublishedBranding.publishedAt : 'Not published yet',
+        publishedBy: latestPublishedBranding ? latestPublishedBranding.publishedBy : 'Unknown actor',
+        keyCount: formatNumber(Object.keys(publishedBrandingSettings).length),
+        siteName: firstNonEmpty([publishedBrandingSettings.siteName, publishedBrandingSettings.publicSiteName, publishedBrandingSettings.playerSiteName], 'Current portal draft'),
+      },
+      publishedBrandingHistory: publishedBrandingHistory.map(function (snapshot) {
+        return {
+          version: snapshot.version,
+          publishedAt: snapshot.publishedAt,
+          publishedBy: snapshot.publishedBy,
+          keyCount: snapshot.keyCount,
+          siteName: snapshot.siteName,
+          isCurrent: Boolean(latestPublishedBranding && snapshot.version === latestPublishedBranding.version),
+        };
+      }),
       links: links.map(function (row) {
         return {
           serverId: firstNonEmpty([row.serverId], '-'),
@@ -152,6 +223,18 @@
       '</div>',
       '<div class="tdv4-action-list"><button class="tdv4-button tdv4-button-primary" type="submit" data-tenant-settings-save>Save workspace settings</button></div>',
       '</form>',
+      '</section>',
+      '<section class="tdv4-panel" data-tenant-branding-panel>',
+      '<div class="tdv4-section-kicker">Publish flow</div>',
+      '<h2 class="tdv4-section-title">Publish portal branding</h2>',
+      '<p class="tdv4-section-copy">Keep editing the draft in Portal env patch, then publish the current branding for player/public surfaces or restore the last published snapshot back into the draft editor.</p>',
+      '<div class="tdv4-list-item tdv4-tone-' + escapeHtml(safe.hasPublishedBranding ? 'success' : 'warning') + '"><div class="tdv4-list-main"><strong>' + escapeHtml(safe.publishedBranding.siteName) + '</strong><p>Published ' + escapeHtml(safe.publishedBranding.publishedAt) + ' by ' + escapeHtml(safe.publishedBranding.publishedBy) + '</p></div><div class="tdv4-chip-row">' + renderBadge(safe.hasPublishedBranding ? 'published' : 'draft only', safe.hasPublishedBranding ? 'success' : 'warning') + renderBadge('v' + escapeHtml(String(safe.publishedBranding.version || 0)), 'info') + renderBadge(escapeHtml(safe.publishedBranding.keyCount) + ' keys', 'muted') + '</div></div>',
+      '<div class="tdv4-action-list"><button class="tdv4-button tdv4-button-primary" type="button" data-tenant-branding-publish>Publish current portal branding</button><button class="tdv4-button tdv4-button-secondary" type="button" data-tenant-branding-restore data-has-published-branding="' + escapeHtml(safe.hasPublishedBranding ? 'true' : 'false') + '"' + (safe.hasPublishedBranding ? '' : ' disabled title="No published branding snapshot yet."') + '>Restore published snapshot</button></div>',
+      '<div class="tdv4-stack" data-tenant-branding-history>',
+      safe.publishedBrandingHistory.length ? safe.publishedBrandingHistory.map(function (snapshot) {
+        return '<article class="tdv4-list-item tdv4-tone-' + escapeHtml(snapshot.isCurrent ? 'success' : 'info') + '"><div class="tdv4-list-main"><strong>' + escapeHtml(snapshot.siteName) + '</strong><p>Version ' + escapeHtml(String(snapshot.version)) + ' published ' + escapeHtml(snapshot.publishedAt) + ' by ' + escapeHtml(snapshot.publishedBy) + '</p></div><div class="tdv4-chip-row">' + renderBadge(snapshot.isCurrent ? 'current published' : 'history', snapshot.isCurrent ? 'success' : 'info') + renderBadge(escapeHtml(snapshot.keyCount) + ' keys', 'muted') + '</div><div class="tdv4-action-list"><button class="tdv4-button tdv4-button-secondary" type="button" data-tenant-branding-restore-version data-branding-version="' + escapeHtml(String(snapshot.version)) + '">Restore v' + escapeHtml(String(snapshot.version)) + ' to draft</button></div></article>';
+      }).join('') : '<div class="tdv4-empty-state"><strong>No branding history yet</strong><p>Publish the current portal branding once to start a restoreable version history.</p></div>',
+      '</div>',
       '</section>',
       '<section class="tdv4-panel">',
       '<div class="tdv4-section-kicker">Secondary actions</div>',

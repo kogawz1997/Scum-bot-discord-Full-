@@ -82,6 +82,10 @@ function createPlayerGeneralRoutes(deps) {
     listRaidWindows,
     listRaidSummaries,
     listKillFeedEntries,
+    createSupportTicket,
+    findOpenTicketForUserInGuild,
+    listSupportTickets,
+    closeSupportTicket,
   } = deps;
   const safeNormalizeText = typeof normalizeText === 'function'
     ? normalizeText
@@ -103,6 +107,10 @@ function createPlayerGeneralRoutes(deps) {
     complete: { windowMs: 10 * 60_000, maxAttempts: 8 },
   };
   const magicLinkAttemptsByKey = new Map();
+  const supportTicketRateLimits = {
+    create: { windowMs: 15 * 60_000, maxAttempts: 3 },
+  };
+  const supportTicketAttemptsByKey = new Map();
 
   function getClientIp(req) {
     const forwarded = String(req?.headers?.['x-forwarded-for'] || '')
@@ -162,6 +170,56 @@ function createPlayerGeneralRoutes(deps) {
     };
   }
 
+  function consumeSupportTicketRateLimit(actionType, req, actor) {
+    const configForAction = supportTicketRateLimits[actionType];
+    const ip = getClientIp(req);
+    if (!configForAction) {
+      return {
+        limited: false,
+        retryAfterMs: 0,
+        ip,
+      };
+    }
+    const now = Date.now();
+    for (const [key, entry] of supportTicketAttemptsByKey.entries()) {
+      if (!entry || now - entry.firstAt > entry.windowMs) {
+        supportTicketAttemptsByKey.delete(key);
+      }
+    }
+    const normalizedActor = safeNormalizeText(actor) || 'anonymous';
+    const key = `${actionType}::${ip}::${normalizedActor}`;
+    const existing = supportTicketAttemptsByKey.get(key);
+    if (!existing || now - existing.firstAt > configForAction.windowMs) {
+      supportTicketAttemptsByKey.set(key, {
+        firstAt: now,
+        count: 1,
+        windowMs: configForAction.windowMs,
+      });
+      return {
+        limited: false,
+        retryAfterMs: 0,
+        ip,
+      };
+    }
+    if (existing.count >= configForAction.maxAttempts) {
+      return {
+        limited: true,
+        retryAfterMs: Math.max(0, configForAction.windowMs - (now - existing.firstAt)),
+        ip,
+      };
+    }
+    supportTicketAttemptsByKey.set(key, {
+      ...existing,
+      count: existing.count + 1,
+      windowMs: configForAction.windowMs,
+    });
+    return {
+      limited: false,
+      retryAfterMs: 0,
+      ip,
+    };
+  }
+
   async function getFeatureAccess(session) {
     return loadPlayerFeatureAccess(deps.getTenantFeatureAccess, session);
   }
@@ -188,6 +246,44 @@ function createPlayerGeneralRoutes(deps) {
       surface: 'player',
       fallbackSiteDetail: 'Linked account, orders, delivery, stats, and support in one player workspace.',
     });
+  }
+
+  function toIsoText(value) {
+    if (!value) return null;
+    const date = value instanceof Date ? value : new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  }
+
+  function isAppealCategory(value) {
+    const category = safeNormalizeText(value).toLowerCase();
+    return category === 'appeal' || category.endsWith('-appeal') || category.startsWith('appeal:');
+  }
+
+  function isResolvedSupportStatus(value) {
+    const status = safeNormalizeText(value).toLowerCase();
+    return ['closed', 'approved', 'rejected'].includes(status);
+  }
+
+  function normalizeSupportTicketRecord(ticket) {
+    if (!ticket || typeof ticket !== 'object') return null;
+    const channelId = safeNormalizeText(ticket.channelId);
+    if (!channelId) return null;
+    const status = safeNormalizeText(ticket.status || 'open').toLowerCase() || 'open';
+    const category = safeNormalizeText(ticket.category) || 'general';
+    return {
+      id: Number.isFinite(Number(ticket.id)) ? Math.max(0, Math.trunc(Number(ticket.id))) : null,
+      channelId,
+      guildId: safeNormalizeText(ticket.guildId) || null,
+      userId: safeNormalizeText(ticket.userId) || null,
+      category,
+      reason: safeNormalizeText(ticket.reason) || '',
+      status,
+      claimedBy: safeNormalizeText(ticket.claimedBy) || null,
+      isOpen: !isResolvedSupportStatus(status),
+      isAppeal: isAppealCategory(category),
+      createdAt: toIsoText(ticket.createdAt),
+      closedAt: toIsoText(ticket.closedAt),
+    };
   }
 
   function normalizeEconomySnapshot(raw) {
@@ -476,6 +572,210 @@ function createPlayerGeneralRoutes(deps) {
       sendJson(res, 200, {
         ok: true,
         data: buildPlayerPortalFeatureAccess(featureAccess),
+      });
+      return true;
+    }
+
+    if (pathname === '/player/api/support/tickets' && method === 'GET') {
+      if (!session?.discordId) {
+        sendJson(res, 401, { ok: false, error: 'player-session-required' });
+        return true;
+      }
+      const featureAccess = await getFeatureAccess(session);
+      if (!hasFeatureAccess(featureAccess, ['support_module'])) {
+        return sendPlayerFeatureDenied(sendJson, res, featureAccess, ['support_module']);
+      }
+      const guildId = tenantOptions.tenantId || null;
+      const rows = typeof listSupportTickets === 'function'
+        ? listSupportTickets({
+          tenantId: tenantOptions.tenantId || null,
+          defaultTenantId: tenantOptions.tenantId || null,
+          guildId,
+          userId: session.discordId,
+        })
+        : [];
+      const items = (Array.isArray(rows) ? rows : [])
+        .map(normalizeSupportTicketRecord)
+        .filter(Boolean);
+      sendJson(res, 200, {
+        ok: true,
+        data: {
+          total: items.length,
+          openItem: items.find((ticket) => ticket.isOpen) || null,
+          items,
+        },
+      });
+      return true;
+    }
+
+    if (pathname === '/player/api/support/tickets' && method === 'POST') {
+      if (!session?.discordId) {
+        sendJson(res, 401, { ok: false, error: 'player-session-required' });
+        return true;
+      }
+      const featureAccess = await getFeatureAccess(session);
+      if (!hasFeatureAccess(featureAccess, ['support_module'])) {
+        return sendPlayerFeatureDenied(sendJson, res, featureAccess, ['support_module']);
+      }
+      if (!tenantOptions.tenantId) {
+        sendJson(res, 400, {
+          ok: false,
+          error: 'tenant-required',
+          data: {
+            message: 'Support tickets require a tenant-scoped player session.',
+          },
+        });
+        return true;
+      }
+      const body = await readJsonBody(req);
+      const reason = safeNormalizeText(body?.reason || body?.message).slice(0, 800);
+      const requestedCategory = safeNormalizeText(body?.category || 'general').toLowerCase() || 'general';
+      const category = requestedCategory === 'appeal' ? 'appeal' : requestedCategory;
+      if (reason.length < 10) {
+        sendJson(res, 400, {
+          ok: false,
+          error: 'invalid-support-ticket',
+          data: {
+            message: 'Please describe the issue in at least 10 characters before submitting.',
+          },
+        });
+        return true;
+      }
+      const rateLimit = consumeSupportTicketRateLimit('create', req, session.discordId);
+      if (rateLimit.limited) {
+        const retryAfterSec = Math.max(1, Math.ceil(Number(rateLimit.retryAfterMs || 0) / 1000));
+        sendJson(res, 429, {
+          ok: false,
+          error: `Too many support ticket requests. Please wait ${retryAfterSec}s and try again.`,
+        }, {
+          'Retry-After': String(retryAfterSec),
+        });
+        return true;
+      }
+      const guildId = tenantOptions.tenantId;
+      const existingOpen = typeof findOpenTicketForUserInGuild === 'function'
+        ? findOpenTicketForUserInGuild({
+          tenantId: tenantOptions.tenantId || null,
+          defaultTenantId: tenantOptions.tenantId || null,
+          guildId,
+          userId: session.discordId,
+        })
+        : null;
+      if (existingOpen) {
+        sendJson(res, 409, {
+          ok: false,
+          error: 'support-ticket-already-open',
+          data: {
+            ticket: normalizeSupportTicketRecord(existingOpen),
+            message: 'You already have an open support ticket. Close it before opening a new one.',
+          },
+        });
+        return true;
+      }
+      const channelId = `portal-${tenantOptions.tenantId}-${session.discordId}-${category === 'appeal' ? 'appeal-' : ''}${Date.now().toString(36)}`;
+      const result = typeof createSupportTicket === 'function'
+        ? createSupportTicket({
+          tenantId: tenantOptions.tenantId || null,
+          defaultTenantId: tenantOptions.tenantId || null,
+          guildId,
+          userId: session.discordId,
+          channelId,
+          category,
+          reason,
+        })
+        : { ok: false, reason: 'support-ticket-service-unavailable' };
+      if (!result?.ok) {
+        sendJson(res, 503, {
+          ok: false,
+          error: result?.reason || 'support-ticket-service-unavailable',
+          data: {
+            message: 'Support tickets are temporarily unavailable right now.',
+          },
+        });
+        return true;
+      }
+      sendJson(res, 200, {
+        ok: true,
+        data: {
+          ticket: normalizeSupportTicketRecord(result.ticket),
+          message: category === 'appeal'
+            ? 'Appeal submitted. Staff can now review it.'
+            : 'Support ticket created. Staff can now review it.',
+        },
+      });
+      return true;
+    }
+
+    if (pathname === '/player/api/support/tickets/close' && method === 'POST') {
+      if (!session?.discordId) {
+        sendJson(res, 401, { ok: false, error: 'player-session-required' });
+        return true;
+      }
+      const featureAccess = await getFeatureAccess(session);
+      if (!hasFeatureAccess(featureAccess, ['support_module'])) {
+        return sendPlayerFeatureDenied(sendJson, res, featureAccess, ['support_module']);
+      }
+      const body = await readJsonBody(req);
+      const channelId = safeNormalizeText(body?.channelId || body?.id);
+      if (!channelId) {
+        sendJson(res, 400, {
+          ok: false,
+          error: 'support-ticket-channel-required',
+          data: {
+            message: 'Choose the support ticket to close.',
+          },
+        });
+        return true;
+      }
+      const userTickets = typeof listSupportTickets === 'function'
+        ? listSupportTickets({
+          tenantId: tenantOptions.tenantId || null,
+          defaultTenantId: tenantOptions.tenantId || null,
+          guildId: tenantOptions.tenantId || null,
+          userId: session.discordId,
+        })
+        : [];
+      const targetTicket = (Array.isArray(userTickets) ? userTickets : []).find((ticket) => safeNormalizeText(ticket?.channelId) === channelId) || null;
+      if (!targetTicket) {
+        sendJson(res, 404, {
+          ok: false,
+          error: 'support-ticket-not-found',
+        });
+        return true;
+      }
+      if (isResolvedSupportStatus(targetTicket.status)) {
+        sendJson(res, 200, {
+          ok: true,
+          data: {
+            ticket: normalizeSupportTicketRecord(targetTicket),
+            message: 'Support ticket is already resolved.',
+          },
+        });
+        return true;
+      }
+      const result = typeof closeSupportTicket === 'function'
+        ? closeSupportTicket({
+          tenantId: tenantOptions.tenantId || null,
+          defaultTenantId: tenantOptions.tenantId || null,
+          channelId,
+        })
+        : { ok: false, reason: 'support-ticket-service-unavailable' };
+      if (!result?.ok) {
+        sendJson(res, 503, {
+          ok: false,
+          error: result?.reason || 'support-ticket-close-failed',
+          data: {
+            message: 'Support ticket could not be closed right now.',
+          },
+        });
+        return true;
+      }
+      sendJson(res, 200, {
+        ok: true,
+        data: {
+          ticket: normalizeSupportTicketRecord(result.ticket),
+          message: 'Support ticket closed.',
+        },
       });
       return true;
     }

@@ -10,92 +10,92 @@
   const MODULE_CATALOG = [
     {
       featureKey: 'bot_delivery',
-      title: 'งานส่งของ',
-      description: 'ควบคุมงานส่งของ คิวส่ง และการส่งต่อของให้ผู้เล่นในจุดที่ใช้งานจริง',
+      title: 'Delivery jobs',
+      description: 'Coordinate the delivery queue, execution handoff, and player-facing completion flow for live orders.',
       dependencies: ['orders_module', 'execute_agent'],
       actionHref: '/tenant/orders',
-      actionLabel: 'เปิดหน้าส่งของ',
+      actionLabel: 'Open deliveries',
       dependencyActions: {
-        orders_module: { href: '/tenant/orders', label: 'เปิดคำสั่งซื้อ' },
-        execute_agent: { href: '/tenant/delivery-agents', label: 'เปิด Delivery Agent' },
+        orders_module: { href: '/tenant/orders', label: 'Open orders' },
+        execute_agent: { href: '/tenant/delivery-agents', label: 'Open Delivery Agent' },
       },
       runtimeRole: 'execute',
       runtimeHref: '/tenant/delivery-agents',
     },
     {
       featureKey: 'bot_log',
-      title: 'ซิงก์บันทึกเซิร์ฟเวอร์',
-      description: 'ดึงข้อมูลจาก SCUM.log ให้ส่วนกลางเห็นสถานะและเหตุการณ์ของเซิร์ฟเวอร์',
+      title: 'Server log sync',
+      description: 'Pull data from SCUM.log so the control plane can track server health and live operational signals.',
       dependencies: ['sync_agent'],
       actionHref: '/tenant/logs-sync',
-      actionLabel: 'เปิดหน้าบันทึกและการซิงก์',
+      actionLabel: 'Open logs and sync',
       dependencyActions: {
-        sync_agent: { href: '/tenant/server-bots', label: 'เปิด Server Bot' },
+        sync_agent: { href: '/tenant/server-bots', label: 'Open Server Bot' },
       },
       runtimeRole: 'sync',
       runtimeHref: '/tenant/server-bots',
     },
     {
       featureKey: 'donation_module',
-      title: 'ผู้สนับสนุน',
-      description: 'เปิดแพ็กเกจผู้สนับสนุนและเส้นทางซื้อของสำหรับคนที่ช่วยซัพพอร์ตชุมชน',
+      title: 'Supporters',
+      description: 'Enable supporter packages and purchase paths for players who fund the community.',
       dependencies: ['orders_module', 'player_module'],
       actionHref: '/tenant/donations',
-      actionLabel: 'เปิดหน้าผู้สนับสนุน',
+      actionLabel: 'Open supporters',
       dependencyActions: {
-        orders_module: { href: '/tenant/orders', label: 'เปิดคำสั่งซื้อ' },
-        player_module: { href: '/tenant/players', label: 'เปิดผู้เล่น' },
+        orders_module: { href: '/tenant/orders', label: 'Open orders' },
+        player_module: { href: '/tenant/players', label: 'Open players' },
       },
     },
     {
       featureKey: 'event_module',
-      title: 'กิจกรรม',
-      description: 'เปิดเครื่องมือสร้างกิจกรรม คำขอเรด และการประกาศรอบกิจกรรมให้ผู้เล่นเห็น',
+      title: 'Events',
+      description: 'Run event creation, scheduling, and player-facing announcements from the tenant workspace.',
       dependencies: [],
       actionHref: '/tenant/events',
-      actionLabel: 'เปิดหน้ากิจกรรม',
+      actionLabel: 'Open events',
     },
     {
       featureKey: 'wallet_module',
-      title: 'กระเป๋าเงิน',
-      description: 'ดูแลยอดคงเหลือ รางวัล และเส้นทางซื้อของที่อ้างอิงยอดในกระเป๋าเงิน',
+      title: 'Wallet',
+      description: 'Manage balances, rewards, and purchase flows that rely on player wallet state.',
       dependencies: ['orders_module', 'player_module'],
       actionHref: '/tenant/orders',
-      actionLabel: 'เปิดคำสั่งซื้อ',
+      actionLabel: 'Open orders',
       dependencyActions: {
-        orders_module: { href: '/tenant/orders', label: 'เปิดคำสั่งซื้อ' },
-        player_module: { href: '/tenant/players', label: 'เปิดผู้เล่น' },
+        orders_module: { href: '/tenant/orders', label: 'Open orders' },
+        player_module: { href: '/tenant/players', label: 'Open players' },
       },
     },
     {
       featureKey: 'ranking_module',
-      title: 'อันดับและสถิติ',
-      description: 'เปิดอันดับ สถิติ และสรุปความเคลื่อนไหวของผู้เล่นแบบที่ใช้สื่อสารกับชุมชนได้จริง',
+      title: 'Rankings and stats',
+      description: 'Expose leaderboards, stats summaries, and player movement reports that are useful to the community.',
       dependencies: ['player_module'],
       actionHref: '/tenant/players',
-      actionLabel: 'เปิดผู้เล่น',
+      actionLabel: 'Open players',
       dependencyActions: {
-        player_module: { href: '/tenant/players', label: 'เปิดผู้เล่น' },
+        player_module: { href: '/tenant/players', label: 'Open players' },
       },
     },
     {
       featureKey: 'support_module',
-      title: 'การแจ้งเตือนและซัพพอร์ต',
-      description: 'ช่วยให้ทีมงานตามเรื่องผู้เล่นและส่งการแจ้งเตือนที่เกี่ยวกับชุมชนได้ต่อเนื่อง',
+      title: 'Support and alerts',
+      description: 'Help staff follow player issues and keep community notifications moving through one workflow.',
       dependencies: ['discord_integration'],
       actionHref: '/tenant/players',
-      actionLabel: 'เปิดเครื่องมือซัพพอร์ต',
+      actionLabel: 'Open support tools',
       dependencyActions: {
-        discord_integration: { href: '/tenant/settings', label: 'เปิดหน้าตั้งค่า' },
+        discord_integration: { href: '/tenant/settings', label: 'Open settings' },
       },
     },
     {
       featureKey: 'analytics_module',
-      title: 'สรุปข้อมูล',
-      description: 'ดูภาพรวมการใช้งาน ยอดสั่งซื้อ และตัวเลขสำคัญเพื่อใช้ตัดสินใจต่อในแต่ละวัน',
+      title: 'Analytics overview',
+      description: 'Review usage, order trends, and key operating signals in one decision-ready workspace.',
       dependencies: [],
       actionHref: '/tenant/analytics',
-      actionLabel: 'เปิดหน้าสรุปข้อมูล',
+      actionLabel: 'Open analytics',
     },
   ];
 
@@ -119,25 +119,25 @@
 
   function formatNumber(value, fallback = '0') {
     const numeric = Number(value);
-    return Number.isFinite(numeric) ? new Intl.NumberFormat('th-TH').format(numeric) : fallback;
+    return Number.isFinite(numeric) ? new Intl.NumberFormat('en-US').format(numeric) : fallback;
   }
 
   function humanizeFeatureKey(value) {
     const key = String(value || '').trim();
     const dictionary = {
-      bot_delivery: 'งานส่งของ',
-      bot_log: 'ซิงก์บันทึกเซิร์ฟเวอร์',
-      donation_module: 'ผู้สนับสนุน',
-      event_module: 'กิจกรรม',
-      wallet_module: 'กระเป๋าเงิน',
-      ranking_module: 'อันดับและสถิติ',
-      support_module: 'การแจ้งเตือนและซัพพอร์ต',
-      analytics_module: 'สรุปข้อมูล',
-      orders_module: 'คำสั่งซื้อ',
-      player_module: 'ผู้เล่น',
+      bot_delivery: 'Delivery jobs',
+      bot_log: 'Server log sync',
+      donation_module: 'Supporters',
+      event_module: 'Events',
+      wallet_module: 'Wallet',
+      ranking_module: 'Rankings and stats',
+      support_module: 'Support and alerts',
+      analytics_module: 'Analytics overview',
+      orders_module: 'Orders',
+      player_module: 'Players',
       sync_agent: 'Server Bot',
       execute_agent: 'Delivery Agent',
-      discord_integration: 'Discord',
+      discord_integration: 'Discord integration',
     };
     return dictionary[key] || key;
   }
@@ -186,18 +186,18 @@
     if (!effectiveEnabled || !entry?.runtimeRole) return null;
     if (entry.runtimeRole === 'sync' && !runtimeHealth.syncOnline) {
       return {
-        label: 'Server Bot ยังไม่พร้อม',
-        detail: 'โมดูลนี้ต้องมี Server Bot ที่เชื่อมอยู่ก่อน จึงจะใช้งานได้ต่อเนื่องในงานจริง',
+        label: 'Server Bot is offline',
+        detail: 'This module needs a connected Server Bot before the workflow can stay healthy in live operations.',
         href: entry.runtimeHref || '/tenant/server-bots',
-        actionLabel: 'เปิดหน้า Server Bot',
+        actionLabel: 'Open Server Bot',
       };
     }
     if (entry.runtimeRole === 'execute' && !runtimeHealth.executeOnline) {
       return {
-        label: 'Delivery Agent ยังไม่พร้อม',
-        detail: 'โมดูลนี้ต้องมี Delivery Agent ที่เชื่อมอยู่ก่อน จึงจะส่งของหรือทำงานหน้างานได้จริง',
+        label: 'Delivery Agent is offline',
+        detail: 'This module needs a connected Delivery Agent before live execution can complete reliably.',
         href: entry.runtimeHref || '/tenant/delivery-agents',
-        actionLabel: 'เปิดหน้า Delivery Agent',
+        actionLabel: 'Open Delivery Agent',
       };
     }
     return null;
@@ -212,16 +212,16 @@
 
     if (!manageable) {
       return {
-        label: 'ต้องอัปเกรดแพ็กเกจ',
+        label: 'Package upgrade required',
         tone: 'warning',
-        detail: 'โมดูลนี้อยู่นอกแพ็กเกจปัจจุบัน จึงยังเปิดจากหน้านี้ไม่ได้',
+        detail: 'This module is outside the current package, so it cannot be enabled from this page yet.',
       };
     }
     if (effectiveEnabled && missingDependencies.length > 0) {
       return {
-        label: 'ยังติดของที่ต้องมีร่วม',
+        label: 'Dependency missing',
         tone: 'warning',
-        detail: `ยังขาด: ${missingDependencies.map(humanizeFeatureKey).join(', ')}`,
+        detail: `Missing: ${missingDependencies.map(humanizeFeatureKey).join(', ')}`,
       };
     }
     if (runtimeIssue) {
@@ -233,22 +233,22 @@
     }
     if (effectiveEnabled) {
       return {
-        label: 'พร้อมใช้งาน',
+        label: 'Live',
         tone: 'success',
-        detail: 'โมดูลนี้เปิดใช้งานแล้ว และพร้อมใช้ในงานประจำวัน',
+        detail: 'This module is already enabled and ready for daily tenant operations.',
       };
     }
     if (packageEnabled) {
       return {
-        label: 'เปิดได้ทันที',
+        label: 'Ready to enable',
         tone: 'info',
-        detail: 'โมดูลนี้อยู่ในแพ็กเกจแล้ว เปิดใช้จากหน้านี้ได้เมื่อต้องการ',
+        detail: 'This module is included in the package and can be turned on from this page.',
       };
     }
     return {
-      label: 'ยังถูกล็อก',
+      label: 'Locked by package',
       tone: 'muted',
-      detail: 'โมดูลนี้ยังไม่อยู่ในแพ็กเกจปัจจุบัน',
+      detail: 'This module is not included in the current package.',
     };
   }
 
@@ -258,9 +258,9 @@
       const dependencyKey = missingDependencies[0];
       const dependencyAction = entry?.dependencyActions?.[dependencyKey];
       return {
-        label: dependencyAction?.label || `ไปเปิด ${humanizeFeatureKey(dependencyKey)}`,
+        label: dependencyAction?.label || `Open ${humanizeFeatureKey(dependencyKey)}`,
         href: dependencyAction?.href || '#',
-        detail: `เคลียร์ ${humanizeFeatureKey(dependencyKey)} ก่อน แล้วค่อยเปิด ${entry?.title || humanizeFeatureKey(entry?.featureKey)} ต่อ`,
+        detail: `Enable ${humanizeFeatureKey(dependencyKey)} before turning on ${entry?.title || humanizeFeatureKey(entry?.featureKey)}.`,
       };
     }
     if (entry?.runtimeIssue) {
@@ -272,17 +272,17 @@
     }
     if (entry?.manageable !== true) {
       return {
-        label: 'ดูแพ็กเกจ',
+        label: 'Review packages',
         href: '/tenant/billing',
-        detail: 'ใช้หน้าการเงินเพื่อดูสิทธิ์ที่มีและทางเลือกในการอัปเกรด',
+        detail: 'Use billing to review the package policy and available upgrade paths.',
       };
     }
     return {
-      label: entry?.actionLabel || 'เปิดหน้าที่เกี่ยวข้อง',
+      label: entry?.actionLabel || 'Open workspace',
       href: entry?.actionHref || '#',
       detail: entry?.effectiveEnabled
-        ? 'เปิดหน้าที่ทีมงานใช้กับโมดูลนี้ในงานประจำวัน'
-        : 'เปิดหน้าที่เกี่ยวข้องก่อน แล้วค่อยตัดสินใจว่าจะเปิดโมดูลนี้หรือไม่',
+        ? 'Open the workspace this module already uses in day-to-day operations.'
+        : 'Open the related workspace first, then decide whether this module should go live.',
     };
   }
 
@@ -371,28 +371,28 @@
       }));
     const rolloutGroups = [
       buildRolloutGroup(
-        'เปิดใช้ได้เลย',
+        'Ready to enable',
         'success',
         modules.filter((row) => row.manageable && !row.effectiveEnabled && row.missingDependencies.length === 0 && !row.runtimeIssue),
-        'ตอนนี้ยังไม่มีโมดูลที่พร้อมเปิดเพิ่มทันที',
+        'No additional module is ready to turn on right now.',
       ),
       buildRolloutGroup(
-        'ยังติดของที่ต้องมีร่วม',
+        'Missing dependencies',
         'warning',
         modules.filter((row) => row.missingDependencies.length > 0),
-        'ตอนนี้ไม่มีโมดูลที่ติดเงื่อนไขร่วม',
+        'No module is blocked by dependency gaps right now.',
       ),
       buildRolloutGroup(
-        'ยังต้องให้บอทเชื่อมก่อน',
+        'Waiting on runtime',
         'warning',
         modules.filter((row) => Boolean(row.runtimeIssue)),
-        'ตอนนี้ไม่มีโมดูลที่ติดเพราะบอทยังไม่พร้อม',
+        'No module is waiting on runtime connectivity right now.',
       ),
       buildRolloutGroup(
-        'ต้องอัปเกรดแพ็กเกจ',
+        'Upgrade required',
         'muted',
         modules.filter((row) => !row.manageable),
-        'โมดูลที่มองเห็นอยู่ตอนนี้อยู่ในแพ็กเกจแล้วทั้งหมด',
+        'Everything visible here already belongs to the active package.',
       ),
     ];
 
@@ -405,27 +405,27 @@
           state?.tenantConfig?.name,
           state?.overview?.tenantName,
           state?.me?.tenantId,
-          'พื้นที่จัดการผู้เช่า',
+          'Tenant workspace',
         ]),
         navGroups: Array.isArray(state?.__surfaceShell?.navGroups) ? state.__surfaceShell.navGroups : [],
       },
       header: {
-        title: 'โมดูลของระบบ',
-        subtitle: 'เปิดหรือปิดโมดูลที่ผู้เช่าใช้จริง โดยยังแยกเรื่องแพ็กเกจออกจากการทำงานประจำวันให้ชัด',
+        title: 'Bot modules',
+        subtitle: 'Turn tenant modules on or off without mixing package policy into daily operating work.',
         statusChips: [
-          { label: `${formatNumber(modules.filter((row) => row.effectiveEnabled).length)} โมดูลที่เปิดอยู่`, tone: 'success' },
-          { label: `${formatNumber(modules.filter((row) => row.manageable).length)} โมดูลที่จัดการได้`, tone: 'info' },
-          { label: runtimeBlockedCount ? `${formatNumber(runtimeBlockedCount)} โมดูลยังต้องรอบอท` : 'บอทพร้อมสำหรับโมดูลหลัก', tone: runtimeBlockedCount ? 'warning' : 'success' },
-          { label: locked ? 'ติดสิทธิ์แพ็กเกจ' : 'พร้อมบันทึก', tone: locked ? 'warning' : 'success' },
+          { label: `${formatNumber(modules.filter((row) => row.effectiveEnabled).length)} modules live`, tone: 'success' },
+          { label: `${formatNumber(modules.filter((row) => row.manageable).length)} modules manageable`, tone: 'info' },
+          { label: runtimeBlockedCount ? `${formatNumber(runtimeBlockedCount)} waiting on runtime` : 'Runtimes ready', tone: runtimeBlockedCount ? 'warning' : 'success' },
+          { label: locked ? 'Package locked' : 'Ready to save', tone: locked ? 'warning' : 'success' },
         ],
-        primaryAction: { label: 'บันทึกการเปลี่ยนแปลง', href: '#tenant-modules-save' },
+        primaryAction: { label: 'Save changes', href: '#tenant-modules-save' },
       },
       summaryStrip: [
-        { label: 'ที่เปิดใช้อยู่ตอนนี้', value: formatNumber(modules.filter((row) => row.effectiveEnabled).length), detail: 'โมดูลที่กำลังทำงานอยู่กับผู้เช่ารายนี้', tone: 'success' },
-        { label: 'ติดสิทธิ์แพ็กเกจ', value: formatNumber(upgradeRequiredCount), detail: locked ? lockReason || 'โมดูลบางตัวต้องอัปเกรดแพ็กเกจก่อน' : 'โมดูลที่ติดสิทธิ์จะแสดงต่อไว้ตรงนี้', tone: upgradeRequiredCount ? 'warning' : 'muted' },
-        { label: 'ยังติดเงื่อนไขร่วม', value: formatNumber(dependencyBlockedCount), detail: 'ถ้าเปิดแล้วแต่ยังขาดของที่เกี่ยวข้องอยู่ ระบบจะกันไม่ให้หลุดไปใช้งานจริง', tone: dependencyBlockedCount ? 'warning' : 'info' },
-        { label: 'ยังต้องให้บอทเชื่อมก่อน', value: formatNumber(runtimeBlockedCount), detail: 'บางโมดูลต้องรอ Server Bot หรือ Delivery Agent ก่อนถึงจะนิ่งพอใช้งานจริง', tone: runtimeBlockedCount ? 'warning' : 'success' },
-        { label: 'แหล่งที่บันทึก', value: 'ค่าเปิดปิดของผู้เช่า', detail: 'หน้านี้บันทึกเฉพาะค่าของผู้เช่า ไม่ได้เปลี่ยนแพ็กเกจหลัก', tone: 'info' },
+        { label: 'Live now', value: formatNumber(modules.filter((row) => row.effectiveEnabled).length), detail: 'Modules currently active for this tenant.', tone: 'success' },
+        { label: 'Package locked', value: formatNumber(upgradeRequiredCount), detail: locked ? lockReason || 'Some modules still require a package upgrade.' : 'Package-locked modules remain visible here for planning.', tone: upgradeRequiredCount ? 'warning' : 'muted' },
+        { label: 'Missing dependencies', value: formatNumber(dependencyBlockedCount), detail: 'Enabled modules with unresolved dependencies stay visible here until the chain is complete.', tone: dependencyBlockedCount ? 'warning' : 'info' },
+        { label: 'Waiting on runtime', value: formatNumber(runtimeBlockedCount), detail: 'Some modules still need Server Bot or Delivery Agent connectivity before live operations settle down.', tone: runtimeBlockedCount ? 'warning' : 'success' },
+        { label: 'Stored in tenant config', value: 'Tenant feature flags', detail: 'This page only changes tenant overrides. It does not rewrite the package itself.', tone: 'info' },
       ],
       locked,
       lockReason,
@@ -458,14 +458,14 @@
       `<div class="tdv4-pagehead-actions"><button id="tenant-modules-save" class="tdv4-button tdv4-button-primary" type="button" data-tenant-modules-save${safe.locked ? ' disabled' : ''}>${escapeHtml(safe.header.primaryAction.label)}</button></div>`,
       '</section>',
       `<section class="tdv4-kpi-strip">${safe.summaryStrip.map(renderSummaryCard).join('')}</section>`,
-      `<section class="tdv4-spotlight-grid"><article class="tdv4-panel tdv4-tone-${safe.locked ? 'warning' : 'info'}"><div class="tdv4-section-kicker">กติกาการใช้งาน</div><h2 class="tdv4-section-title">เปิดปิดเฉพาะของที่ผู้เช่าคุมได้จริง</h2><p class="tdv4-section-copy">หน้านี้ใช้จัดการโมดูลของผู้เช่าโดยตรง ถ้าโมดูลไหนติดแพ็กเกจหรือยังขาดบอทที่เกี่ยวข้อง ระบบจะบอกเหตุผลไว้ก่อนให้ครบ</p>${safe.locked ? `<div class="tdv4-chip-row">${renderBadge(safe.lockReason || 'อัปเกรดแพ็กเกจเพื่อปลดล็อกโมดูลเพิ่ม', 'warning')}</div>` : ''}<div class="tdv4-action-list"><a class="tdv4-button tdv4-button-primary" href="#tenant-modules-save">บันทึกเมื่อพร้อม</a><a class="tdv4-button tdv4-button-secondary" href="/tenant/billing">ดูแพ็กเกจ</a><a class="tdv4-button tdv4-button-secondary" href="/tenant/server-bots">ดู Server Bot</a></div></article><article class="tdv4-spotlight-media" style="--tdv4-media-image: linear-gradient(135deg, rgba(8, 12, 10, 0.5), rgba(8, 12, 10, 0.18)), url('/admin/assets/tenant-panel-scene.svg');"><div class="tdv4-spotlight-overlay"><span class="tdv4-section-kicker">ภาพรวมโมดูล</span><h3 class="tdv4-section-title">ดูว่าควรเปิดอะไรต่อ และอะไรยังติดเงื่อนไข</h3><p class="tdv4-section-copy tdv4-spotlight-copy">หน้าที่ดีควรตอบได้ทันทีว่าโมดูลไหนพร้อมใช้ โมดูลไหนยังต้องเพิ่มสิทธิ์ หรือยังต้องรอการเชื่อมของบอทก่อน</p></div></article></section>`,
+      `<section class="tdv4-spotlight-grid"><article class="tdv4-panel tdv4-tone-${safe.locked ? 'warning' : 'info'}"><div class="tdv4-section-kicker">Operating rules</div><h2 class="tdv4-section-title">Only toggle what the tenant can truly control</h2><p class="tdv4-section-copy">Use this page for tenant-owned module overrides only. When a module is blocked by package policy, missing dependencies, or runtime readiness, the reason stays visible before anyone saves.</p>${safe.locked ? `<div class="tdv4-chip-row">${renderBadge(safe.lockReason || 'Upgrade the package to unlock more modules.', 'warning')}</div>` : ''}<div class="tdv4-action-list"><a class="tdv4-button tdv4-button-primary" href="#tenant-modules-save">Save when ready</a><a class="tdv4-button tdv4-button-secondary" href="/tenant/billing">Review billing</a><a class="tdv4-button tdv4-button-secondary" href="/tenant/server-bots">Open Server Bot</a></div></article><article class="tdv4-spotlight-media" style="--tdv4-media-image: linear-gradient(135deg, rgba(8, 12, 10, 0.5), rgba(8, 12, 10, 0.18)), url('/admin/assets/tenant-panel-scene.svg');"><div class="tdv4-spotlight-overlay"><span class="tdv4-section-kicker">Module overview</span><h3 class="tdv4-section-title">See what should go live next and what is still blocked</h3><p class="tdv4-section-copy tdv4-spotlight-copy">The page should answer, at a glance, which modules are ready, which still need more access, and which are waiting on a runtime connection.</p></div></article></section>`,
       '<section class="tdv4-panel" data-tenant-modules-rollout-board>',
-      '<div class="tdv4-section-kicker">ภาพรวมความพร้อม</div>',
-      '<h2 class="tdv4-section-title">บอร์ดความพร้อมของโมดูล</h2>',
-      '<p class="tdv4-section-copy">ดูว่าโมดูลไหนเปิดได้เลย และโมดูลไหนยังติดแพ็กเกจ ของที่ต้องมีร่วม หรือการเชื่อมของบอท</p>',
+      '<div class="tdv4-section-kicker">Readiness board</div>',
+      '<h2 class="tdv4-section-title">Module rollout board</h2>',
+      '<p class="tdv4-section-copy">See which modules are ready now, which still depend on other features, and which need a runtime connection before they are operationally safe.</p>',
       `<div class="tdv4-action-list">${(Array.isArray(safe.rolloutGroups) ? safe.rolloutGroups : []).map((group) => [
         `<article class="tdv4-panel tdv4-tone-${escapeHtml(group.tone || 'muted')}" data-tenant-module-rollout-group="${escapeHtml(group.title || '')}">`,
-        `<div class="tdv4-section-kicker">${renderBadge(`${formatNumber(group.count)} โมดูล`, group.tone)}</div>`,
+        `<div class="tdv4-section-kicker">${renderBadge(`${formatNumber(group.count)} modules`, group.tone)}</div>`,
         `<h3 class="tdv4-section-title">${escapeHtml(group.title || '')}</h3>`,
         group.rows.length
           ? `<div class="tdv4-action-list">${group.rows.slice(0, 4).map((row) => [
@@ -473,18 +473,18 @@
             `<strong>${escapeHtml(row.title)}</strong>`,
             `<p>${escapeHtml(row.stateDetail || row.stateLabel || '')}</p>`,
             row.nextAction
-              ? `<a class="tdv4-button tdv4-button-secondary" href="${escapeHtml(row.nextAction.href || '#')}">${escapeHtml(row.nextAction.label || 'เปิดหน้าที่เกี่ยวข้อง')}</a>`
+              ? `<a class="tdv4-button tdv4-button-secondary" href="${escapeHtml(row.nextAction.href || '#')}">${escapeHtml(row.nextAction.label || 'Open workspace')}</a>`
               : '',
             '</div>',
           ].join('')).join('')}</div>`
-          : `<div class="tdv4-note-card">${escapeHtml(group.emptyDetail || 'ตอนนี้ยังไม่มีรายการที่รออยู่')}</div>`,
+          : `<div class="tdv4-note-card">${escapeHtml(group.emptyDetail || 'Nothing is waiting in this bucket right now.')}</div>`,
         '</article>',
       ].join('')).join('')}</div>`,
       '</section>',
       '<section class="tdv4-panel" data-tenant-modules-next-actions>',
-      '<div class="tdv4-section-kicker">ควรทำอะไรก่อน</div>',
-      '<h2 class="tdv4-section-title">คิวติดตามงานของโมดูล</h2>',
-      '<p class="tdv4-section-copy">เคลียร์รายการที่ติดแพ็กเกจ ติดของที่ต้องมีร่วม หรือยังรอบอทก่อน แล้วค่อยบันทึกการเปลี่ยนแปลงรอบใหญ่</p>',
+      '<div class="tdv4-section-kicker">What to do next</div>',
+      '<h2 class="tdv4-section-title">Module follow-up queue</h2>',
+      '<p class="tdv4-section-copy">Clear package, dependency, or runtime blockers first, then save the next round of module changes when the tenant is ready.</p>',
       safe.topActions.length
         ? `<div class="tdv4-action-list">${safe.topActions.map((item) => [
           `<article class="tdv4-panel tdv4-tone-${escapeHtml(item.action?.href === '/tenant/billing' ? 'warning' : 'info')}">`,
@@ -492,17 +492,17 @@
           `<h3 class="tdv4-section-title">${escapeHtml(item.title)}</h3>`,
           `<p class="tdv4-section-copy">${escapeHtml(item.action?.detail || item.stateLabel || '')}</p>`,
           `<div class="tdv4-chip-row">${renderBadge(item.stateLabel, 'warning')}</div>`,
-          `<div class="tdv4-action-list"><a class="tdv4-button tdv4-button-secondary" href="${escapeHtml(item.action?.href || '#')}">${escapeHtml(item.action?.label || 'เปิดหน้าที่เกี่ยวข้อง')}</a></div>`,
+          `<div class="tdv4-action-list"><a class="tdv4-button tdv4-button-secondary" href="${escapeHtml(item.action?.href || '#')}">${escapeHtml(item.action?.label || 'Open workspace')}</a></div>`,
           '</article>',
         ].join('')).join('')}</div>`
-        : '<div class="tdv4-note-card">ตอนนี้ยังไม่มีงานโมดูลที่ต้องรีบตามต่อ</div>',
+        : '<div class="tdv4-note-card">No urgent module follow-up is waiting right now.</div>',
       '</section>',
       '<section class="tdv4-panel">',
-      '<div class="tdv4-section-kicker">รายการทั้งหมด</div>',
-      '<h2 class="tdv4-section-title">โมดูลที่ผู้เช่ารายนี้มองเห็นได้</h2>',
-      '<p class="tdv4-section-copy">เปลี่ยนสถานะแล้วค่อยบันทึกเมื่อพร้อม ปุ่มรีเซ็ตจะพากลับไปตามสิทธิ์ตั้งต้นของแพ็กเกจก่อนบันทึก</p>',
+      '<div class="tdv4-section-kicker">All modules</div>',
+      '<h2 class="tdv4-section-title">Modules visible to this tenant</h2>',
+      '<p class="tdv4-section-copy">Change the desired state and save when ready. Reset restores the package baseline before anything is written.</p>',
       '<div class="tdv4-action-list">',
-      `<button class="tdv4-button tdv4-button-secondary" type="button" data-tenant-modules-reset${safe.locked ? ' disabled' : ''}>รีเซ็ตกลับตามแพ็กเกจ</button>`,
+      `<button class="tdv4-button tdv4-button-secondary" type="button" data-tenant-modules-reset${safe.locked ? ' disabled' : ''}>Reset to package defaults</button>`,
       '</div>',
       safe.modules.map((row) => [
         `<article class="tdv4-panel tdv4-tone-${row.stateTone}" data-tenant-module-card="${escapeHtml(row.featureKey)}">`,
@@ -510,22 +510,22 @@
         `<h3 class="tdv4-section-title">${escapeHtml(row.title)}</h3>`,
         `<p class="tdv4-section-copy">${escapeHtml(row.description)}</p>`,
         '<div class="tdv4-chip-row">',
-        renderBadge(row.packageEnabled ? 'อยู่ในแพ็กเกจ' : 'ต้องอัปเกรดแพ็กเกจ', row.packageEnabled ? 'info' : 'warning'),
-        renderBadge(row.effectiveEnabled ? 'เปิดใช้อยู่' : 'ยังไม่เปิด', row.effectiveEnabled ? 'success' : 'muted'),
+        renderBadge(row.packageEnabled ? 'In package' : 'Upgrade package', row.packageEnabled ? 'info' : 'warning'),
+        renderBadge(row.effectiveEnabled ? 'Live' : 'Off', row.effectiveEnabled ? 'success' : 'muted'),
         renderBadge(row.stateLabel, row.stateTone),
-        row.overrideState === true ? renderBadge('บังคับเปิด', 'success') : '',
-        row.overrideState === false ? renderBadge('บังคับปิด', 'warning') : '',
+        row.overrideState === true ? renderBadge('Forced on', 'success') : '',
+        row.overrideState === false ? renderBadge('Forced off', 'warning') : '',
         '</div>',
         `<div class="tdv4-kpi-detail" data-tenant-module-status="${escapeHtml(row.featureKey)}">${escapeHtml(row.stateDetail)}</div>`,
-        `<div class="tdv4-kpi-detail">ของที่ต้องมีร่วม: ${escapeHtml(row.dependencies.length ? row.dependencies.map(humanizeFeatureKey).join(', ') : 'ไม่มี')}</div>`,
+        `<div class="tdv4-kpi-detail">Dependencies: ${escapeHtml(row.dependencies.length ? row.dependencies.map(humanizeFeatureKey).join(', ') : 'None')}</div>`,
         row.missingDependencies.length
-          ? `<div class="tdv4-kpi-detail">ตอนนี้ยังขาด: ${escapeHtml(row.missingDependencies.map(humanizeFeatureKey).join(', '))}</div>`
-          : '<div class="tdv4-kpi-detail">ตอนนี้ของที่ต้องมีร่วมครบแล้ว</div>',
+          ? `<div class="tdv4-kpi-detail">Missing now: ${escapeHtml(row.missingDependencies.map(humanizeFeatureKey).join(', '))}</div>`
+          : '<div class="tdv4-kpi-detail">Dependencies satisfied.</div>',
         row.nextAction
-          ? `<div class="tdv4-action-list"><a class="tdv4-button tdv4-button-secondary" data-tenant-module-action-link="${escapeHtml(row.featureKey)}" href="${escapeHtml(row.nextAction.href || '#')}">${escapeHtml(row.nextAction.label || 'เปิดหน้าที่เกี่ยวข้อง')}</a></div>`
+          ? `<div class="tdv4-action-list"><a class="tdv4-button tdv4-button-secondary" data-tenant-module-action-link="${escapeHtml(row.featureKey)}" href="${escapeHtml(row.nextAction.href || '#')}">${escapeHtml(row.nextAction.label || 'Open workspace')}</a></div>`
           : '',
         '<label class="tdv4-basic-field">',
-        '<div class="tdv4-basic-field-copy"><div class="tdv4-basic-field-label">เปิดใช้งาน</div><div class="tdv4-basic-field-detail">โมดูลที่ติดแพ็กเกจยังจะแสดงอยู่ แต่ต้องอัปเกรดก่อนถึงจะเปิดจากหน้านี้ได้</div></div>',
+        '<div class="tdv4-basic-field-copy"><div class="tdv4-basic-field-label">Enable module</div><div class="tdv4-basic-field-detail">Package-locked modules remain visible here, but they still need an upgrade before they can be enabled from this page.</div></div>',
         `<input type="checkbox" data-module-toggle data-module-feature-key="${escapeHtml(row.featureKey)}" data-module-package-enabled="${row.packageEnabled ? 'true' : 'false'}" data-module-depends-on="${escapeHtml(row.dependencies.join(','))}"${row.effectiveEnabled ? ' checked' : ''}${(!row.manageable || safe.locked) ? ' disabled' : ''}>`,
         '</label>',
         '</article>',

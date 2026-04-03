@@ -16,6 +16,21 @@ function createAdminTicketRuntime() {
         await channel.send(`รับเรื่อง ticket จากเว็บแอดมินโดย <@${staffId}>`).catch(() => null);
         return;
       }
+      if (action === 'assign') {
+        if (!channel.isTextBased || !channel.isTextBased()) return;
+        await channel.send(`[admin-web] assigned ticket to <@${staffId}>`).catch(() => null);
+        return;
+      }
+      if (action === 'escalate') {
+        if (!channel.isTextBased || !channel.isTextBased()) return;
+        await channel.send(`[admin-web] escalated ticket by <@${staffId}>`).catch(() => null);
+        return;
+      }
+      if (action === 'de-escalate') {
+        if (!channel.isTextBased || !channel.isTextBased()) return;
+        await channel.send(`[admin-web] returned ticket to the active queue by <@${staffId}>`).catch(() => null);
+        return;
+      }
       if (action === 'close') {
         if (channel.isTextBased && channel.isTextBased()) {
           await channel.send('ปิด ticket จากเว็บแอดมิน (กำลังลบห้อง)').catch(() => null);

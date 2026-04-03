@@ -116,6 +116,12 @@ const {
   listKillFeedEntries,
 } = require('../../../src/services/killFeedService');
 const {
+  closeSupportTicket,
+  createSupportTicket,
+  findOpenTicketForUserInGuild,
+  listSupportTickets,
+} = require('../../../src/services/ticketService');
+const {
   createServerRegistryService,
 } = require('../../../src/domain/servers/serverRegistryService');
 const {
@@ -532,6 +538,10 @@ function createPortalBootstrapRuntime({
       listRaidWindows,
       listRaidSummaries,
       listKillFeedEntries,
+      createSupportTicket,
+      findOpenTicketForUserInGuild,
+      listSupportTickets,
+      closeSupportTicket,
     },
     pageAssetDeps: {
       isProduction,

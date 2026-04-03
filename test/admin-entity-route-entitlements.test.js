@@ -43,7 +43,10 @@ function buildRoutes(overrides = {}) {
     },
     resolveScopedTenantId: (_req, _res, auth, requestedTenantId) => requestedTenantId || auth?.tenantId || null,
     claimSupportTicket: () => ({ ok: true }),
+    assignSupportTicket: () => ({ ok: true, ticket: { channelId: 'ticket-1', status: 'claimed' } }),
     closeSupportTicket: () => ({ ok: true }),
+    setSupportTicketEscalation: () => ({ ok: true, ticket: { channelId: 'ticket-1', status: 'escalated' } }),
+    reviewSupportAppeal: () => ({ ok: true, ticket: { channelId: 'appeal-1', status: 'approved' } }),
     tryNotifyTicket: async () => {},
     createBountyForUser: async () => ({ ok: true }),
     cancelBountyForUser: () => ({ ok: true }),
@@ -146,6 +149,203 @@ test('admin entity link route denies player action when player entitlement is lo
   const payload = JSON.parse(String(res.body || '{}'));
   assert.equal(payload.error, 'feature-not-enabled');
   assert.equal(payload.data.actionKey, 'can_manage_players');
+});
+
+test('admin entity ticket claim route denies support actions when player entitlement is locked', async () => {
+  let called = false;
+  const handler = buildRoutes({
+    getTenantFeatureAccess: async () => ({
+      tenantId: 'tenant-1',
+      enabledFeatureKeys: [],
+    }),
+    claimSupportTicket: () => {
+      called = true;
+      return { ok: true, ticket: { channelId: 'ticket-1' } };
+    },
+  });
+  const res = createMockRes();
+
+  const handled = await handler({
+    client: null,
+    req: { method: 'POST', headers: {} },
+    pathname: '/admin/api/ticket/claim',
+    body: {
+      tenantId: 'tenant-1',
+      channelId: 'ticket-1',
+    },
+    res,
+    auth: { user: 'tenant-admin', role: 'admin', tenantId: 'tenant-1' },
+  });
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 403);
+  assert.equal(called, false);
+  const payload = JSON.parse(String(res.body || '{}'));
+  assert.equal(payload.error, 'feature-not-enabled');
+  assert.equal(payload.data.actionKey, 'can_manage_players');
+});
+
+test('admin entity ticket assign route denies support actions when player entitlement is locked', async () => {
+  let called = false;
+  const handler = buildRoutes({
+    getTenantFeatureAccess: async () => ({
+      tenantId: 'tenant-1',
+      enabledFeatureKeys: [],
+    }),
+    assignSupportTicket: () => {
+      called = true;
+      return { ok: true, ticket: { channelId: 'ticket-1', status: 'claimed' } };
+    },
+  });
+  const res = createMockRes();
+
+  const handled = await handler({
+    client: null,
+    req: { method: 'POST', headers: {} },
+    pathname: '/admin/api/ticket/assign',
+    body: {
+      tenantId: 'tenant-1',
+      channelId: 'ticket-1',
+    },
+    res,
+    auth: { user: 'tenant-admin', role: 'admin', tenantId: 'tenant-1' },
+  });
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 403);
+  assert.equal(called, false);
+  const payload = JSON.parse(String(res.body || '{}'));
+  assert.equal(payload.error, 'feature-not-enabled');
+  assert.equal(payload.data.actionKey, 'can_manage_players');
+});
+
+test('admin entity ticket escalate route forwards the escalated state when player entitlement is enabled', async () => {
+  let captured = null;
+  const handler = buildRoutes({
+    getTenantFeatureAccess: async () => ({
+      tenantId: 'tenant-1',
+      enabledFeatureKeys: ['player_module', 'support_module'],
+    }),
+    setSupportTicketEscalation: (input) => {
+      captured = input;
+      return {
+        ok: true,
+        ticket: {
+          channelId: input.channelId,
+          status: input.escalated ? 'escalated' : 'claimed',
+        },
+      };
+    },
+  });
+  const res = createMockRes();
+
+  const handled = await handler({
+    client: null,
+    req: { method: 'POST', headers: {} },
+    pathname: '/admin/api/ticket/escalate',
+    body: {
+      tenantId: 'tenant-1',
+      channelId: 'ticket-1',
+      escalated: 'true',
+    },
+    res,
+    auth: { user: 'tenant-admin', role: 'admin', tenantId: 'tenant-1' },
+  });
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 200);
+  assert.equal(captured.channelId, 'ticket-1');
+  assert.equal(captured.escalated, true);
+  assert.equal(captured.staffId, 'tenant-admin');
+  const payload = JSON.parse(String(res.body || '{}'));
+  assert.equal(payload.ok, true);
+  assert.equal(payload.data.status, 'escalated');
+});
+
+test('admin entity ticket escalate route accepts a boolean false payload when returning a ticket to the queue', async () => {
+  let captured = null;
+  const handler = buildRoutes({
+    getTenantFeatureAccess: async () => ({
+      tenantId: 'tenant-1',
+      enabledFeatureKeys: ['player_module', 'support_module'],
+    }),
+    setSupportTicketEscalation: (input) => {
+      captured = input;
+      return {
+        ok: true,
+        ticket: {
+          channelId: input.channelId,
+          status: input.escalated ? 'escalated' : 'claimed',
+        },
+      };
+    },
+  });
+  const res = createMockRes();
+
+  const handled = await handler({
+    client: null,
+    req: { method: 'POST', headers: {} },
+    pathname: '/admin/api/ticket/escalate',
+    body: {
+      tenantId: 'tenant-1',
+      channelId: 'ticket-1',
+      escalated: false,
+    },
+    res,
+    auth: { user: 'tenant-admin', role: 'admin', tenantId: 'tenant-1' },
+  });
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 200);
+  assert.equal(captured.channelId, 'ticket-1');
+  assert.equal(captured.escalated, false);
+  const payload = JSON.parse(String(res.body || '{}'));
+  assert.equal(payload.ok, true);
+  assert.equal(payload.data.status, 'claimed');
+});
+
+test('admin entity appeal review route resolves appeals when player entitlement is enabled', async () => {
+  let captured = null;
+  const handler = buildRoutes({
+    getTenantFeatureAccess: async () => ({
+      tenantId: 'tenant-1',
+      enabledFeatureKeys: ['player_module', 'support_module'],
+    }),
+    reviewSupportAppeal: (input) => {
+      captured = input;
+      return {
+        ok: true,
+        ticket: {
+          channelId: input.channelId,
+          status: input.resolution,
+        },
+      };
+    },
+  });
+  const res = createMockRes();
+
+  const handled = await handler({
+    client: null,
+    req: { method: 'POST', headers: {} },
+    pathname: '/admin/api/ticket/appeal-review',
+    body: {
+      tenantId: 'tenant-1',
+      channelId: 'appeal-1',
+      resolution: 'approved',
+      note: 'Evidence reviewed',
+    },
+    res,
+    auth: { user: 'tenant-admin', role: 'admin', tenantId: 'tenant-1' },
+  });
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 200);
+  assert.equal(captured.channelId, 'appeal-1');
+  assert.equal(captured.resolution, 'approved');
+  assert.equal(captured.note, 'Evidence reviewed');
+  const payload = JSON.parse(String(res.body || '{}'));
+  assert.equal(payload.ok, true);
+  assert.equal(payload.data.status, 'approved');
 });
 
 test('admin entity raid review route denies raid action when event entitlement is locked', async () => {

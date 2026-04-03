@@ -17,7 +17,10 @@ function createAdminEntityPostRoutes(deps) {
     asInt,
     resolveScopedTenantId,
     claimSupportTicket,
+    assignSupportTicket,
     closeSupportTicket,
+    setSupportTicketEscalation,
+    reviewSupportAppeal,
     tryNotifyTicket,
     createBountyForUser,
     cancelBountyForUser,
@@ -110,6 +113,10 @@ function createAdminEntityPostRoutes(deps) {
     }
 
     if (pathname === '/admin/api/ticket/claim') {
+      const playerCheck = await requirePlayerManagement(
+        'Player support actions are locked until the current package includes player operations.',
+      );
+      if (!playerCheck.allowed) return true;
       const channelId = requiredString(body, 'channelId');
       const staffId = requiredString(body, 'staffId') || auth?.user || 'admin-web';
       if (!channelId || !staffId) {
@@ -131,6 +138,10 @@ function createAdminEntityPostRoutes(deps) {
     }
 
     if (pathname === '/admin/api/ticket/close') {
+      const playerCheck = await requirePlayerManagement(
+        'Player support actions are locked until the current package includes player operations.',
+      );
+      if (!playerCheck.allowed) return true;
       const channelId = requiredString(body, 'channelId');
       if (!channelId) {
         sendJson(res, 400, { ok: false, error: 'Invalid request payload' });
@@ -146,6 +157,113 @@ function createAdminEntityPostRoutes(deps) {
         return true;
       }
       await tryNotifyTicket(client, result.ticket, 'close');
+      sendJson(res, 200, { ok: true, data: result.ticket });
+      return true;
+    }
+
+    if (pathname === '/admin/api/ticket/assign') {
+      const playerCheck = await requirePlayerManagement(
+        'Player support actions are locked until the current package includes player operations.',
+      );
+      if (!playerCheck.allowed) return true;
+      const channelId = requiredString(body, 'channelId');
+      const staffId = requiredString(body, 'staffId') || auth?.user || 'admin-web';
+      if (!channelId || !staffId) {
+        sendJson(res, 400, { ok: false, error: 'Invalid request payload' });
+        return true;
+      }
+      const result = typeof assignSupportTicket === 'function'
+        ? assignSupportTicket({ channelId, staffId, tenantId: scopedTenantId })
+        : { ok: false, reason: 'ticket-assignment-unavailable' };
+      if (!result.ok && result.reason === 'not-found') {
+        sendJson(res, 404, { ok: false, error: 'Resource not found' });
+        return true;
+      }
+      if (!result.ok) {
+        sendJson(res, 400, { ok: false, error: result.reason || 'Invalid request payload' });
+        return true;
+      }
+      await tryNotifyTicket(client, result.ticket, 'assign', staffId);
+      sendJson(res, 200, { ok: true, data: result.ticket });
+      return true;
+    }
+
+    if (pathname === '/admin/api/ticket/escalate') {
+      const playerCheck = await requirePlayerManagement(
+        'Player support actions are locked until the current package includes player operations.',
+      );
+      if (!playerCheck.allowed) return true;
+      const channelId = requiredString(body, 'channelId');
+      const staffId = requiredString(body, 'staffId') || auth?.user || 'admin-web';
+      const escalatedValue = Object.prototype.hasOwnProperty.call(body || {}, 'escalated')
+        ? body.escalated
+        : undefined;
+      let escalated = null;
+      if (typeof escalatedValue === 'boolean') {
+        escalated = escalatedValue;
+      } else {
+        const escalatedRaw = requiredString(body, 'escalated').toLowerCase();
+        escalated = ['1', 'true', 'yes', 'on', 'escalated'].includes(escalatedRaw)
+          ? true
+          : ['0', 'false', 'no', 'off', 'claimed', 'open', 'normal'].includes(escalatedRaw)
+            ? false
+            : null;
+      }
+      if (!channelId || escalated == null) {
+        sendJson(res, 400, { ok: false, error: 'Invalid request payload' });
+        return true;
+      }
+      const result = typeof setSupportTicketEscalation === 'function'
+        ? setSupportTicketEscalation({
+          channelId,
+          escalated,
+          staffId,
+          tenantId: scopedTenantId,
+        })
+        : { ok: false, reason: 'ticket-escalation-unavailable' };
+      if (!result.ok && result.reason === 'not-found') {
+        sendJson(res, 404, { ok: false, error: 'Resource not found' });
+        return true;
+      }
+      if (!result.ok) {
+        sendJson(res, 400, { ok: false, error: result.reason || 'Invalid request payload' });
+        return true;
+      }
+      await tryNotifyTicket(client, result.ticket, escalated ? 'escalate' : 'de-escalate', staffId);
+      sendJson(res, 200, { ok: true, data: result.ticket });
+      return true;
+    }
+
+    if (pathname === '/admin/api/ticket/appeal-review') {
+      const playerCheck = await requirePlayerManagement(
+        'Player support actions are locked until the current package includes player operations.',
+      );
+      if (!playerCheck.allowed) return true;
+      const channelId = requiredString(body, 'channelId');
+      const resolution = requiredString(body, 'resolution').toLowerCase();
+      const note = requiredString(body, 'note');
+      const staffId = requiredString(body, 'staffId') || auth?.user || 'admin-web';
+      if (!channelId || !['approved', 'rejected'].includes(resolution)) {
+        sendJson(res, 400, { ok: false, error: 'Invalid request payload' });
+        return true;
+      }
+      const result = typeof reviewSupportAppeal === 'function'
+        ? reviewSupportAppeal({
+          channelId,
+          resolution,
+          note,
+          staffId,
+          tenantId: scopedTenantId,
+        })
+        : { ok: false, reason: 'appeal-review-unavailable' };
+      if (!result.ok && result.reason === 'not-found') {
+        sendJson(res, 404, { ok: false, error: 'Resource not found' });
+        return true;
+      }
+      if (!result.ok) {
+        sendJson(res, 400, { ok: false, error: result.reason || 'Invalid request payload' });
+        return true;
+      }
       sendJson(res, 200, { ok: true, data: result.ticket });
       return true;
     }

@@ -477,6 +477,234 @@ test('player general routes return a safe wheel state when the runtime reader fa
   assert.equal(res.payload.data.rewards.length, 1);
 });
 
+test('player general routes list support tickets for the current player', async () => {
+  const route = createPlayerGeneralRoutes({
+    sendJson: createSendJson(),
+    getTenantFeatureAccess: async () => ({
+      tenantId: 'tenant-prod-001',
+      enabledFeatureKeys: ['support_module'],
+    }),
+    listSupportTickets: () => ([
+      {
+        id: 2,
+        channelId: 'portal-tenant-prod-001-user-1-closed',
+        guildId: 'tenant-prod-001',
+        userId: 'user-1',
+        category: 'player-support',
+        reason: 'Old ticket',
+        status: 'closed',
+        createdAt: '2026-04-02T10:00:00.000Z',
+        closedAt: '2026-04-02T12:00:00.000Z',
+      },
+      {
+        id: 3,
+        channelId: 'portal-tenant-prod-001-user-1-open',
+        guildId: 'tenant-prod-001',
+        userId: 'user-1',
+        category: 'player-support',
+        reason: 'Need help with delivery P-001',
+        status: 'open',
+        createdAt: '2026-04-03T09:00:00.000Z',
+      },
+    ]),
+  });
+
+  const res = createResponse();
+  const handled = await route({
+    req: {},
+    res,
+    urlObj: createUrl('/player/api/support/tickets'),
+    pathname: '/player/api/support/tickets',
+    method: 'GET',
+    session: {
+      tenantId: 'tenant-prod-001',
+      discordId: 'user-1',
+      user: 'Mira',
+    },
+  });
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.ok, true);
+  assert.equal(res.payload.data.total, 2);
+  assert.equal(res.payload.data.openItem.channelId, 'portal-tenant-prod-001-user-1-open');
+  assert.equal(res.payload.data.items[0].status, 'closed');
+});
+
+test('player general routes create support tickets from the player portal', async () => {
+  const calls = [];
+  const route = createPlayerGeneralRoutes({
+    sendJson: createSendJson(),
+    readJsonBody: async () => ({
+      category: 'player-support',
+      reason: 'Delivery P-001 failed after reconnect and I already linked Steam.',
+    }),
+    getTenantFeatureAccess: async () => ({
+      tenantId: 'tenant-prod-001',
+      enabledFeatureKeys: ['support_module'],
+    }),
+    findOpenTicketForUserInGuild: () => null,
+    createSupportTicket: (input) => {
+      calls.push(input);
+      return {
+        ok: true,
+        ticket: {
+          id: 4,
+          channelId: input.channelId,
+          guildId: input.guildId,
+          userId: input.userId,
+          category: input.category,
+          reason: input.reason,
+          status: 'open',
+          createdAt: new Date('2026-04-03T10:00:00.000Z'),
+        },
+      };
+    },
+  });
+
+  const res = createResponse();
+  const handled = await route({
+    req: {
+      headers: {
+        'x-forwarded-for': '203.0.113.55',
+      },
+    },
+    res,
+    urlObj: createUrl('/player/api/support/tickets'),
+    pathname: '/player/api/support/tickets',
+    method: 'POST',
+    session: {
+      tenantId: 'tenant-prod-001',
+      discordId: 'user-1',
+      user: 'Mira',
+    },
+  });
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.ok, true);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].guildId, 'tenant-prod-001');
+  assert.equal(calls[0].userId, 'user-1');
+  assert.match(calls[0].channelId, /^portal-tenant-prod-001-user-1-/);
+});
+
+test('player general routes create appeal tickets from the player portal', async () => {
+  const calls = [];
+  const route = createPlayerGeneralRoutes({
+    sendJson: createSendJson(),
+    readJsonBody: async () => ({
+      category: 'appeal',
+      reason: 'I want to appeal the moderation result.',
+    }),
+    getTenantFeatureAccess: async () => ({
+      tenantId: 'tenant-prod-001',
+      enabledFeatureKeys: ['support_module'],
+    }),
+    findOpenTicketForUserInGuild: () => null,
+    createSupportTicket: (input) => {
+      calls.push(input);
+      return {
+        ok: true,
+        ticket: {
+          id: 5,
+          channelId: input.channelId,
+          guildId: input.guildId,
+          userId: input.userId,
+          category: input.category,
+          reason: input.reason,
+          status: 'open',
+          createdAt: new Date('2026-04-03T11:00:00.000Z'),
+        },
+      };
+    },
+  });
+
+  const res = createResponse();
+  const handled = await route({
+    req: {
+      headers: {
+        'x-forwarded-for': '203.0.113.55',
+      },
+    },
+    res,
+    urlObj: createUrl('/player/api/support/tickets'),
+    pathname: '/player/api/support/tickets',
+    method: 'POST',
+    session: {
+      tenantId: 'tenant-prod-001',
+      discordId: 'user-1',
+      user: 'Mira',
+    },
+  });
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.ok, true);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].category, 'appeal');
+  assert.match(calls[0].channelId, /^portal-tenant-prod-001-user-1-appeal-/);
+  assert.match(res.payload.data.message, /Appeal submitted/i);
+});
+
+test('player general routes close the current player support ticket', async () => {
+  const route = createPlayerGeneralRoutes({
+    sendJson: createSendJson(),
+    readJsonBody: async () => ({
+      channelId: 'portal-tenant-prod-001-user-1-open',
+    }),
+    getTenantFeatureAccess: async () => ({
+      tenantId: 'tenant-prod-001',
+      enabledFeatureKeys: ['support_module'],
+    }),
+    listSupportTickets: () => ([
+      {
+        id: 3,
+        channelId: 'portal-tenant-prod-001-user-1-open',
+        guildId: 'tenant-prod-001',
+        userId: 'user-1',
+        category: 'player-support',
+        reason: 'Need help with delivery P-001',
+        status: 'open',
+        createdAt: '2026-04-03T09:00:00.000Z',
+      },
+    ]),
+    closeSupportTicket: () => ({
+      ok: true,
+      ticket: {
+        id: 3,
+        channelId: 'portal-tenant-prod-001-user-1-open',
+        guildId: 'tenant-prod-001',
+        userId: 'user-1',
+        category: 'player-support',
+        reason: 'Need help with delivery P-001',
+        status: 'closed',
+        createdAt: '2026-04-03T09:00:00.000Z',
+        closedAt: '2026-04-03T10:00:00.000Z',
+      },
+    }),
+  });
+
+  const res = createResponse();
+  const handled = await route({
+    req: {},
+    res,
+    urlObj: createUrl('/player/api/support/tickets/close'),
+    pathname: '/player/api/support/tickets/close',
+    method: 'POST',
+    session: {
+      tenantId: 'tenant-prod-001',
+      discordId: 'user-1',
+      user: 'Mira',
+    },
+  });
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.ok, true);
+  assert.equal(res.payload.data.ticket.status, 'closed');
+});
+
 test('player commerce routes deny shop access when shop feature is disabled', async () => {
   let purchaseCalled = false;
   const route = createPlayerCommerceRoutes({

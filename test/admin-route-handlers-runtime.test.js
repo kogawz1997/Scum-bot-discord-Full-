@@ -21,6 +21,7 @@ test('admin route handlers runtime wires service outputs into route factories', 
   let agentFactoryDeps = null;
   let syncFactoryDeps = null;
   let configServiceDeps = null;
+  let entityRouteDeps = null;
   let publicRouteDeps = null;
   let getRouteDeps = null;
   let platformPostDeps = null;
@@ -72,7 +73,10 @@ test('admin route handlers runtime wires service outputs into route factories', 
         upsertServerConfigSnapshot: 'upsert-server-config-snapshot-marker',
       };
     },
-    createAdminEntityPostRoutes: () => entityMarker,
+    createAdminEntityPostRoutes: (deps) => {
+      entityRouteDeps = deps;
+      return entityMarker;
+    },
     createAdminConfigPostRoutes: () => configMarker,
     createAdminPublicRoutes: (deps) => {
       publicRouteDeps = deps;
@@ -112,7 +116,10 @@ test('admin route handlers runtime wires service outputs into route factories', 
       return Number.isFinite(parsed) ? parsed : fallback;
     },
     claimSupportTicket: 'claim-support-ticket-marker',
+    assignSupportTicket: 'assign-support-ticket-marker',
     closeSupportTicket: 'close-support-ticket-marker',
+    setSupportTicketEscalation: 'set-support-ticket-escalation-marker',
+    reviewSupportAppeal: 'review-support-appeal-marker',
     tryNotifyTicket: 'try-notify-ticket-marker',
     createBountyForUser: 'create-bounty-for-user-marker',
     cancelBountyForUser: 'cancel-bounty-for-user-marker',
@@ -388,6 +395,9 @@ test('admin route handlers runtime wires service outputs into route factories', 
   assert.equal(agentFactoryDeps.createPlatformApiKey, 'create-platform-api-key-marker');
   assert.equal(syncFactoryDeps.emitPlatformEvent, 'emit-platform-event-marker');
   assert.equal(configServiceDeps.listServerRegistry, 'list-server-registry-marker');
+  assert.equal(entityRouteDeps.assignSupportTicket, 'assign-support-ticket-marker');
+  assert.equal(entityRouteDeps.setSupportTicketEscalation, 'set-support-ticket-escalation-marker');
+  assert.equal(entityRouteDeps.reviewSupportAppeal, 'review-support-appeal-marker');
   assert.equal(publicRouteDeps.activatePlatformAgent, 'activate-agent-marker');
   assert.equal(publicRouteDeps.registerPlatformAgent, 'register-agent-marker');
   assert.equal(publicRouteDeps.ingestPlatformAgentSync, 'ingest-platform-agent-sync-marker');

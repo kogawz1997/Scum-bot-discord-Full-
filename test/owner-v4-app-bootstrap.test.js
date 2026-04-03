@@ -18,7 +18,9 @@ test('owner v4 app stages optional owner reads behind the core payload', () => {
   assert.match(source, /optionalOwnerRead\('\/owner\/api\/delivery\/audit\?limit=20', \[\], 2500\)/);
   assert.match(source, /optionalOwnerRead\('\/owner\/api\/platform\/sync-runs\?limit=20', \[\], 2500\)/);
   assert.match(source, /optionalOwnerRead\('\/owner\/api\/platform\/sync-events\?limit=20', \[\], 2500\)/);
+  assert.match(source, /optionalOwnerRead\('\/admin\/api\/platform\/support-tickets\?limit=50', \{ items: \[\] \}, 2500\)/);
   assert.match(source, /deliveryLifecycle:\s*\{\},[\s\S]*deliveryAudit:\s*\[\],[\s\S]*restartPlans:\s*\[\],[\s\S]*restartExecutions:\s*\[\],[\s\S]*syncRuns:\s*\[\],[\s\S]*syncEvents:\s*\[\]/);
+  assert.match(source, /agentCredentials:\s*\[\],[\s\S]*supportTickets:\s*\[\],[\s\S]*sessions:\s*\[\]/);
   assert.match(source, /กำลังโหลดรายชื่อลูกค้า สุขภาพบริการ และเหตุการณ์ล่าสุดของแพลตฟอร์ม/);
   assert.match(source, /กำลังโหลดรายละเอียดลูกค้า\.\.\./);
 });
@@ -37,4 +39,12 @@ test('owner v4 app maps tenant detail and support routes back to canonical owner
   assert.match(source, /if \(normalizedRoute\.startsWith\('support-'\)\) \{\s*return `\/owner\/support\/\$\{encodeURIComponent\(normalizedRoute\.slice\('support-'\.length\)\)\}`;\s*\}/);
   assert.doesNotMatch(source, /#support-\$\{normalizedRoute\.slice\('tenant-'\.length\)\}/);
   assert.doesNotMatch(source, /#tenant-\$\{normalizedRoute\.slice\('support-'\.length\)\}/);
+});
+
+test('owner v4 app wires support assignment and escalation actions through the existing mutation flow', () => {
+  const source = readOwnerAppSource();
+  assert.match(source, /if \(action === 'assign-support-ticket'\)/);
+  assert.match(source, /ownerMutation\('\/admin\/api\/ticket\/assign'/);
+  assert.match(source, /if \(action === 'toggle-support-ticket-escalation'\)/);
+  assert.match(source, /ownerMutation\('\/admin\/api\/ticket\/escalate'/);
 });

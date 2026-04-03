@@ -58,6 +58,7 @@ function createAdminGetRoutes(deps) {
     buildSecretRotationCsv,
     listAdminSessions,
     listAdminUsersFromDb,
+    listSupportTickets,
     buildControlPanelSettings,
     buildCommandRegistry,
     getRuntimeSupervisorSnapshot,
@@ -218,6 +219,28 @@ function createAdminGetRoutes(deps) {
         unresolvedTickets: [],
         offlineAgentRuntimes: [],
       },
+    };
+  }
+
+  function normalizeSupportTicketRecord(ticket) {
+    if (!ticket || typeof ticket !== 'object') return null;
+    const channelId = requiredString(ticket.channelId);
+    if (!channelId) return null;
+    const status = requiredString(ticket.status).toLowerCase() || 'open';
+    const category = requiredString(ticket.category).toLowerCase() || 'general';
+    return {
+      id: Number.isFinite(Number(ticket.id)) ? Math.max(0, Math.trunc(Number(ticket.id))) : null,
+      channelId,
+      guildId: requiredString(ticket.guildId) || null,
+      userId: requiredString(ticket.userId) || null,
+      category,
+      reason: requiredString(ticket.reason) || '',
+      status,
+      claimedBy: requiredString(ticket.claimedBy) || null,
+      isAppeal: category === 'appeal' || category.endsWith('-appeal') || category.startsWith('appeal:'),
+      isOpen: !['closed', 'approved', 'rejected'].includes(status),
+      createdAt: requiredString(ticket.createdAt) || null,
+      closedAt: requiredString(ticket.closedAt) || null,
     };
   }
 
@@ -720,6 +743,43 @@ function createAdminGetRoutes(deps) {
           automationState,
           automationConfig: getPlatformAutomationConfig(),
           tenantConfig,
+        },
+      });
+      return true;
+    }
+
+    if (pathname === '/admin/api/platform/support-tickets') {
+      const auth = ensureRole(req, urlObj, 'mod', res);
+      if (!auth) return true;
+      const requestedTenantId = requiredString(urlObj.searchParams.get('tenantId'));
+      const tenantId = resolveScopedTenantId(req, res, auth, requestedTenantId, {
+        required: false,
+      });
+      if (requestedTenantId && !tenantId) return true;
+      const scopedTenantId = tenantId || getAuthTenantId(auth) || undefined;
+      const limit = asInt(urlObj.searchParams.get('limit'), 20) || 20;
+      const rows = typeof listSupportTickets === 'function'
+        ? listSupportTickets({
+          tenantId: scopedTenantId,
+          defaultTenantId: scopedTenantId,
+          guildId: scopedTenantId,
+          userId: requiredString(urlObj.searchParams.get('userId')) || undefined,
+          status: requiredString(urlObj.searchParams.get('status')) || undefined,
+          category: requiredString(urlObj.searchParams.get('category')) || undefined,
+          kind: requiredString(urlObj.searchParams.get('kind')) || undefined,
+        })
+        : [];
+      const items = (Array.isArray(rows) ? rows : [])
+        .map(normalizeSupportTicketRecord)
+        .filter(Boolean)
+        .slice(0, limit);
+      sendJson(res, 200, {
+        ok: true,
+        data: {
+          total: items.length,
+          openCount: items.filter((row) => row.isOpen).length,
+          appealCount: items.filter((row) => row.isAppeal).length,
+          items,
         },
       });
       return true;

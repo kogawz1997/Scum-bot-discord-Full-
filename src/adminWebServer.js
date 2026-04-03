@@ -282,7 +282,11 @@ const {
 } = require('./services/welcomePackService');
 const {
   claimSupportTicket,
+  assignSupportTicket,
   closeSupportTicket,
+  listSupportTickets,
+  setSupportTicketEscalation,
+  reviewSupportAppeal,
 } = require('./services/ticketService');
 const {
   bindSteamLinkForUser,
@@ -818,7 +822,10 @@ const {
   requiredString,
   asInt,
   claimSupportTicket,
+  assignSupportTicket,
   closeSupportTicket,
+  setSupportTicketEscalation,
+  reviewSupportAppeal,
   tryNotifyTicket,
   createBountyForUser,
   cancelBountyForUser,
@@ -945,6 +952,7 @@ const {
   buildSecretRotationCsv,
   listAdminSessions,
   listAdminUsersFromDb,
+  listSupportTickets,
   buildControlPanelSettings,
   buildCommandRegistry,
   getRuntimeSupervisorSnapshot,

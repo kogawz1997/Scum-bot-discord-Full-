@@ -62,3 +62,39 @@ test('platform portal branding service rejects unsafe asset URLs and invalid col
   assert.equal(branding.accentColor, '#445566');
   assert.equal(branding.siteName, 'Unsafe Community');
 });
+
+test('platform portal branding service prefers published branding over the draft patch', () => {
+  const branding = buildTenantPortalBranding({
+    surface: 'player',
+    tenant: {
+      id: 'tenant-1',
+      slug: 'prime-scum',
+      name: 'Prime SCUM',
+    },
+    tenantConfig: {
+      portalEnvPatch: {
+        siteName: 'Draft site',
+        primaryColor: '#ff5500',
+        publishedBranding: {
+          version: 4,
+          publishedAt: '2026-04-03T12:00:00.000Z',
+          publishedBy: 'tenant-web:owner-1',
+          settings: {
+            siteName: 'Published site',
+            siteDescription: 'Published player hub',
+            primaryColor: '#112233',
+            accentColor: '#99ddaa',
+          },
+        },
+      },
+    },
+  });
+
+  assert.equal(branding.siteName, 'Published site');
+  assert.equal(branding.siteDetail, 'Published player hub');
+  assert.equal(branding.primaryColor, '#112233');
+  assert.equal(branding.accentColor, '#99ddaa');
+  assert.equal(branding.usesPublishedBranding, true);
+  assert.equal(branding.publishedVersion, 4);
+  assert.equal(branding.publishedBy, 'tenant-web:owner-1');
+});

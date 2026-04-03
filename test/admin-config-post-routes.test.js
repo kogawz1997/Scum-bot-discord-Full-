@@ -153,7 +153,11 @@ test('admin tenant-config route allows module save when module entitlement is en
   const handler = buildRoutes({
     getTenantFeatureAccess: async () => ({
       tenantId: 'tenant-1',
-      enabledFeatureKeys: ['donation_module'],
+      package: {
+        id: 'PRO',
+        features: ['donation_module', 'orders_module', 'player_module'],
+      },
+      enabledFeatureKeys: ['donation_module', 'orders_module', 'player_module'],
     }),
     upsertPlatformTenantConfig: async (input) => {
       calls.push(input);
@@ -180,6 +184,397 @@ test('admin tenant-config route allows module save when module entitlement is en
   assert.equal(calls[0].tenantId, 'tenant-1');
   const payload = JSON.parse(String(res.body || '{}'));
   assert.equal(payload.ok, true);
+});
+
+test('admin tenant-config route rejects enabling a module outside the tenant package', async () => {
+  let called = false;
+  const handler = buildRoutes({
+    getTenantFeatureAccess: async () => ({
+      tenantId: 'tenant-1',
+      package: {
+        id: 'STARTER',
+        features: ['donation_module'],
+      },
+      enabledFeatureKeys: ['donation_module'],
+    }),
+    upsertPlatformTenantConfig: async () => {
+      called = true;
+      return { ok: true, data: { tenantId: 'tenant-1' } };
+    },
+  });
+  const res = createMockRes();
+
+  const handled = await handler({
+    req: { method: 'POST', headers: {} },
+    pathname: '/admin/api/platform/tenant-config',
+    body: {
+      tenantId: 'tenant-1',
+      updateScope: 'modules',
+      featureFlags: { event_module: true },
+    },
+    res,
+    auth: { user: 'tenant-admin', role: 'admin', tenantId: 'tenant-1' },
+  });
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 409);
+  assert.equal(called, false);
+  const payload = JSON.parse(String(res.body || '{}'));
+  assert.equal(payload.ok, false);
+  assert.equal(payload.error, 'module-package-upgrade-required');
+  assert.equal(payload.data.featureKey, 'event_module');
+});
+
+test('admin tenant-config route rejects module saves when dependencies are still missing', async () => {
+  let called = false;
+  const handler = buildRoutes({
+    getTenantFeatureAccess: async () => ({
+      tenantId: 'tenant-1',
+      package: {
+        id: 'PRO',
+        features: ['support_module'],
+      },
+      enabledFeatureKeys: ['support_module'],
+    }),
+    upsertPlatformTenantConfig: async () => {
+      called = true;
+      return { ok: true, data: { tenantId: 'tenant-1' } };
+    },
+  });
+  const res = createMockRes();
+
+  const handled = await handler({
+    req: { method: 'POST', headers: {} },
+    pathname: '/admin/api/platform/tenant-config',
+    body: {
+      tenantId: 'tenant-1',
+      updateScope: 'modules',
+      featureFlags: { support_module: true },
+    },
+    res,
+    auth: { user: 'tenant-admin', role: 'admin', tenantId: 'tenant-1' },
+  });
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 409);
+  assert.equal(called, false);
+  const payload = JSON.parse(String(res.body || '{}'));
+  assert.equal(payload.ok, false);
+  assert.equal(payload.error, 'module-dependency-missing');
+  assert.equal(payload.data.featureKey, 'support_module');
+  assert.deepEqual(payload.data.missingDependencies, ['discord_integration']);
+});
+
+test('admin tenant-config route preserves non-module feature flags while updating modules', async () => {
+  const calls = [];
+  const handler = buildRoutes({
+    getPlatformTenantConfig: async () => ({
+      tenantId: 'tenant-1',
+      featureFlags: {
+        discord_integration: true,
+        custom_banner: true,
+        support_module: false,
+      },
+    }),
+    getTenantFeatureAccess: async () => ({
+      tenantId: 'tenant-1',
+      package: {
+        id: 'PRO',
+        features: ['support_module', 'analytics_module'],
+      },
+      enabledFeatureKeys: ['support_module', 'discord_integration'],
+    }),
+    upsertPlatformTenantConfig: async (input) => {
+      calls.push(input);
+      return { ok: true, data: input };
+    },
+  });
+  const res = createMockRes();
+
+  const handled = await handler({
+    req: { method: 'POST', headers: {} },
+    pathname: '/admin/api/platform/tenant-config',
+    body: {
+      tenantId: 'tenant-1',
+      updateScope: 'modules',
+      featureFlags: { support_module: true },
+    },
+    res,
+    auth: { user: 'tenant-admin', role: 'admin', tenantId: 'tenant-1' },
+  });
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 200);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].featureFlags, {
+    discord_integration: true,
+    custom_banner: true,
+    support_module: true,
+  });
+});
+
+test('admin tenant-config route blocks non-module feature changes from the modules scope', async () => {
+  let called = false;
+  const handler = buildRoutes({
+    getPlatformTenantConfig: async () => ({
+      tenantId: 'tenant-1',
+      featureFlags: {
+        discord_integration: true,
+        support_module: false,
+      },
+    }),
+    getTenantFeatureAccess: async () => ({
+      tenantId: 'tenant-1',
+      package: {
+        id: 'PRO',
+        features: ['support_module'],
+      },
+      enabledFeatureKeys: ['support_module', 'discord_integration'],
+    }),
+    upsertPlatformTenantConfig: async () => {
+      called = true;
+      return { ok: true, data: { tenantId: 'tenant-1' } };
+    },
+  });
+  const res = createMockRes();
+
+  const handled = await handler({
+    req: { method: 'POST', headers: {} },
+    pathname: '/admin/api/platform/tenant-config',
+    body: {
+      tenantId: 'tenant-1',
+      updateScope: 'modules',
+      featureFlags: {
+        support_module: true,
+        discord_integration: false,
+      },
+    },
+    res,
+    auth: { user: 'tenant-admin', role: 'admin', tenantId: 'tenant-1' },
+  });
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 400);
+  assert.equal(called, false);
+  const payload = JSON.parse(String(res.body || '{}'));
+  assert.equal(payload.ok, false);
+  assert.equal(payload.error, 'module-scope-invalid-feature-flag');
+  assert.equal(payload.data.featureKey, 'discord_integration');
+});
+
+test('admin tenant-config route publishes the current branding snapshot', async () => {
+  const calls = [];
+  const handler = buildRoutes({
+    upsertPlatformTenantConfig: async (input) => {
+      calls.push(input);
+      return { ok: true, data: input };
+    },
+  });
+  const res = createMockRes();
+
+  const handled = await handler({
+    req: { method: 'POST', headers: {} },
+    pathname: '/admin/api/platform/tenant-config',
+    body: {
+      tenantId: 'tenant-1',
+      updateScope: 'branding-publish',
+      portalEnvPatch: {
+        siteName: 'Prime SCUM Network',
+        primaryColor: '#3366ff',
+      },
+    },
+    res,
+    auth: { user: 'tenant-admin', role: 'admin', tenantId: 'tenant-1' },
+  });
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 200);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].tenantId, 'tenant-1');
+  assert.equal(calls[0].portalEnvPatch.publishedBranding.settings.siteName, 'Prime SCUM Network');
+  assert.equal(calls[0].portalEnvPatch.publishedBranding.version, 1);
+  assert.equal(calls[0].portalEnvPatch.publishedBranding.publishedBy, 'tenant-admin');
+  assert.equal(calls[0].portalEnvPatch.publishedBrandingHistory.length, 1);
+  assert.equal(calls[0].portalEnvPatch.publishedBrandingHistory[0].version, 1);
+});
+
+test('admin tenant-config route restores published branding into the current draft', async () => {
+  const calls = [];
+  const handler = buildRoutes({
+    getPlatformTenantConfig: async () => ({
+      tenantId: 'tenant-1',
+      portalEnvPatch: {
+        siteName: 'Draft name',
+        publishedBranding: {
+          version: 3,
+          publishedAt: '2026-04-03T12:00:00.000Z',
+          publishedBy: 'tenant-admin',
+          settings: {
+            siteName: 'Published SCUM Portal',
+            accentColor: '#88ccaa',
+          },
+        },
+      },
+    }),
+    upsertPlatformTenantConfig: async (input) => {
+      calls.push(input);
+      return { ok: true, data: input };
+    },
+  });
+  const res = createMockRes();
+
+  const handled = await handler({
+    req: { method: 'POST', headers: {} },
+    pathname: '/admin/api/platform/tenant-config',
+    body: {
+      tenantId: 'tenant-1',
+      updateScope: 'branding-restore-draft',
+    },
+    res,
+    auth: { user: 'tenant-admin', role: 'admin', tenantId: 'tenant-1' },
+  });
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 200);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].portalEnvPatch.siteName, 'Published SCUM Portal');
+  assert.equal(calls[0].portalEnvPatch.accentColor, '#88ccaa');
+  assert.equal(calls[0].portalEnvPatch.publishedBranding.version, 3);
+});
+
+test('admin tenant-config route restores a selected branding version into the current draft', async () => {
+  const calls = [];
+  const handler = buildRoutes({
+    getPlatformTenantConfig: async () => ({
+      tenantId: 'tenant-1',
+      portalEnvPatch: {
+        siteName: 'Draft name',
+        publishedBranding: {
+          version: 4,
+          publishedAt: '2026-04-03T12:00:00.000Z',
+          publishedBy: 'tenant-admin',
+          settings: {
+            siteName: 'Published SCUM Portal',
+            accentColor: '#88ccaa',
+          },
+        },
+        publishedBrandingHistory: [
+          {
+            version: 4,
+            publishedAt: '2026-04-03T12:00:00.000Z',
+            publishedBy: 'tenant-admin',
+            settings: {
+              siteName: 'Published SCUM Portal',
+              accentColor: '#88ccaa',
+            },
+          },
+          {
+            version: 2,
+            publishedAt: '2026-03-22T12:00:00.000Z',
+            publishedBy: 'tenant-admin',
+            settings: {
+              siteName: 'Archive Portal',
+              accentColor: '#335577',
+            },
+          },
+        ],
+      },
+    }),
+    upsertPlatformTenantConfig: async (input) => {
+      calls.push(input);
+      return { ok: true, data: input };
+    },
+  });
+  const res = createMockRes();
+
+  const handled = await handler({
+    req: { method: 'POST', headers: {} },
+    pathname: '/admin/api/platform/tenant-config',
+    body: {
+      tenantId: 'tenant-1',
+      updateScope: 'branding-restore-version',
+      brandingVersion: 2,
+    },
+    res,
+    auth: { user: 'tenant-admin', role: 'admin', tenantId: 'tenant-1' },
+  });
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 200);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].portalEnvPatch.siteName, 'Archive Portal');
+  assert.equal(calls[0].portalEnvPatch.accentColor, '#335577');
+  assert.equal(calls[0].portalEnvPatch.publishedBranding.version, 4);
+  assert.equal(calls[0].portalEnvPatch.publishedBrandingHistory.length, 2);
+});
+
+test('admin tenant-config route keeps published branding metadata when saving the draft settings', async () => {
+  const calls = [];
+  const handler = buildRoutes({
+    getPlatformTenantConfig: async () => ({
+      tenantId: 'tenant-1',
+      portalEnvPatch: {
+        siteName: 'Current draft',
+        publishedBranding: {
+          version: 5,
+          publishedAt: '2026-04-03T12:00:00.000Z',
+          publishedBy: 'tenant-admin',
+          settings: {
+            siteName: 'Current published',
+            accentColor: '#224466',
+          },
+        },
+        publishedBrandingHistory: [
+          {
+            version: 5,
+            publishedAt: '2026-04-03T12:00:00.000Z',
+            publishedBy: 'tenant-admin',
+            settings: {
+              siteName: 'Current published',
+              accentColor: '#224466',
+            },
+          },
+          {
+            version: 4,
+            publishedAt: '2026-03-30T12:00:00.000Z',
+            publishedBy: 'tenant-admin',
+            settings: {
+              siteName: 'Older published',
+              accentColor: '#113355',
+            },
+          },
+        ],
+      },
+    }),
+    upsertPlatformTenantConfig: async (input) => {
+      calls.push(input);
+      return { ok: true, data: input };
+    },
+  });
+  const res = createMockRes();
+
+  const handled = await handler({
+    req: { method: 'POST', headers: {} },
+    pathname: '/admin/api/platform/tenant-config',
+    body: {
+      tenantId: 'tenant-1',
+      updateScope: 'settings',
+      portalEnvPatch: {
+        siteName: 'Updated draft only',
+        primaryColor: '#abcdef',
+      },
+    },
+    res,
+    auth: { user: 'tenant-admin', role: 'admin', tenantId: 'tenant-1' },
+  });
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 200);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].portalEnvPatch.siteName, 'Updated draft only');
+  assert.equal(calls[0].portalEnvPatch.primaryColor, '#abcdef');
+  assert.equal(calls[0].portalEnvPatch.publishedBranding.version, 5);
+  assert.equal(calls[0].portalEnvPatch.publishedBrandingHistory.length, 2);
 });
 
 test('admin runtime restart-service route is rate limited before restarting managed services', async () => {

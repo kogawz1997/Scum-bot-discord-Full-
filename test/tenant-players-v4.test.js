@@ -29,12 +29,33 @@ test('tenant players v4 model builds support-focused workspace', () => {
       purchase: { userId: '123' },
       deadLetter: { reason: 'waiting for agent' },
     },
+    supportTickets: [
+      {
+        channelId: 'portal-tenant-prod-001-123-open',
+        status: 'open',
+        isOpen: true,
+        category: 'player-support',
+      },
+    ],
+    playerSupportTickets: [
+      {
+        channelId: 'portal-tenant-prod-001-123-appeal',
+        status: 'open',
+        isOpen: true,
+        isAppeal: true,
+        category: 'appeal',
+        reason: 'Appeal request',
+        createdAt: '2026-04-03T09:00:00.000Z',
+      },
+    ],
   });
 
   assert.equal(model.header.title, 'Players');
-  assert.equal(model.summaryStrip.length, 4);
+  assert.equal(model.summaryStrip.length, 5);
   assert.equal(model.players.length, 1);
   assert.equal(model.selected.discordId, '123');
+  assert.equal(model.selected.supportTickets.length, 1);
+  assert.equal(model.selected.openAppeal.channelId, 'portal-tenant-prod-001-123-appeal');
   assert.ok(model.railCards.length >= 3);
 });
 
@@ -42,14 +63,70 @@ test('tenant players v4 html includes player table and team access handoff', () 
   const html = buildTenantPlayersV4Html(createTenantPlayersV4Model({
     me: { role: 'owner' },
     tenantConfig: { name: 'Tenant Demo' },
-    players: [],
+    players: [
+      {
+        displayName: 'Mira',
+        discordId: 'user-1',
+        steamId: 'steam-1',
+        inGameName: 'MiraTH',
+        isActive: true,
+      },
+    ],
+    playerSupportTickets: [
+      {
+        channelId: 'appeal-1',
+        status: 'open',
+        isOpen: true,
+        isAppeal: true,
+        category: 'appeal',
+        reason: 'Appeal request',
+        createdAt: '2026-04-03T09:00:00.000Z',
+      },
+    ],
   }));
 
   assert.match(html, /Steam \/ In-game/);
   assert.match(html, /Manage team access from the dedicated team pages/);
   assert.match(html, /Open staff/);
+  assert.match(html, /data-tenant-player-ticket-review="approved"/);
+  assert.match(html, /data-tenant-player-ticket-claim="appeal-1"/);
+  assert.match(html, /data-tenant-player-ticket-escalate="appeal-1"/);
+  assert.match(html, />Escalate</);
   assert.doesNotMatch(html, /data-tenant-staff-card/);
   assert.match(html, /tdv4-players-main-grid/);
+});
+
+test('tenant players v4 html exposes assign and return-to-queue actions for escalated claimed tickets', () => {
+  const html = buildTenantPlayersV4Html(createTenantPlayersV4Model({
+    me: { role: 'admin' },
+    tenantConfig: { name: 'Tenant Demo' },
+    players: [
+      {
+        displayName: 'Mira',
+        discordId: 'user-1',
+        steamId: 'steam-1',
+        inGameName: 'MiraTH',
+        isActive: true,
+      },
+    ],
+    playerSupportTickets: [
+      {
+        channelId: 'ticket-claimed-1',
+        status: 'escalated',
+        isOpen: true,
+        claimedBy: 'ops-lead',
+        reason: 'Delivery was delayed twice',
+        createdAt: '2026-04-03T09:00:00.000Z',
+      },
+    ],
+  }));
+
+  assert.match(html, /data-tenant-player-ticket-assign="ticket-claimed-1"/);
+  assert.match(html, /data-tenant-player-ticket-escalate="ticket-claimed-1"/);
+  assert.match(html, /data-escalated="false"/);
+  assert.match(html, />Return to queue</);
+  assert.match(html, /claimed by ops-lead/);
+  assert.match(html, /escalated/);
 });
 
 test('tenant players preview html references parallel assets', () => {

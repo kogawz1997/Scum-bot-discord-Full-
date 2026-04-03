@@ -139,6 +139,41 @@ function buildState() {
         tokenId: 'setup-1',
       },
     ],
+    supportTickets: [
+      {
+        id: 1,
+        channelId: 'ticket-001',
+        guildId: 'tenant-1',
+        userId: 'player-1',
+        category: 'support',
+        reason: 'Player cannot receive VIP delivery',
+        status: 'open',
+        claimedBy: null,
+        createdAt: '2026-03-29T05:00:00.000Z',
+      },
+      {
+        id: 2,
+        channelId: 'ticket-002',
+        guildId: 'tenant-1',
+        userId: 'player-2',
+        category: 'appeal',
+        reason: 'Appeal for moderation review',
+        status: 'claimed',
+        claimedBy: 'mod-1',
+        createdAt: '2026-03-29T06:30:00.000Z',
+      },
+      {
+        id: 3,
+        channelId: 'ticket-003',
+        guildId: 'tenant-1',
+        userId: 'player-3',
+        category: 'support',
+        reason: 'Order issue still needs closure',
+        status: 'claimed',
+        claimedBy: 'mod-2',
+        createdAt: '2026-03-29T07:10:00.000Z',
+      },
+    ],
   };
 }
 
@@ -214,7 +249,19 @@ test('tenant detail workspace exposes support shortcut and tenant runtime action
 });
 
 test('support workspace exposes dead-letter, alert, and request-error tools', () => {
-  const model = createOwnerControlV4Model(buildState(), {
+  const state = buildState();
+  state.supportTickets.push({
+    id: 4,
+    channelId: 'ticket-004',
+    guildId: 'tenant-1',
+    userId: 'player-4',
+    category: 'support',
+    reason: 'Owner escalation already in progress',
+    status: 'escalated',
+    claimedBy: 'owner-ops',
+    createdAt: '2026-03-29T07:45:00.000Z',
+  });
+  const model = createOwnerControlV4Model(state, {
     currentRoute: 'support-tenant-1',
     supportCase: buildSupportCase(),
     supportCaseLoading: false,
@@ -232,6 +279,21 @@ test('support workspace exposes dead-letter, alert, and request-error tools', ()
     supportDeadLettersLoading: false,
   });
   const html = buildOwnerControlV4Html(model);
+  assert.match(html, /id="owner-tenant-support-ticket-queue-live"/);
+  assert.match(html, /Ticket queue and appeal decisions/);
+  assert.match(html, /id="owner-tenant-support-priority-live"/);
+  assert.match(html, /data-owner-support-escalation-snapshot/);
+  assert.match(html, /Escalation watch/);
+  assert.match(html, /data-owner-support-operational-drag/);
+  assert.match(html, /Operational drag/);
+  assert.match(html, /data-owner-action="claim-support-ticket"/);
+  assert.match(html, /data-owner-action="assign-support-ticket"/);
+  assert.match(html, /data-owner-action="toggle-support-ticket-escalation"/);
+  assert.match(html, /data-owner-action="review-support-appeal"/);
+  assert.match(html, /data-owner-action="close-support-ticket"/);
+  assert.match(html, /data-owner-support-ticket-row="ticket-001"/);
+  assert.match(html, /data-owner-support-ticket-row="ticket-004"/);
+  assert.match(html, /Return to queue/);
   assert.match(html, /id="owner-tenant-support-dead-letters-live"/);
   assert.match(html, /data-owner-action="retry-dead-letter"/);
   assert.match(html, /data-owner-action="clear-dead-letter"/);

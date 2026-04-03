@@ -105,7 +105,7 @@
     const normalized = normalizeStatus(value);
     if (['active', 'online', 'healthy', 'ready', 'completed', 'succeeded', 'sent', 'success'].includes(normalized)) return 'success';
     if (['scheduled', 'running', 'pending', 'trial', 'processing', 'queued', 'warning', 'degraded', 'past_due'].includes(normalized)) return 'warning';
-    if (['failed', 'error', 'blocked', 'offline', 'canceled', 'cancelled', 'disputed', 'void', 'refunded'].includes(normalized)) return 'danger';
+    if (['failed', 'error', 'blocked', 'offline', 'canceled', 'cancelled', 'disputed', 'void', 'refunded', 'escalated'].includes(normalized)) return 'danger';
     return 'muted';
   }
 
@@ -217,6 +217,31 @@
     return invoices.concat(attempts).slice(0, 8);
   }
 
+  function buildSupportRows(state) {
+    return normalizeList(state && state.supportTickets)
+      .slice()
+      .sort(function (left, right) {
+        const leftTime = parseDate(left && (left.createdAt || left.closedAt));
+        const rightTime = parseDate(right && (right.createdAt || right.closedAt));
+        return (rightTime ? rightTime.getTime() : 0) - (leftTime ? leftTime.getTime() : 0);
+      })
+      .slice(0, 6)
+      .map(function (row) {
+        const status = normalizeStatus(row && row.status, 'open');
+        const category = normalizeStatus(row && row.category, 'support');
+        const isAppeal = category === 'appeal' || category.endsWith('-appeal') || category.startsWith('appeal:');
+        const owner = firstNonEmpty([row && row.claimedBy], 'unclaimed');
+        return {
+          title: isAppeal
+            ? `Appeal ${firstNonEmpty([row && row.channelId, row && row.userId], 'ticket')}`
+            : `Support ${firstNonEmpty([row && row.channelId, row && row.userId], 'ticket')}`,
+          detail: firstNonEmpty([row && row.reason], 'Player support ticket'),
+          meta: `${humanizeKey(status)} | ${owner} | ${formatRelative(row && (row.createdAt || row.closedAt), 'No support timestamp')}`,
+          tone: toneForStatus(status === 'claimed' ? 'warning' : status),
+        };
+      });
+  }
+
   function buildCommunityRows(state) {
     const killfeed = normalizeList(state && state.killfeed).slice(0, 4).map(function (row) {
       return {
@@ -314,6 +339,7 @@
     const raidSummaries = normalizeList(state && state.raids && state.raids.summaries);
     const invoices = normalizeList(state && state.billingInvoices);
     const paymentAttempts = normalizeList(state && state.billingPaymentAttempts);
+    const supportTickets = normalizeList(state && state.supportTickets);
     const openInvoiceCount = Number.isFinite(Number(billingSummary.openInvoiceCount))
       ? Number(billingSummary.openInvoiceCount)
       : invoices.filter(function (row) { return !['paid', 'succeeded'].includes(normalizeStatus(row && row.status)); }).length;
@@ -330,6 +356,32 @@
     const failedRestartCount = restartExecutions.filter(function (row) {
       return ['failed', 'error'].includes(normalizeStatus(row && row.resultStatus));
     }).length;
+    const openSupportRows = supportTickets.filter(function (row) {
+      return !['closed', 'approved', 'rejected'].includes(normalizeStatus(row && row.status));
+    });
+    const openSupportCount = openSupportRows.length;
+    const appealCount = supportTickets.filter(function (row) {
+      const category = normalizeStatus(row && row.category, 'support');
+      return category === 'appeal' || category.endsWith('-appeal') || category.startsWith('appeal:');
+    }).length;
+    const claimedSupportCount = supportTickets.filter(function (row) {
+      return Boolean(firstNonEmpty([row && row.claimedBy], ''));
+    }).length;
+    const escalationCount = openSupportRows.filter(function (row) {
+      return normalizeStatus(row && row.status) === 'escalated';
+    }).length;
+    const unclaimedSupportCount = openSupportRows.filter(function (row) {
+      return !firstNonEmpty([row && row.claimedBy], '');
+    }).length;
+    const oldestOpenSupportAt = openSupportRows.reduce(function (oldest, row) {
+      const createdAt = parseDate(row && (row.createdAt || row.updatedAt || row.closedAt));
+      if (!createdAt) return oldest;
+      if (!oldest || createdAt.getTime() < oldest.getTime()) return createdAt;
+      return oldest;
+    }, null);
+    const oldestOpenSupportHours = oldestOpenSupportAt
+      ? Math.max(1, Math.round((Date.now() - oldestOpenSupportAt.getTime()) / 3600000))
+      : 0;
     const lastSyncAt = firstNonEmpty([
       delivery.lastSyncAt,
       syncRuns[0] && (syncRuns[0].finishedAt || syncRuns[0].startedAt || syncRuns[0].createdAt),
@@ -362,6 +414,8 @@
           { label: lastSyncAt ? `Last sync ${formatRelative(lastSyncAt)}` : 'No sync timestamp', tone: lastSyncAt ? 'success' : 'warning' },
           { label: `${formatNumber(blockedRestartCount, '0')} blocked restarts`, tone: blockedRestartCount > 0 ? 'danger' : 'success' },
           { label: `${formatNumber(notifications.length, '0')} notifications`, tone: notifications.length > 0 ? 'warning' : 'muted' },
+          { label: `${formatNumber(openSupportCount, '0')} support tickets open`, tone: openSupportCount > 0 ? 'warning' : 'muted' },
+          { label: `${formatNumber(escalationCount, '0')} escalated`, tone: escalationCount > 0 ? 'danger' : 'muted' },
         ],
       },
       summaryStrip: [
@@ -370,6 +424,7 @@
         { label: 'Queue pressure', value: formatNumber(deliverySummary.queueCount, formatNumber(normalizeList(state && state.queueItems).length, '0')), detail: `${formatNumber(deliverySummary.deadLetterCount, formatNumber(normalizeList(state && state.deadLetters).length, '0'))} dead letters need review`, tone: Number(deliverySummary.deadLetterCount) > 0 ? 'warning' : 'info' },
         { label: 'Restart follow-up', value: formatNumber(pendingRestartCount + verificationPendingCount, '0'), detail: `${formatNumber(blockedRestartCount, '0')} blocked · ${formatNumber(failedRestartCount, '0')} failed`, tone: blockedRestartCount + failedRestartCount > 0 ? 'danger' : 'success' },
         { label: 'Open invoices', value: formatNumber(openInvoiceCount, '0'), detail: `${formatNumber(failedAttemptCount, '0')} payment attempts need attention`, tone: openInvoiceCount > 0 || failedAttemptCount > 0 ? 'warning' : 'success' },
+        { label: 'Support queue', value: formatNumber(openSupportCount, '0'), detail: `${formatNumber(appealCount, '0')} appeals | ${formatNumber(escalationCount, '0')} escalated | ${formatNumber(unclaimedSupportCount, '0')} unclaimed`, tone: escalationCount > 0 ? 'danger' : openSupportCount > 0 ? 'warning' : 'success' },
         { label: 'Community activity', value: formatNumber(communityActivityCount, '0'), detail: `${formatNumber(killfeed.length, '0')} kill feed · ${formatNumber(events.length, '0')} events · ${formatNumber(raidWindows.length, '0')} raid windows`, tone: communityActivityCount > 0 ? 'info' : 'muted' },
       ],
       deliverySignals: buildDeliverySignalRows(deliveryLifecycle),
@@ -378,12 +433,14 @@
       restartRows: buildRestartRows(state),
       syncRows: buildSyncRows(state),
       billingRows: buildBillingRows(state),
+      supportRows: buildSupportRows(state),
       communityRows: buildCommunityRows(state),
       notificationRows: buildNotificationRows(state),
       links: {
         orders: '/tenant/orders',
         billing: '/tenant/billing',
         restart: '/tenant/server/restarts',
+        players: '/tenant/players',
         events: '/tenant/events',
         deliveryExport: deliveryExportHref,
       },
@@ -392,6 +449,11 @@
         auditCount: formatNumber(auditRows.length, '0'),
         syncRunCount: formatNumber(syncRuns.length, '0'),
         syncEventCount: formatNumber(syncEvents.length, '0'),
+        openSupportCount: formatNumber(openSupportCount, '0'),
+        appealCount: formatNumber(appealCount, '0'),
+        escalationCount: formatNumber(escalationCount, '0'),
+        unclaimedSupportCount: formatNumber(unclaimedSupportCount, '0'),
+        oldestOpenSupportHours: formatNumber(oldestOpenSupportHours, '0'),
       },
     };
   }
@@ -459,18 +521,29 @@
       '</section>',
       '</section>',
       '<section class="tdv4-dual-grid">',
-      '<section class="tdv4-panel" data-tenant-analytics-community>',
-      '<div class="tdv4-section-kicker">Community activity</div>',
-      '<h2 class="tdv4-section-title">Events, raids, and recent combat</h2>',
-      '<p class="tdv4-section-copy">Pull community momentum into the same workspace by keeping kill feed, event activity, and raid milestones visible alongside the operational metrics.</p>',
-      renderInsightList(safe.communityRows, 'No community activity yet', 'Kill feed, events, and raids will appear here once the community systems start reporting data.'),
-      '<div class="tdv4-action-list"><a class="tdv4-button tdv4-button-secondary" href="' + escapeHtml(safe.links.events) + '">Open events</a></div>',
+      '<section class="tdv4-panel" data-tenant-analytics-support>',
+      '<div class="tdv4-section-kicker">Support and appeals</div>',
+      '<h2 class="tdv4-section-title">Player support queue</h2>',
+      '<p class="tdv4-section-copy">Keep appeal pressure, escalation risk, claim ownership, and unresolved player requests visible next to billing and delivery signals.</p>',
+      renderInsightList(safe.supportRows, 'No support queue yet', 'Support tickets and appeal reviews will appear here after players start using the portal support flow.'),
+      '<div class="tdv4-chip-row">' + renderBadge(`${escapeHtml(safe.facts.openSupportCount)} open`, 'warning') + renderBadge(`${escapeHtml(safe.facts.appealCount)} appeals`, 'info') + renderBadge(`${escapeHtml(safe.facts.escalationCount)} escalated`, 'danger') + renderBadge(`${escapeHtml(safe.facts.unclaimedSupportCount)} unclaimed`, 'muted') + '</div>',
+      '<div class="tdv4-kpi-detail">Oldest open ticket: ' + escapeHtml(safe.facts.oldestOpenSupportHours) + ' hr</div>',
+      '<div class="tdv4-action-list"><a class="tdv4-button tdv4-button-secondary" href="' + escapeHtml(safe.links.players) + '">Open players</a></div>',
       '</section>',
       '<section class="tdv4-panel">',
       '<div class="tdv4-section-kicker">Notifications and audit</div>',
       '<h2 class="tdv4-section-title">Follow-up queue</h2>',
       '<p class="tdv4-section-copy">Keep the latest notifications and audit evidence close to the analytics view so the operator can validate what changed without leaving the page.</p>',
       renderInsightList(safe.notificationRows, 'No notifications or audit rows yet', 'Notifications and audit evidence will appear here after the first alert or operator action is recorded.'),
+      '</section>',
+      '</section>',
+      '<section class="tdv4-dual-grid">',
+      '<section class="tdv4-panel" data-tenant-analytics-community>',
+      '<div class="tdv4-section-kicker">Community activity</div>',
+      '<h2 class="tdv4-section-title">Events, raids, and recent combat</h2>',
+      '<p class="tdv4-section-copy">Pull community momentum into the same workspace by keeping kill feed, event activity, and raid milestones visible alongside the operational metrics.</p>',
+      renderInsightList(safe.communityRows, 'No community activity yet', 'Kill feed, events, and raids will appear here once the community systems start reporting data.'),
+      '<div class="tdv4-action-list"><a class="tdv4-button tdv4-button-secondary" href="' + escapeHtml(safe.links.events) + '">Open events</a></div>',
       '</section>',
       '</section>',
       '</main>',

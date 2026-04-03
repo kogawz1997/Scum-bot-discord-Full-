@@ -6,7 +6,7 @@ const {
   buildTenantAnalyticsV4Html,
 } = require('../src/admin/assets/tenant-analytics-v4.js');
 
-test('tenant analytics v4 model summarizes delivery, restart, billing, and community signals', () => {
+test('tenant analytics v4 model summarizes delivery, restart, billing, support, and community signals', () => {
   const model = createTenantAnalyticsV4Model({
     tenantId: 'tenant-demo',
     tenantConfig: { name: 'Tenant Demo' },
@@ -62,6 +62,23 @@ test('tenant analytics v4 model summarizes delivery, restart, billing, and commu
     billingPaymentAttempts: [
       { id: 'pay-1', status: 'failed', provider: 'stripe', amountCents: 9900, currency: 'usd', errorCode: 'card_declined' },
     ],
+    supportTickets: [
+      {
+        channelId: 'portal-tenant-demo-user-1-open',
+        category: 'player-support',
+        reason: 'Need help with delivery ORD-1',
+        status: 'escalated',
+        createdAt: '2026-04-01T10:10:00+07:00',
+      },
+      {
+        channelId: 'portal-tenant-demo-user-2-appeal',
+        category: 'appeal',
+        reason: 'Appeal request',
+        status: 'claimed',
+        claimedBy: 'staff-1',
+        createdAt: '2026-04-01T10:20:00+07:00',
+      },
+    ],
     killfeed: [
       { killerName: 'MiraTH', victimName: 'BanditX', weapon: 'AKM', occurredAt: '2026-04-01T09:30:00+07:00', sector: 'B2' },
     ],
@@ -84,10 +101,17 @@ test('tenant analytics v4 model summarizes delivery, restart, billing, and commu
   });
 
   assert.equal(model.header.title, 'Analytics');
-  assert.equal(model.summaryStrip.length, 6);
+  assert.equal(model.summaryStrip.length, 7);
   assert.equal(model.deliverySignals.length, 1);
   assert.equal(model.deliveryActions.length, 1);
   assert.equal(model.topErrors.length, 1);
+  assert.equal(model.supportRows.length, 2);
+  assert.equal(model.facts.openSupportCount, '2');
+  assert.equal(model.facts.appealCount, '1');
+  assert.equal(model.facts.escalationCount, '1');
+  assert.equal(model.facts.unclaimedSupportCount, '1');
+  assert.match(model.facts.oldestOpenSupportHours, /^\d+$/);
+  assert.equal(model.header.statusChips.length, 6);
   assert.ok(model.links.deliveryExport.includes('/admin/api/delivery/lifecycle/export?tenantId=tenant-demo'));
   assert.equal(model.communityRows.length >= 3, true);
 });
@@ -99,9 +123,15 @@ test('tenant analytics v4 html includes reporting sections and export CTA', () =
   assert.match(html, /Export delivery CSV/);
   assert.match(html, /data-tenant-analytics-delivery/);
   assert.match(html, /data-tenant-analytics-restart/);
+  assert.match(html, /data-tenant-analytics-support/);
   assert.match(html, /data-tenant-analytics-community/);
   assert.match(html, /Delivery and job health/);
   assert.match(html, /Restart outcomes and sync activity/);
   assert.match(html, /Billing signals/);
+  assert.match(html, /Player support queue/);
+  assert.match(html, /Open players/);
+  assert.match(html, /escalated/);
+  assert.match(html, /unclaimed/);
+  assert.match(html, /Oldest open ticket:/);
   assert.match(html, /Events, raids, and recent combat/);
 });

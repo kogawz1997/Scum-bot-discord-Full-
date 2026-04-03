@@ -81,6 +81,31 @@
     return 'muted';
   }
 
+  function supportTicketTone(ticket) {
+    const status = String(ticket?.status || '').trim().toLowerCase();
+    if (['approved', 'closed'].includes(status)) return 'success';
+    if (status === 'escalated') return 'danger';
+    if (status === 'claimed') return 'info';
+    if (status === 'rejected') return 'danger';
+    return 'warning';
+  }
+
+  function supportTicketStatusLabel(ticket) {
+    const status = String(ticket?.status || '').trim().toLowerCase();
+    if (status === 'approved') return 'approved';
+    if (status === 'rejected') return 'rejected';
+    return status || 'open';
+  }
+
+  function supportTicketIsOpen(ticket) {
+    const status = String(ticket?.status || '').trim().toLowerCase();
+    return !['approved', 'rejected', 'closed'].includes(status);
+  }
+
+  function supportTicketIsEscalated(ticket) {
+    return String(ticket?.status || '').trim().toLowerCase() === 'escalated';
+  }
+
   function extractPlayerName(player) {
     return firstNonEmpty([
       player?.displayName,
@@ -111,6 +136,11 @@
       ? state.purchaseLookup.items.filter((item) => String(item?.userId || item?.discordId || '').trim() === userId)
       : [];
     const lastPurchase = purchases[0] || null;
+    const supportTickets = Array.isArray(state?.playerSupportTickets)
+      ? state.playerSupportTickets
+      : [];
+    const openTicket = supportTickets.find((item) => item?.isOpen !== false) || null;
+    const openAppeal = supportTickets.find((item) => item?.isAppeal && item?.isOpen !== false) || null;
 
     return {
       name: extractPlayerName(selected),
@@ -121,6 +151,9 @@
       updatedAt: formatDateTime(selected?.updatedAt || selected?.createdAt),
       linked: Boolean(selected?.steamId || selected?.steam?.id),
       lastPurchase,
+      supportTickets,
+      openTicket,
+      openAppeal,
       recentDeliveryIssue: state?.deliveryCase && String(state.deliveryCase?.purchase?.userId || '').trim() === userId
         ? firstNonEmpty([state.deliveryCase?.deadLetter?.reason, state.deliveryCase?.latestCommandSummary, 'Open delivery case'])
         : '',
@@ -133,6 +166,9 @@
     const players = Array.isArray(state?.players) ? state.players : [];
     const linkedCount = players.filter((item) => item?.steamId || item?.steam?.id).length;
     const activeCount = players.filter((item) => item?.isActive !== false).length;
+    const supportTickets = Array.isArray(state?.supportTickets) ? state.supportTickets : [];
+    const openSupportCount = supportTickets.filter((item) => item?.isOpen !== false).length;
+    const appealCount = supportTickets.filter((item) => item?.isAppeal).length;
     const needsSupportCount = players.filter((item) => (
       !item?.steamId
       || (state?.deliveryCase && String(state.deliveryCase?.purchase?.userId || '').trim() === String(item?.discordId || item?.userId || '').trim())
@@ -154,6 +190,7 @@
         statusChips: [
           { label: `${formatNumber(players.length, '0')} players known`, tone: 'info' },
           { label: `${formatNumber(linkedCount, '0')} linked to Steam`, tone: 'success' },
+          { label: `${formatNumber(openSupportCount, '0')} support tickets open`, tone: openSupportCount > 0 ? 'warning' : 'muted' },
           { label: `${formatNumber(needsSupportCount, '0')} may need support`, tone: needsSupportCount > 0 ? 'warning' : 'muted' },
         ],
         primaryAction: { label: 'Search players', href: '#player-search' },
@@ -162,6 +199,7 @@
         { label: 'Players known', value: formatNumber(players.length, '0'), detail: 'Accounts visible inside this tenant workspace', tone: 'info' },
         { label: 'Steam linked', value: formatNumber(linkedCount, '0'), detail: 'Useful before looking at orders or delivery evidence', tone: 'success' },
         { label: 'Still active', value: formatNumber(activeCount, '0'), detail: 'Players the workspace still sees as active', tone: 'success' },
+        { label: 'Appeals', value: formatNumber(appealCount, '0'), detail: 'Recent appeal tickets inside this tenant', tone: appealCount > 0 ? 'warning' : 'muted' },
         { label: 'Need support', value: formatNumber(needsSupportCount, '0'), detail: 'Missing Steam link or still attached to a delivery issue', tone: needsSupportCount > 0 ? 'warning' : 'muted' },
       ],
       players: players.map((row) => ({
@@ -246,6 +284,47 @@
       `<div class="tdv4-rail-title">${escapeHtml(item.title)}</div>`,
       `<strong class="tdv4-rail-body">${escapeHtml(item.body)}</strong>`,
       `<div class="tdv4-rail-detail">${escapeHtml(item.meta)}</div>`,
+      '</article>',
+    ].join('');
+  }
+
+  function renderSelectedSupportTicket(ticket) {
+    const channelId = firstNonEmpty([ticket?.channelId], '');
+    const isAppeal = Boolean(ticket?.isAppeal);
+    const tone = supportTicketTone(ticket);
+    const isOpen = supportTicketIsOpen(ticket) && ticket?.isOpen !== false;
+    const isEscalated = supportTicketIsEscalated(ticket);
+    const claimOrAssignButton = isOpen
+      ? ticket?.claimedBy
+        ? `<button class="tdv4-button tdv4-button-secondary" type="button" data-tenant-player-ticket-assign="${escapeHtml(channelId)}">Assign to me</button>`
+        : `<button class="tdv4-button tdv4-button-secondary" type="button" data-tenant-player-ticket-claim="${escapeHtml(channelId)}">Claim ticket</button>`
+      : '';
+    const escalationButton = isOpen
+      ? `<button class="tdv4-button tdv4-button-secondary" type="button" data-tenant-player-ticket-escalate="${escapeHtml(channelId)}" data-escalated="${isEscalated ? 'false' : 'true'}">${escapeHtml(isEscalated ? 'Return to queue' : 'Escalate')}</button>`
+      : '';
+    const resolutionButtons = isAppeal && isOpen
+      ? [
+        `<button class="tdv4-button tdv4-button-primary" type="button" data-tenant-player-ticket-review="approved" data-channel-id="${escapeHtml(channelId)}">Approve appeal</button>`,
+        `<button class="tdv4-button tdv4-button-secondary" type="button" data-tenant-player-ticket-review="rejected" data-channel-id="${escapeHtml(channelId)}">Reject appeal</button>`,
+      ].join('')
+      : '';
+    const closeButton = isOpen
+      ? `<button class="tdv4-button tdv4-button-secondary" type="button" data-tenant-player-ticket-close="${escapeHtml(channelId)}">Close ticket</button>`
+      : '';
+    return [
+      `<article class="tdv4-panel tdv4-tone-${escapeHtml(tone)}" data-tenant-player-ticket-card data-channel-id="${escapeHtml(channelId)}">`,
+      '<div class="tdv4-data-main">',
+      `<strong>${escapeHtml(channelId || 'Support ticket')}</strong>`,
+      `<span class="tdv4-kpi-detail">${escapeHtml(firstNonEmpty([ticket?.reason], 'No detail provided'))}</span>`,
+      '</div>',
+      `<div class="tdv4-chip-row">${renderBadge(isAppeal ? 'appeal' : 'support', isAppeal ? 'warning' : 'info')}${renderBadge(supportTicketStatusLabel(ticket), tone)}${ticket?.claimedBy ? renderBadge(`claimed by ${ticket.claimedBy}`, 'muted') : ''}</div>`,
+      `<div class="tdv4-kpi-detail">Opened ${escapeHtml(formatDateTime(ticket?.createdAt))}${ticket?.closedAt ? ` · Closed ${escapeHtml(formatDateTime(ticket?.closedAt))}` : ''}</div>`,
+      '<div class="tdv4-action-list">',
+      claimOrAssignButton,
+      escalationButton,
+      resolutionButtons,
+      closeButton,
+      '</div>',
       '</article>',
     ].join('');
   }
@@ -365,6 +444,16 @@
       `<article class="tdv4-mini-stat"><div class="tdv4-mini-stat-label">Latest issue</div><div class="tdv4-mini-stat-value">${escapeHtml(safeModel.selected?.recentDeliveryIssue || 'No active issue recorded')}</div></article>`,
       `<article class="tdv4-mini-stat"><div class="tdv4-mini-stat-label">Recommended next step</div><div class="tdv4-mini-stat-value">${escapeHtml(safeModel.selected?.lastPurchase ? 'Open order history or delivery case' : 'Start with identity or Steam linking support')}</div></article>`,
       '</div>',
+      (safeModel.selected
+        ? [
+            '<div class="tdv4-stack" data-tenant-player-support-context>',
+            `<div class="tdv4-chip-row">${renderBadge(safeModel.selected.openTicket ? 'open ticket' : 'no open ticket', safeModel.selected.openTicket ? 'warning' : 'success')}${safeModel.selected.openAppeal ? renderBadge('appeal pending', 'warning') : renderBadge('no appeal pending', 'muted')}</div>`,
+            (Array.isArray(safeModel.selected.supportTickets) && safeModel.selected.supportTickets.length
+              ? safeModel.selected.supportTickets.map(renderSelectedSupportTicket).join('')
+              : '<div class="tdv4-empty-state"><strong>No support tickets for this player</strong><p>Use the player portal support flow first, then return here to claim, assign, escalate, review, or close the ticket.</p></div>'),
+            '</div>',
+          ].join('')
+        : '<div class="tdv4-empty-state"><strong>No player selected yet</strong><p>Choose a player from the table to load support tickets and appeals for that account.</p></div>'),
       '</section>',
       '<section class="tdv4-panel tdv4-staff-panel">',
       '<div class="tdv4-section-kicker">Team access</div>',

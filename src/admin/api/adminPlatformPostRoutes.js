@@ -145,6 +145,7 @@ function createAdminPlatformPostRoutes(deps) {
     updateInvoiceStatus,
     updatePaymentAttempt,
     createCheckoutSession,
+    listPlatformSubscriptions,
   });
   const handleAdminRuntimeControlPostRoute = createAdminRuntimeControlPostRouteHandler({
     sendJson,

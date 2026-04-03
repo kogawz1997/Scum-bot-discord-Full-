@@ -1539,6 +1539,91 @@
       navigateOwnerRoute('/owner/audit');
       return;
     }
+    if (action === 'claim-support-ticket') {
+      const tenantId = trimText(button.dataset.tenantId, 160);
+      const channelId = trimText(button.dataset.channelId, 160);
+      if (!tenantId || !channelId) {
+        throw new Error('Support ticket context is missing');
+      }
+      await ownerMutation('/admin/api/ticket/claim', {
+        tenantId,
+        channelId,
+      });
+      await refreshState({ silent: true });
+      setStatus(`Claimed support ticket ${channelId}`, 'success');
+      navigateOwnerRoute(`/owner/support/${encodeURIComponent(tenantId)}`);
+      return;
+    }
+    if (action === 'assign-support-ticket') {
+      const tenantId = trimText(button.dataset.tenantId, 160);
+      const channelId = trimText(button.dataset.channelId, 160);
+      if (!tenantId || !channelId) {
+        throw new Error('Support ticket context is missing');
+      }
+      await ownerMutation('/admin/api/ticket/assign', {
+        tenantId,
+        channelId,
+      });
+      await refreshState({ silent: true });
+      setStatus(`Assigned support ticket ${channelId}`, 'success');
+      navigateOwnerRoute(`/owner/support/${encodeURIComponent(tenantId)}`);
+      return;
+    }
+    if (action === 'toggle-support-ticket-escalation') {
+      const tenantId = trimText(button.dataset.tenantId, 160);
+      const channelId = trimText(button.dataset.channelId, 160);
+      const escalated = trimText(button.dataset.escalated, 20).toLowerCase();
+      if (!tenantId || !channelId || !['true', 'false'].includes(escalated)) {
+        throw new Error('Support ticket escalation context is missing');
+      }
+      const nextEscalated = escalated === 'true';
+      await ownerMutation('/admin/api/ticket/escalate', {
+        tenantId,
+        channelId,
+        escalated: nextEscalated,
+      });
+      await refreshState({ silent: true });
+      setStatus(
+        nextEscalated
+          ? `Escalated support ticket ${channelId}`
+          : `Returned support ticket ${channelId} to the active queue`,
+        nextEscalated ? 'warning' : 'success',
+      );
+      navigateOwnerRoute(`/owner/support/${encodeURIComponent(tenantId)}`);
+      return;
+    }
+    if (action === 'close-support-ticket') {
+      const tenantId = trimText(button.dataset.tenantId, 160);
+      const channelId = trimText(button.dataset.channelId, 160);
+      if (!tenantId || !channelId) {
+        throw new Error('Support ticket context is missing');
+      }
+      await ownerMutation('/admin/api/ticket/close', {
+        tenantId,
+        channelId,
+      });
+      await refreshState({ silent: true });
+      setStatus(`Closed support ticket ${channelId}`, 'success');
+      navigateOwnerRoute(`/owner/support/${encodeURIComponent(tenantId)}`);
+      return;
+    }
+    if (action === 'review-support-appeal') {
+      const tenantId = trimText(button.dataset.tenantId, 160);
+      const channelId = trimText(button.dataset.channelId, 160);
+      const resolution = trimText(button.dataset.resolution, 40).toLowerCase();
+      if (!tenantId || !channelId || !['approved', 'rejected'].includes(resolution)) {
+        throw new Error('Appeal review context is missing');
+      }
+      await ownerMutation('/admin/api/ticket/appeal-review', {
+        tenantId,
+        channelId,
+        resolution,
+      });
+      await refreshState({ silent: true });
+      setStatus(`Appeal ${resolution} for ${channelId}`, resolution === 'approved' ? 'success' : 'warning');
+      navigateOwnerRoute(`/owner/support/${encodeURIComponent(tenantId)}`);
+      return;
+    }
     if (action === 'update-billing-invoice-status') {
       const invoiceId = trimText(button.dataset.invoiceId, 160);
       const status = trimText(button.dataset.targetStatus, 80);
@@ -1860,6 +1945,7 @@
       agentProvisioning,
       agentDevices,
       agentCredentials,
+      supportTickets,
       sessions,
       notifications,
       securityEvents,
@@ -1877,6 +1963,7 @@
       optionalOwnerRead('/owner/api/platform/agent-provisioning?limit=200', [], 2500),
       optionalOwnerRead('/owner/api/platform/agent-devices?limit=200', [], 2500),
       optionalOwnerRead('/owner/api/platform/agent-credentials?limit=200', [], 2500),
+      optionalOwnerRead('/admin/api/platform/support-tickets?limit=50', { items: [] }, 2500),
       optionalOwnerRead('/owner/api/auth/sessions', [], 2500),
       optionalOwnerRead('/owner/api/notifications?limit=20', { items: [] }, 2500),
       optionalOwnerRead('/owner/api/auth/security-events?limit=20', [], 2500),
@@ -1895,6 +1982,7 @@
       agentProvisioning,
       agentDevices,
       agentCredentials,
+      supportTickets: Array.isArray(supportTickets?.items) ? supportTickets.items : [],
       sessions,
       notifications: Array.isArray(notifications?.items) ? notifications.items : [],
       securityEvents,
@@ -1969,6 +2057,7 @@
         agentProvisioning: [],
         agentDevices: [],
         agentCredentials: [],
+        supportTickets: [],
         sessions: [],
         notifications: [],
         securityEvents: [],

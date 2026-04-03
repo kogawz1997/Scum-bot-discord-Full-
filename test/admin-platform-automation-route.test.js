@@ -927,6 +927,61 @@ test('admin platform checkout session route allows owner to retry checkout', asy
   assert.equal(calls[0].planId, 'pro-monthly');
 });
 
+test('tenant billing self-service checkout route allows tenant-scoped admin to retry an invoice', async () => {
+  const calls = [];
+  const handler = buildPostRoutes({
+    createCheckoutSession: async (input) => {
+      calls.push(input);
+      return {
+        ok: true,
+        session: { checkoutUrl: 'https://checkout.example/tenant-self-service' },
+        invoice: { id: input.invoiceId || 'inv-1' },
+      };
+    },
+  });
+  const res = createMockRes();
+
+  const handled = await handler({
+    client: null,
+    req: { method: 'POST', headers: {} },
+    pathname: '/admin/api/platform/billing/tenant-checkout-session',
+    body: {
+      invoiceId: 'inv-7',
+    },
+    res,
+    auth: { user: 'tenant-admin', role: 'admin', tenantId: 'tenant-7' },
+  });
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 200);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].tenantId, 'tenant-7');
+  assert.equal(calls[0].invoiceId, 'inv-7');
+  assert.equal(calls[0].actor, 'tenant-web:tenant-admin');
+  assert.equal(calls[0].metadata.source, 'tenant-self-service');
+});
+
+test('tenant billing self-service checkout route blocks owner auth', async () => {
+  const handler = buildPostRoutes();
+  const res = createMockRes();
+
+  const handled = await handler({
+    client: null,
+    req: { method: 'POST', headers: {} },
+    pathname: '/admin/api/platform/billing/tenant-checkout-session',
+    body: {
+      tenantId: 'tenant-1',
+      invoiceId: 'inv-1',
+    },
+    res,
+    auth: { user: 'owner', role: 'owner', tenantId: null },
+  });
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 403);
+  assert.match(String(res.body || ''), /Owner must use the owner billing checkout route/i);
+});
+
 test('admin platform agent provision route allows owner without tenant entitlement checks', async () => {
   let called = false;
   const handler = buildPostRoutes({

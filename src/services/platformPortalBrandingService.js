@@ -44,6 +44,33 @@ function normalizeColorToken(value) {
   return /^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(text) ? text : null;
 }
 
+function normalizePublishedBranding(raw) {
+  const published = raw && typeof raw === 'object' && !Array.isArray(raw)
+    ? raw
+    : null;
+  const settings = published?.settings && typeof published.settings === 'object' && !Array.isArray(published.settings)
+    ? published.settings
+    : null;
+  if (!settings || Object.keys(settings).length === 0) return null;
+  const version = Number.isFinite(Number(published?.version))
+    ? Math.max(1, Math.trunc(Number(published.version)))
+    : 1;
+  return {
+    version,
+    publishedAt: trimText(published?.publishedAt, 80) || null,
+    publishedBy: trimText(published?.publishedBy, 200) || null,
+    settings,
+  };
+}
+
+function resolvePortalBrandingSource(portalEnvPatch = {}) {
+  const publishedBranding = normalizePublishedBranding(portalEnvPatch?.publishedBranding);
+  return {
+    patch: publishedBranding?.settings || portalEnvPatch,
+    publishedBranding,
+  };
+}
+
 function buildPortalThemeTokens(themeKey, brand = {}) {
   const presets = {
     'scum-dark': {
@@ -88,9 +115,13 @@ function buildBrandMark(siteName, fallback = 'SCUM') {
 function buildTenantPortalBranding(options = {}) {
   const tenant = options.tenant && typeof options.tenant === 'object' ? options.tenant : {};
   const tenantConfig = options.tenantConfig && typeof options.tenantConfig === 'object' ? options.tenantConfig : {};
-  const portalEnvPatch = tenantConfig.portalEnvPatch && typeof tenantConfig.portalEnvPatch === 'object'
+  const draftPortalEnvPatch = tenantConfig.portalEnvPatch && typeof tenantConfig.portalEnvPatch === 'object'
     ? tenantConfig.portalEnvPatch
     : {};
+  const {
+    patch: portalEnvPatch,
+    publishedBranding,
+  } = resolvePortalBrandingSource(draftPortalEnvPatch);
   const surface = trimText(options.surface, 40).toLowerCase() || 'public';
   const fallbackSiteName = pickFirstText([
     options.fallbackSiteName,
@@ -154,7 +185,11 @@ function buildTenantPortalBranding(options = {}) {
   return {
     ...brand,
     brandMark: buildBrandMark(siteName, 'SCUM'),
+    publishedAt: publishedBranding?.publishedAt || null,
+    publishedBy: publishedBranding?.publishedBy || null,
+    publishedVersion: publishedBranding?.version || null,
     themeTokens: buildPortalThemeTokens(theme, brand),
+    usesPublishedBranding: Boolean(publishedBranding),
   };
 }
 

@@ -273,6 +273,12 @@
   });
 
   const OWNER_VALUE_DISPLAY_LABELS = Object.freeze({
+    open: 'Open',
+    claimed: 'Claimed',
+    escalated: 'Escalated',
+    approved: 'Approved',
+    rejected: 'Rejected',
+    closed: 'Closed',
     monthly: 'รายเดือน',
     quarterly: 'รายไตรมาส',
     yearly: 'รายปี',
@@ -702,6 +708,443 @@
 
     return queue
       .sort((left, right) => (Number(right && right.weight) || 0) - (Number(left && left.weight) || 0))
+      .slice(0, 6);
+  }
+
+  function buildOwnerBillingRiskSnapshot(tenantRows, invoices, paymentAttempts) {
+    const rows = Array.isArray(tenantRows) ? tenantRows : [];
+    const invoiceRows = Array.isArray(invoices) ? invoices : [];
+    const attemptRows = Array.isArray(paymentAttempts) ? paymentAttempts : [];
+    const failedAttempts = attemptRows.filter((row) => trimText(row && row.status, 40).toLowerCase() === 'failed');
+    const openInvoices = invoiceRows.filter((row) => ['open', 'past_due'].includes(trimText(row && row.status, 40).toLowerCase()));
+    const pastDueInvoices = openInvoices.filter((row) => trimText(row && row.status, 40).toLowerCase() === 'past_due');
+    const disputedInvoices = invoiceRows.filter((row) => trimText(row && row.status, 40).toLowerCase() === 'disputed');
+    const refundedInvoices = invoiceRows.filter((row) => trimText(row && row.status, 40).toLowerCase() === 'refunded');
+    const atRiskSubscriptions = rows.filter((row) => ['past_due', 'canceled', 'expired'].includes(trimText(
+      row && row.subscription && row.subscription.status ? row.subscription.status : row && row.status,
+      40,
+    ).toLowerCase()));
+    const affectedTenantIds = new Set();
+    failedAttempts.forEach((row) => {
+      const tenantId = trimText(row && row.tenantId, 160);
+      if (tenantId) affectedTenantIds.add(tenantId);
+    });
+    openInvoices.forEach((row) => {
+      const tenantId = trimText(row && row.tenantId, 160);
+      if (tenantId) affectedTenantIds.add(tenantId);
+    });
+    disputedInvoices.forEach((row) => {
+      const tenantId = trimText(row && row.tenantId, 160);
+      if (tenantId) affectedTenantIds.add(tenantId);
+    });
+    refundedInvoices.forEach((row) => {
+      const tenantId = trimText(row && row.tenantId, 160);
+      if (tenantId) affectedTenantIds.add(tenantId);
+    });
+    atRiskSubscriptions.forEach((row) => {
+      const tenantId = trimText(row && row.tenantId, 160);
+      if (tenantId) affectedTenantIds.add(tenantId);
+    });
+    return {
+      recoveryItemCount: buildBillingRecoveryQueue(rows, invoiceRows, attemptRows).length,
+      tenantCount: affectedTenantIds.size,
+      failedAttemptCount: failedAttempts.length,
+      openInvoiceCount: openInvoices.length,
+      pastDueInvoiceCount: pastDueInvoices.length,
+      disputedInvoiceCount: disputedInvoices.length,
+      refundedInvoiceCount: refundedInvoices.length,
+      atRiskSubscriptionCount: atRiskSubscriptions.length,
+      outstandingInvoiceAmountCents: openInvoices.reduce((sum, row) => sum + (Number(row && row.amountCents) || 0), 0),
+      disputedAmountCents: disputedInvoices.reduce((sum, row) => sum + (Number(row && row.amountCents) || 0), 0),
+      failedAttemptAmountCents: failedAttempts.reduce((sum, row) => sum + (Number(row && row.amountCents) || 0), 0),
+      tone: disputedInvoices.length > 0 || pastDueInvoices.length > 0
+        ? 'danger'
+        : failedAttempts.length > 0 || openInvoices.length > 0 || atRiskSubscriptions.length > 0
+          ? 'warning'
+          : 'success',
+    };
+  }
+
+  function isOwnerSupportTicketAppeal(row) {
+    const category = trimText(row && row.category, 80).toLowerCase();
+    return category === 'appeal' || category.endsWith('-appeal') || category.startsWith('appeal:');
+  }
+
+  function isOwnerSupportTicketOpen(row) {
+    const status = trimText(row && row.status, 80).toLowerCase();
+    return !['closed', 'approved', 'rejected'].includes(status);
+  }
+
+  function isOwnerSupportTicketEscalated(row) {
+    return trimText(row && row.status, 80).toLowerCase() === 'escalated';
+  }
+
+  function resolveOwnerSupportTicketTenantId(row) {
+    return firstNonEmpty([
+      row && row.tenantId,
+      row && row.guildId,
+    ], '');
+  }
+
+  function buildOwnerSupportTicketRows(tickets, tenantRows, options = {}) {
+    const rows = Array.isArray(tickets) ? tickets : [];
+    const scopedTenantId = trimText(options && options.tenantId, 160);
+    const limit = Number(options && options.limit);
+    const tenantLookup = new Map(
+      (Array.isArray(tenantRows) ? tenantRows : []).map((row) => [trimText(row && row.tenantId, 160), row]),
+    );
+    const queueRows = rows
+      .map((row) => {
+        const tenantId = resolveOwnerSupportTicketTenantId(row);
+        if (scopedTenantId && tenantId !== scopedTenantId) return null;
+        const tenantRow = tenantLookup.get(tenantId) || null;
+        const createdAt = parseDate(row && (row.createdAt || row.closedAt));
+        const status = trimText(row && row.status, 80).toLowerCase() || 'open';
+        const claimedBy = trimText(row && row.claimedBy, 160);
+        const isAppeal = isOwnerSupportTicketAppeal(row);
+        const isOpen = isOwnerSupportTicketOpen(row);
+        const isEscalated = isOwnerSupportTicketEscalated(row);
+        const ageHours = createdAt
+          ? Math.max(0, Math.round((Date.now() - createdAt.getTime()) / 3600000))
+          : 0;
+        return {
+          id: trimText(row && row.id, 80),
+          channelId: trimText(row && row.channelId, 160),
+          tenantId,
+          tenantName: firstNonEmpty([
+            tenantRow && tenantRow.tenant && (tenantRow.tenant.name || tenantRow.tenant.slug),
+            tenantRow && tenantRow.tenantId,
+            tenantId,
+            '-',
+          ], '-'),
+          category: trimText(row && row.category, 80).toLowerCase() || 'support',
+          reason: firstNonEmpty([row && row.reason], 'Support ticket'),
+          status,
+          claimedBy,
+          createdAt,
+          createdAtLabel: createdAt ? formatRelative(createdAt) : 'No support timestamp',
+          isAppeal,
+          isOpen,
+          isEscalated,
+          needsClaim: isOpen && !claimedBy,
+          ageHours,
+          ageTone: ageHours >= 24 ? 'danger' : ageHours >= 12 ? 'warning' : 'muted',
+        };
+      })
+      .filter(Boolean)
+      .sort((left, right) => {
+        if (left.isOpen !== right.isOpen) return left.isOpen ? -1 : 1;
+        if (left.needsClaim !== right.needsClaim) return left.needsClaim ? -1 : 1;
+        if (left.isEscalated !== right.isEscalated) return left.isEscalated ? -1 : 1;
+        if (left.isAppeal !== right.isAppeal) return left.isAppeal ? -1 : 1;
+        const leftTime = left.createdAt ? left.createdAt.getTime() : 0;
+        const rightTime = right.createdAt ? right.createdAt.getTime() : 0;
+        return leftTime - rightTime;
+      });
+    return Number.isFinite(limit) && limit > 0
+      ? queueRows.slice(0, limit)
+      : queueRows;
+  }
+
+  function buildOwnerSupportTicketSummary(ticketRows) {
+    const rows = Array.isArray(ticketRows) ? ticketRows : [];
+    const openRows = rows.filter((row) => row && row.isOpen);
+    const unclaimedRows = openRows.filter((row) => row && row.needsClaim);
+    const appealRows = openRows.filter((row) => row && row.isAppeal);
+    const staleRows = openRows.filter((row) => Number(row && row.ageHours) >= 12);
+    const overdueRows = openRows.filter((row) => Number(row && row.ageHours) >= 24);
+    const escalationRows = openRows.filter((row) => row && (row.isEscalated || row.isAppeal || row.needsClaim || Number(row.ageHours) >= 24));
+    const oldestOpenRow = openRows.length
+      ? openRows.reduce((oldest, row) => {
+        if (!oldest) return row;
+        const oldestTime = oldest.createdAt ? oldest.createdAt.getTime() : Number.MAX_SAFE_INTEGER;
+        const rowTime = row.createdAt ? row.createdAt.getTime() : Number.MAX_SAFE_INTEGER;
+        return rowTime < oldestTime ? row : oldest;
+      }, null)
+      : null;
+    return {
+      totalCount: rows.length,
+      openCount: openRows.length,
+      unclaimedCount: unclaimedRows.length,
+      appealCount: appealRows.length,
+      staleCount: staleRows.length,
+      overdueCount: overdueRows.length,
+      escalationCount: escalationRows.length,
+      claimedCount: openRows.length - unclaimedRows.length,
+      oldestOpenHours: oldestOpenRow ? Number(oldestOpenRow.ageHours) || 0 : 0,
+      oldestOpenLabel: oldestOpenRow ? formatRelative(oldestOpenRow.createdAt) : 'No open tickets',
+      queueTone: staleRows.length > 0 ? 'danger' : openRows.length > 0 ? 'warning' : 'success',
+    };
+  }
+
+  function buildOwnerSupportPressureSnapshot(ticketRows) {
+    const rows = Array.isArray(ticketRows) ? ticketRows : [];
+    const summary = buildOwnerSupportTicketSummary(rows);
+    const escalationTenantIds = new Set(
+      rows
+        .filter((row) => row && row.isOpen && (row.isEscalated || row.isAppeal || row.needsClaim || Number(row.ageHours) >= 24))
+        .map((row) => trimText(row && row.tenantId, 160))
+        .filter(Boolean),
+    );
+    return {
+      tenantCount: escalationTenantIds.size,
+      escalationCount: summary.escalationCount,
+      overdueCount: summary.overdueCount,
+      oldestOpenHours: summary.oldestOpenHours,
+      tone: summary.overdueCount > 0 ? 'danger' : summary.escalationCount > 0 ? 'warning' : 'success',
+    };
+  }
+
+  function buildOwnerRevenueTrendRows(invoices, paymentAttempts) {
+    const invoiceRows = Array.isArray(invoices) ? invoices : [];
+    const attemptRows = Array.isArray(paymentAttempts) ? paymentAttempts : [];
+    const monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    let anchorDate = null;
+
+    function registerAnchor(value) {
+      const parsed = parseDate(value);
+      if (!parsed) return;
+      if (!anchorDate || parsed.getTime() > anchorDate.getTime()) {
+        anchorDate = parsed;
+      }
+    }
+
+    function toMonthKey(date) {
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    }
+
+    invoiceRows.forEach((row) => {
+      registerAnchor(row && (row.paidAt || row.updatedAt || row.createdAt || row.issuedAt || row.dueAt));
+    });
+    attemptRows.forEach((row) => {
+      registerAnchor(row && (row.completedAt || row.attemptedAt || row.updatedAt || row.createdAt));
+    });
+
+    const anchor = anchorDate || new Date();
+    const buckets = [];
+    const bucketLookup = new Map();
+
+    for (let offset = 2; offset >= 0; offset -= 1) {
+      const bucketDate = new Date(anchor.getFullYear(), anchor.getMonth() - offset, 1);
+      const key = toMonthKey(bucketDate);
+      const bucket = {
+        key,
+        label: `${monthLabels[bucketDate.getMonth()]} ${bucketDate.getFullYear()}`,
+        paidRevenueCents: 0,
+        paidInvoiceCount: 0,
+        openInvoiceCount: 0,
+        openInvoiceAmountCents: 0,
+        failedAttemptCount: 0,
+      };
+      buckets.push(bucket);
+      bucketLookup.set(key, bucket);
+    }
+
+    invoiceRows.forEach((row) => {
+      const timestamp = parseDate(row && (row.paidAt || row.updatedAt || row.createdAt || row.issuedAt || row.dueAt));
+      if (!timestamp) return;
+      const bucket = bucketLookup.get(toMonthKey(timestamp));
+      if (!bucket) return;
+      const status = trimText(row && row.status, 40).toLowerCase();
+      const amountCents = Number(row && row.amountCents) || 0;
+      if (status === 'paid') {
+        bucket.paidRevenueCents += amountCents;
+        bucket.paidInvoiceCount += 1;
+      }
+      if (['open', 'past_due'].includes(status)) {
+        bucket.openInvoiceCount += 1;
+        bucket.openInvoiceAmountCents += amountCents;
+      }
+    });
+
+    attemptRows.forEach((row) => {
+      const status = trimText(row && row.status, 40).toLowerCase();
+      if (status !== 'failed') return;
+      const timestamp = parseDate(row && (row.completedAt || row.attemptedAt || row.updatedAt || row.createdAt));
+      if (!timestamp) return;
+      const bucket = bucketLookup.get(toMonthKey(timestamp));
+      if (!bucket) return;
+      bucket.failedAttemptCount += 1;
+    });
+
+    return buckets;
+  }
+
+  function buildOwnerSupportWorkloadRows(ticketRows) {
+    const rows = (Array.isArray(ticketRows) ? ticketRows : []).filter((row) => row && row.isOpen);
+    const groups = new Map();
+
+    rows.forEach((row) => {
+      const ownerKey = trimText(row && row.claimedBy, 160) || 'unclaimed';
+      const ownerLabel = ownerKey === 'unclaimed' ? 'Unclaimed' : ownerKey;
+      if (!groups.has(ownerKey)) {
+        groups.set(ownerKey, {
+          ownerKey,
+          ownerLabel,
+          openCount: 0,
+          appealCount: 0,
+          overdueCount: 0,
+          staleCount: 0,
+          oldestOpenHours: 0,
+          sampleTenantId: '',
+          tenantIds: new Set(),
+        });
+      }
+      const group = groups.get(ownerKey);
+      const tenantId = trimText(row && row.tenantId, 160);
+      group.openCount += 1;
+      if (row.isAppeal) group.appealCount += 1;
+      if (Number(row && row.ageHours) >= 24) group.overdueCount += 1;
+      if (Number(row && row.ageHours) >= 12) group.staleCount += 1;
+      group.oldestOpenHours = Math.max(group.oldestOpenHours, Number(row && row.ageHours) || 0);
+      if (tenantId) {
+        group.tenantIds.add(tenantId);
+        if (!group.sampleTenantId) {
+          group.sampleTenantId = tenantId;
+        }
+      }
+    });
+
+    return Array.from(groups.values())
+      .map((group) => ({
+        ownerKey: group.ownerKey,
+        ownerLabel: group.ownerLabel,
+        openCount: group.openCount,
+        appealCount: group.appealCount,
+        overdueCount: group.overdueCount,
+        staleCount: group.staleCount,
+        oldestOpenHours: group.oldestOpenHours,
+        tenantCount: group.tenantIds.size,
+        sampleTenantId: group.sampleTenantId,
+        tone: group.overdueCount > 0
+          ? 'danger'
+          : group.ownerKey === 'unclaimed' || group.staleCount > 0
+            ? 'warning'
+            : 'success',
+      }))
+      .sort((left, right) => {
+        const leftPriority = left.ownerKey === 'unclaimed' ? 0 : 1;
+        const rightPriority = right.ownerKey === 'unclaimed' ? 0 : 1;
+        if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+        if (left.overdueCount !== right.overdueCount) return right.overdueCount - left.overdueCount;
+        if (left.openCount !== right.openCount) return right.openCount - left.openCount;
+        return left.ownerLabel.localeCompare(right.ownerLabel);
+      })
+      .slice(0, 6);
+  }
+
+  function buildOwnerSupportSlaBucketRows(ticketRows) {
+    const rows = (Array.isArray(ticketRows) ? ticketRows : []).filter((row) => row && row.isOpen);
+    const bucketConfigs = [
+      { key: 'under-4h', label: '< 4h', min: 0, maxExclusive: 4, tone: 'success' },
+      { key: '4h-12h', label: '4-12h', min: 4, maxExclusive: 12, tone: 'info' },
+      { key: '12h-24h', label: '12-24h', min: 12, maxExclusive: 24, tone: 'warning' },
+      { key: '24h-plus', label: '24h+', min: 24, maxExclusive: Number.POSITIVE_INFINITY, tone: 'danger' },
+    ];
+
+    return bucketConfigs.map((bucket) => {
+      const bucketRows = rows.filter((row) => {
+        const ageHours = Number(row && row.ageHours) || 0;
+        return ageHours >= bucket.min && ageHours < bucket.maxExclusive;
+      });
+      const unclaimedCount = bucketRows.filter((row) => row && row.needsClaim).length;
+      const appealCount = bucketRows.filter((row) => row && row.isAppeal).length;
+      const sampleRow = bucketRows[0] || null;
+      return {
+        key: bucket.key,
+        label: bucket.label,
+        openCount: bucketRows.length,
+        unclaimedCount,
+        appealCount,
+        sampleTenantId: sampleRow ? trimText(sampleRow.tenantId, 160) : '',
+        tone: bucketRows.length ? bucket.tone : 'muted',
+      };
+    });
+  }
+
+  function buildOwnerTenantRiskRows(tenantRows, invoices, paymentAttempts, supportRows, runtimeRows) {
+    const rows = Array.isArray(tenantRows) ? tenantRows : [];
+    const invoiceRows = Array.isArray(invoices) ? invoices : [];
+    const attemptRows = Array.isArray(paymentAttempts) ? paymentAttempts : [];
+    const ticketRows = Array.isArray(supportRows) ? supportRows : [];
+    const runtimeEntries = Array.isArray(runtimeRows) ? runtimeRows : [];
+
+    return rows
+      .map((row) => {
+        const tenantId = trimText(row && row.tenantId, 160);
+        const tenantName = firstNonEmpty([
+          row && row.tenant && (row.tenant.name || row.tenant.slug),
+          tenantId,
+        ], '-');
+        const subscriptionStatus = trimText(row && row.subscription && row.subscription.status ? row.subscription.status : row && row.status, 40).toLowerCase();
+        const tenantInvoices = invoiceRows.filter((entry) => trimText(entry && entry.tenantId, 160) === tenantId);
+        const tenantAttempts = attemptRows.filter((entry) => trimText(entry && entry.tenantId, 160) === tenantId);
+        const tenantSupportRows = ticketRows.filter((entry) => trimText(entry && entry.tenantId, 160) === tenantId);
+        const tenantRuntimeRows = runtimeEntries.filter((entry) => trimText(entry && entry.tenantId, 160) === tenantId);
+
+        const openInvoiceCount = tenantInvoices.filter((entry) => ['open', 'past_due'].includes(trimText(entry && entry.status, 40).toLowerCase())).length;
+        const disputedInvoiceCount = tenantInvoices.filter((entry) => trimText(entry && entry.status, 40).toLowerCase() === 'disputed').length;
+        const failedAttemptCount = tenantAttempts.filter((entry) => trimText(entry && entry.status, 40).toLowerCase() === 'failed').length;
+        const openSupportCount = tenantSupportRows.filter((entry) => entry && entry.isOpen).length;
+        const overdueSupportCount = tenantSupportRows.filter((entry) => entry && entry.isOpen && Number(entry.ageHours) >= 24).length;
+        const unclaimedSupportCount = tenantSupportRows.filter((entry) => entry && entry.needsClaim).length;
+        const escalatedSupportCount = tenantSupportRows.filter((entry) => entry && entry.isEscalated).length;
+        const runtimeRiskCount = tenantRuntimeRows.filter((entry) => trimText(entry && entry.statusTone, 40) !== 'success').length;
+
+        let score = 0;
+        if (['past_due', 'expired', 'canceled'].includes(subscriptionStatus)) score += 4;
+        score += openInvoiceCount * 2;
+        score += disputedInvoiceCount * 3;
+        score += failedAttemptCount * 2;
+        score += openSupportCount;
+        score += overdueSupportCount * 3;
+        score += unclaimedSupportCount * 2;
+        score += escalatedSupportCount * 2;
+        score += runtimeRiskCount * 2;
+
+        const reasons = [
+          disputedInvoiceCount ? `${formatNumber(disputedInvoiceCount, '0')} disputed invoices` : '',
+          openInvoiceCount ? `${formatNumber(openInvoiceCount, '0')} open invoices` : '',
+          failedAttemptCount ? `${formatNumber(failedAttemptCount, '0')} failed attempts` : '',
+          overdueSupportCount ? `${formatNumber(overdueSupportCount, '0')} overdue tickets` : '',
+          unclaimedSupportCount ? `${formatNumber(unclaimedSupportCount, '0')} unclaimed tickets` : '',
+          escalatedSupportCount ? `${formatNumber(escalatedSupportCount, '0')} escalated tickets` : '',
+          runtimeRiskCount ? `${formatNumber(runtimeRiskCount, '0')} runtime issues` : '',
+        ].filter(Boolean);
+
+        let tone = 'success';
+        if (score >= 7 || disputedInvoiceCount > 0 || overdueSupportCount > 0) {
+          tone = 'danger';
+        } else if (score > 0) {
+          tone = 'warning';
+        }
+
+        return {
+          tenantId,
+          tenantName,
+          packageLabel: trimText(row && row.packageLabel, 160),
+          subscriptionStatus,
+          score,
+          tone,
+          openInvoiceCount,
+          failedAttemptCount,
+          openSupportCount,
+          overdueSupportCount,
+          runtimeRiskCount,
+          reasonLabel: reasons.join(' · ') || 'No urgent risk signal',
+          actionHref: overdueSupportCount > 0 || unclaimedSupportCount > 0 || openSupportCount > 0
+            ? ownerSupportHref(tenantId)
+            : ownerTenantHref(tenantId),
+          actionLabel: overdueSupportCount > 0 || unclaimedSupportCount > 0 || openSupportCount > 0
+            ? 'Open support'
+            : 'Open customer',
+        };
+      })
+      .filter((row) => row && row.tenantId)
+      .sort((left, right) => {
+        if (left.score !== right.score) return right.score - left.score;
+        return left.tenantName.localeCompare(right.tenantName);
+      })
       .slice(0, 6);
   }
 
@@ -1657,6 +2100,7 @@
     supportCase,
     runtimeRows,
     deadLetters,
+    supportTickets,
     loading = false,
     deadLettersLoading = false,
   ) {
@@ -1701,6 +2145,9 @@
     const supportDeadLetters = Array.isArray(deadLetters)
       ? deadLetters
       : [];
+    const tenantSupportTickets = Array.isArray(supportTickets) ? supportTickets : [];
+    const supportTicketSummary = buildOwnerSupportTicketSummary(tenantSupportTickets);
+    const supportPressure = buildOwnerSupportPressureSnapshot(tenantSupportTickets);
     const signalRows = signalItems.map((item) => [
       '<tr>',
       `<td>${escapeHtml(firstNonEmpty([item && item.key], '-'))}</td>`,
@@ -1761,6 +2208,33 @@
       `<td>${escapeHtml(firstNonEmpty([row && row.at ? formatDateTime(row.at) : '', row && row.createdAt ? formatDateTime(row.createdAt) : '', '-']))}</td>`,
       '</tr>',
     ].join('')).join('');
+    const ticketQueueRows = tenantSupportTickets.map((row) => {
+      const actionButtons = [];
+      if (row.needsClaim) {
+        actionButtons.push(`<button class="odv4-button odv4-button-secondary" type="button" data-owner-action="claim-support-ticket" data-tenant-id="${escapeHtml(row.tenantId)}" data-channel-id="${escapeHtml(row.channelId)}">Claim</button>`);
+      } else if (row.isOpen) {
+        actionButtons.push(`<button class="odv4-button odv4-button-secondary" type="button" data-owner-action="assign-support-ticket" data-tenant-id="${escapeHtml(row.tenantId)}" data-channel-id="${escapeHtml(row.channelId)}">Assign to me</button>`);
+      }
+      if (row.isOpen) {
+        actionButtons.push(`<button class="odv4-button odv4-button-secondary" type="button" data-owner-action="toggle-support-ticket-escalation" data-tenant-id="${escapeHtml(row.tenantId)}" data-channel-id="${escapeHtml(row.channelId)}" data-escalated="${row.isEscalated ? 'false' : 'true'}">${escapeHtml(row.isEscalated ? 'Return to queue' : 'Escalate')}</button>`);
+      }
+      if (row.isOpen && row.isAppeal) {
+        actionButtons.push(`<button class="odv4-button odv4-button-secondary" type="button" data-owner-action="review-support-appeal" data-tenant-id="${escapeHtml(row.tenantId)}" data-channel-id="${escapeHtml(row.channelId)}" data-resolution="approved">Approve</button>`);
+        actionButtons.push(`<button class="odv4-button odv4-button-secondary" type="button" data-owner-action="review-support-appeal" data-tenant-id="${escapeHtml(row.tenantId)}" data-channel-id="${escapeHtml(row.channelId)}" data-resolution="rejected">Reject</button>`);
+      } else if (row.isOpen) {
+        actionButtons.push(`<button class="odv4-button odv4-button-secondary" type="button" data-owner-action="close-support-ticket" data-tenant-id="${escapeHtml(row.tenantId)}" data-channel-id="${escapeHtml(row.channelId)}">Close</button>`);
+      }
+      return [
+        `<tr data-owner-support-ticket-row="${escapeHtml(row.channelId)}">`,
+        `<td><strong>${escapeHtml(row.isAppeal ? 'Appeal' : 'Support')}</strong><div class="odvc4-table-note">${escapeHtml(row.reason)}</div></td>`,
+        `<td>${escapeHtml(formatOwnerDisplayValue(row.status))}</td>`,
+        `<td>${escapeHtml(firstNonEmpty([row.claimedBy], row.isOpen ? 'unclaimed' : '-'))}</td>`,
+        `<td>${escapeHtml(row.createdAtLabel)}</td>`,
+        `<td><span class="odv4-pill odv4-pill-${escapeHtml(row.ageTone)}">${escapeHtml(`${formatNumber(row.ageHours, '0')}h`)}</span></td>`,
+        `<td><div class="odvc4-inline-actions">${actionButtons.join('') || '<span class="odv4-pill odv4-pill-muted">Resolved</span>'}</div></td>`,
+        '</tr>',
+      ].join('');
+    }).join('');
 
     return [
       `<section class="odv4-panel odvc4-panel" id="owner-tenant-support-workspace" data-owner-focus-route="support-detail support-${escapeHtml(tenantRow.tenantId)}">`,
@@ -1801,9 +2275,31 @@
       bundle
         ? `<div class="odvc4-note-card"><strong>${escapeHtml(firstNonEmpty([bundle.headline && bundle.headline.tenant], tenant.name || tenant.slug || tenantRow.tenantId))}</strong><p>${escapeHtml(firstNonEmpty([lifecycle.detail], 'โหลดชุดข้อมูลช่วยเหลือสำหรับลูกค้ารายนี้แล้ว'))}</p></div>`
         : `<div class="odvc4-note-card"><strong>${loading ? 'กำลังโหลดเคสดูแลลูกค้า' : 'ยังไม่มีชุดข้อมูลช่วยเหลือ'}</strong><p>${loading ? 'กำลังรวบรวมบริบท onboarding การส่งของ บอท และการแจ้งเตือนของลูกค้ารายนี้' : 'ยังโหลดชุดข้อมูลช่วยเหลือไม่สำเร็จ แต่เมื่อข้อมูลพร้อมแล้วคุณยังใช้เครื่องมือส่งของและการแจ้งเตือนจากหน้านี้ต่อได้'}</p></div>`,
+      '<div class="odvc4-card-grid" id="owner-tenant-support-priority-live">',
+      `<div class="odvc4-note-card" data-owner-support-escalation-snapshot><strong>Escalation watch</strong><p>${escapeHtml(
+        supportTicketSummary.openCount
+          ? `Escalations ${formatNumber(supportPressure.escalationCount, '0')} · overdue ${formatNumber(supportPressure.overdueCount, '0')} · oldest open ${formatNumber(supportPressure.oldestOpenHours, '0')}h.`
+          : 'No open support escalation is waiting for this tenant right now.',
+      )}</p></div>`,
+      `<div class="odvc4-note-card" data-owner-support-operational-drag><strong>Operational drag</strong><p>${escapeHtml(
+        `Dead letters ${formatNumber(supportDeadLetters.length, '0')} · alerts ${formatNumber(notificationItems.length, '0')} · request errors ${formatNumber(requestErrorItems.length, '0')}.`,
+      )}</p></div>`,
+      '</div>',
       '<section class="odv4-panel odvc4-panel" id="owner-tenant-support-actions-live">',
       '<div class="odv4-section-head"><span class="odv4-section-kicker">งานหลัก</span><h2 class="odv4-section-title">งานดูแลที่ควรเริ่มก่อน</h2><p class="odv4-section-copy">เริ่มจากงานที่ระบบสรุปจากชุดข้อมูลช่วยเหลือก่อน แล้วค่อยลงลึกไปหน้า runtime หรือการเงินเมื่อจำเป็น</p></div>',
       `<div class="odvc4-card-grid">${supportActionCards || '<div class="odvc4-note-card"><strong>ยังไม่มีงานที่ต้องทำทันที</strong><p>ชุดข้อมูลช่วยเหลือปัจจุบันยังไม่มีงานติดตามที่ต้องทำทันที</p></div>'}</div>`,
+      '</section>',
+      '<section class="odv4-panel odvc4-panel" id="owner-tenant-support-ticket-queue-live">',
+      '<div class="odv4-section-head"><span class="odv4-section-kicker">Support queue</span><h2 class="odv4-section-title">Ticket queue and appeal decisions</h2><p class="odv4-section-copy">Claim open tickets, review appeals, and close finished support work without leaving the tenant support case.</p></div>',
+      `<div class="odvc4-metric-grid">${renderMetricCards([
+        { label: 'Open tickets', value: formatNumber(supportTicketSummary.openCount, '0'), detail: `Oldest open ${supportTicketSummary.oldestOpenLabel}`, tone: supportTicketSummary.queueTone },
+        { label: 'Unclaimed', value: formatNumber(supportTicketSummary.unclaimedCount, '0'), detail: 'Tickets that still need an owner or support lead', tone: supportTicketSummary.unclaimedCount > 0 ? 'warning' : 'success' },
+        { label: 'Appeals waiting', value: formatNumber(supportTicketSummary.appealCount, '0'), detail: 'Appeals that still need an approval or rejection', tone: supportTicketSummary.appealCount > 0 ? 'warning' : 'muted' },
+        { label: 'Aging queue', value: formatNumber(supportTicketSummary.staleCount, '0'), detail: 'Open tickets older than 12 hours', tone: supportTicketSummary.staleCount > 0 ? 'danger' : 'success' },
+      ])}</div>`,
+      '<div class="odvc4-table-wrap"><table class="odvc4-table"><thead><tr><th>Ticket</th><th>Status</th><th>Owner</th><th>Opened</th><th>Age</th><th>Action</th></tr></thead><tbody>',
+      ticketQueueRows || '<tr><td colspan="6">No support tickets are open for this tenant right now.</td></tr>',
+      '</tbody></table></div>',
       '</section>',
       '<section class="odv4-panel odvc4-panel" id="owner-tenant-support-dead-letters-live">',
       '<div class="odv4-section-head"><span class="odv4-section-kicker">การส่งของ</span><h2 class="odv4-section-title">งานค้างผิดปกติและการลองส่งใหม่</h2><p class="odv4-section-copy">ลองส่งงานที่ค้างผิดปกติใหม่หรือล้างรายการที่ไม่ต้องการได้จากเคสดูแลลูกค้านี้โดยตรง</p></div>',
@@ -2119,7 +2615,7 @@
     ].join('');
   }
 
-  function renderAnalyticsWorkspace(state, packageUsageRows, runtimeRows, invoiceSummary) {
+  function renderAnalyticsWorkspace(state, tenantRows, packageUsageRows, runtimeRows, invoiceSummary) {
     const overview = state.overview && typeof state.overview === 'object' ? state.overview : {};
     const analytics = overview.analytics && typeof overview.analytics === 'object' ? overview.analytics : {};
     const tenantAnalytics = analytics.tenants && typeof analytics.tenants === 'object' ? analytics.tenants : {};
@@ -2127,20 +2623,170 @@
     const deliveryAnalytics = analytics.delivery && typeof analytics.delivery === 'object' ? analytics.delivery : {};
     const runtimeOnline = runtimeRows.filter((row) => row.statusTone === 'success').length;
     const packageRows = packageUsageRows.map((row) => `<tr><td>${escapeHtml(row.id)}</td><td>${escapeHtml(formatNumber(row.tenantCount, '0'))}</td><td>${escapeHtml(formatNumber(row.features.length, '0'))}</td></tr>`).join('');
+    const supportTicketRows = buildOwnerSupportTicketRows(state.supportTickets, tenantRows, { limit: 6 });
+    const supportTicketSummary = buildOwnerSupportTicketSummary(supportTicketRows);
+    const supportQueueRows = supportTicketRows.map((row) => [
+      `<tr data-owner-support-ticket="${escapeHtml(row.channelId)}">`,
+      `<td><a href="${escapeHtml(ownerSupportHref(row.tenantId))}">${escapeHtml(row.tenantName)}</a><div class="odvc4-table-note">${escapeHtml(row.reason)}</div></td>`,
+      `<td>${escapeHtml(row.isAppeal ? 'Appeal' : formatOwnerDisplayValue(row.category))}</td>`,
+      `<td>${escapeHtml(formatOwnerDisplayValue(row.status))}</td>`,
+      `<td>${escapeHtml(firstNonEmpty([row.claimedBy], row.isOpen ? 'unclaimed' : '-'))}</td>`,
+      `<td>${escapeHtml(row.createdAtLabel)}</td>`,
+      `<td><a class="odv4-button odv4-button-secondary" href="${escapeHtml(ownerSupportHref(row.tenantId))}">Open case</a></td>`,
+      '</tr>',
+    ].join('')).join('');
     return [
       '<section class="odv4-panel odvc4-panel" id="owner-analytics-workspace" data-owner-focus-route="analytics observability">',
-      '<div class="odv4-section-head"><span class="odv4-section-kicker">Analytics</span><h2 class="odv4-section-title">Platform and business analytics</h2><p class="odv4-section-copy">รวม tenant growth, package usage, revenue visibility และ service health ให้เจ้าของระบบใช้ตัดสินใจเชิงธุรกิจได้เร็ว</p></div>',
+      '<div class="odv4-section-head"><span class="odv4-section-kicker">Analytics</span><h2 class="odv4-section-title">Platform and business analytics</h2><p class="odv4-section-copy">Combine tenant growth, package adoption, revenue visibility, and service health so owner decisions stay grounded in the same operating view.</p></div>',
       `<div class="odvc4-metric-grid">${renderMetricCards([
-    { label: 'Total customers', value: formatNumber(tenantAnalytics.total || 0, '0'), detail: 'จำนวนลูกค้าทั้งหมด', tone: 'info' },
-    { label: 'Active customers', value: formatNumber(tenantAnalytics.active || 0, '0'), detail: 'ลูกค้าที่ active อยู่', tone: 'success' },
-        { label: 'MRR', value: formatCurrencyCents(subscriptionAnalytics.mrrCents || 0), detail: 'ค่า recurring revenue ล่าสุด', tone: 'info' },
-        { label: 'รายได้เดือนนี้', value: formatCurrencyCents(invoiceSummary.revenueMonthCents), detail: 'ยอดรับเงินเดือนนี้', tone: 'success' },
+    { label: 'Total customers', value: formatNumber(tenantAnalytics.total || 0, '0'), detail: 'All customer workspaces currently tracked by the platform.', tone: 'info' },
+    { label: 'Active customers', value: formatNumber(tenantAnalytics.active || 0, '0'), detail: 'Customers with an active operating state right now.', tone: 'success' },
+        { label: 'MRR', value: formatCurrencyCents(subscriptionAnalytics.mrrCents || 0), detail: 'Latest recurring revenue snapshot across subscriptions.', tone: 'info' },
+        { label: 'Revenue this month', value: formatCurrencyCents(invoiceSummary.revenueMonthCents), detail: 'Collected invoice revenue for the current month.', tone: 'success' },
         { label: 'Services online', value: formatNumber(runtimeOnline, '0'), detail: `${formatNumber(runtimeRows.length, '0')} service rows`, tone: runtimeOnline ? 'success' : 'warning' },
         { label: 'Failed jobs', value: formatNumber(deliveryAnalytics.failedJobs || 0, '0'), detail: `Queue depth ${formatNumber(deliveryAnalytics.queueDepth || 0, '0')}`, tone: Number(deliveryAnalytics.failedJobs || 0) > 0 ? 'danger' : 'muted' },
+        { label: 'Open support', value: formatNumber(supportTicketSummary.openCount, '0'), detail: `Unclaimed ${formatNumber(supportTicketSummary.unclaimedCount, '0')}`, tone: supportTicketSummary.openCount > 0 ? 'warning' : 'success' },
+        { label: 'Appeals waiting', value: formatNumber(supportTicketSummary.appealCount, '0'), detail: `Aging queue ${formatNumber(supportTicketSummary.staleCount, '0')}`, tone: supportTicketSummary.appealCount > 0 || supportTicketSummary.staleCount > 0 ? 'warning' : 'muted' },
       ])}</div>`,
     '<div class="odvc4-table-wrap"><table class="odvc4-table"><thead><tr><th>Package</th><th>Customer count</th><th>Features</th></tr></thead><tbody>',
-      packageRows || '<tr><td colspan="3">ยังไม่มี package usage</td></tr>',
+      packageRows || '<tr><td colspan="3">No package usage is available yet.</td></tr>',
       '</tbody></table></div>',
+      '</section>',
+    ].join('');
+  }
+
+  function renderAnalyticsWorkspaceV2(state, tenantRows, packageUsageRows, runtimeRows, invoiceSummary) {
+    const overview = state.overview && typeof state.overview === 'object' ? state.overview : {};
+    const analytics = overview.analytics && typeof overview.analytics === 'object' ? overview.analytics : {};
+    const tenantAnalytics = analytics.tenants && typeof analytics.tenants === 'object' ? analytics.tenants : {};
+    const subscriptionAnalytics = analytics.subscriptions && typeof analytics.subscriptions === 'object' ? analytics.subscriptions : {};
+    const deliveryAnalytics = analytics.delivery && typeof analytics.delivery === 'object' ? analytics.delivery : {};
+    const billingInvoices = Array.isArray(state.billingInvoices) ? state.billingInvoices : [];
+    const billingPaymentAttempts = Array.isArray(state.billingPaymentAttempts) ? state.billingPaymentAttempts : [];
+    const runtimeOnline = runtimeRows.filter((row) => row.statusTone === 'success').length;
+    const packageRows = packageUsageRows.map((row) => `<tr><td>${escapeHtml(row.id)}</td><td>${escapeHtml(formatNumber(row.tenantCount, '0'))}</td><td>${escapeHtml(formatNumber(row.features.length, '0'))}</td></tr>`).join('');
+    const supportTicketAllRows = buildOwnerSupportTicketRows(state.supportTickets, tenantRows);
+    const supportTicketRows = supportTicketAllRows.slice(0, 6);
+    const supportTicketSummary = buildOwnerSupportTicketSummary(supportTicketAllRows);
+    const supportPressure = buildOwnerSupportPressureSnapshot(supportTicketAllRows);
+    const billingRisk = buildOwnerBillingRiskSnapshot(tenantRows, billingInvoices, billingPaymentAttempts);
+    const revenueTrendRows = buildOwnerRevenueTrendRows(billingInvoices, billingPaymentAttempts);
+    const supportWorkloadRows = buildOwnerSupportWorkloadRows(supportTicketAllRows);
+    const supportSlaBucketRows = buildOwnerSupportSlaBucketRows(supportTicketAllRows);
+    const tenantRiskRows = buildOwnerTenantRiskRows(tenantRows, billingInvoices, billingPaymentAttempts, supportTicketAllRows, runtimeRows);
+    const collectionGapCents = Math.max(0, Number(subscriptionAnalytics.mrrCents || 0) - Number(invoiceSummary.revenueMonthCents || 0));
+    const supportFollowUpHref = supportTicketRows.length ? ownerSupportHref(supportTicketRows[0].tenantId) : '/owner/tenants';
+    const supportQueueRows = supportTicketRows.map((row) => [
+      `<tr data-owner-support-ticket="${escapeHtml(row.channelId)}">`,
+      `<td><a href="${escapeHtml(ownerSupportHref(row.tenantId))}">${escapeHtml(row.tenantName)}</a><div class="odvc4-table-note">${escapeHtml(row.reason)}</div></td>`,
+      `<td>${escapeHtml(row.isAppeal ? 'Appeal' : formatOwnerDisplayValue(row.category))}</td>`,
+      `<td>${escapeHtml(formatOwnerDisplayValue(row.status))}</td>`,
+      `<td>${escapeHtml(firstNonEmpty([row.claimedBy], row.isOpen ? 'unclaimed' : '-'))}</td>`,
+      `<td>${escapeHtml(row.createdAtLabel)}</td>`,
+      `<td><a class="odv4-button odv4-button-secondary" href="${escapeHtml(ownerSupportHref(row.tenantId))}">Open case</a></td>`,
+      '</tr>',
+    ].join('')).join('');
+    const revenueTrendTableRows = revenueTrendRows.map((row) => [
+      `<tr data-owner-revenue-trend="${escapeHtml(row.key)}">`,
+      `<td>${escapeHtml(row.label)}</td>`,
+      `<td>${escapeHtml(formatCurrencyCents(row.paidRevenueCents || 0))}</td>`,
+      `<td>${escapeHtml(formatNumber(row.paidInvoiceCount || 0, '0'))}</td>`,
+      `<td>${escapeHtml(formatNumber(row.failedAttemptCount || 0, '0'))}</td>`,
+      `<td>${escapeHtml(formatCurrencyCents(row.openInvoiceAmountCents || 0))}</td>`,
+      '</tr>',
+    ].join('')).join('');
+    const supportWorkloadTableRows = supportWorkloadRows.map((row) => [
+      `<tr data-owner-support-workload="${escapeHtml(row.ownerKey)}">`,
+      `<td>${escapeHtml(row.ownerLabel)}<div class="odvc4-table-note">${escapeHtml(`${formatNumber(row.tenantCount || 0, '0')} tenants`)}</div></td>`,
+      `<td>${escapeHtml(formatNumber(row.openCount || 0, '0'))}</td>`,
+      `<td>${escapeHtml(formatNumber(row.appealCount || 0, '0'))}</td>`,
+      `<td>${escapeHtml(formatNumber(row.overdueCount || 0, '0'))}</td>`,
+      `<td>${escapeHtml(`${formatNumber(row.oldestOpenHours || 0, '0')}h`)}</td>`,
+      `<td><a class="odv4-button odv4-button-secondary" href="${escapeHtml(row.sampleTenantId ? ownerSupportHref(row.sampleTenantId) : '/owner/tenants')}">${escapeHtml(row.ownerKey === 'unclaimed' ? 'Claim queue' : 'Open queue')}</a></td>`,
+      '</tr>',
+    ].join('')).join('');
+    const supportSlaBucketTableRows = supportSlaBucketRows.map((row) => [
+      `<tr data-owner-support-sla-bucket="${escapeHtml(row.key)}">`,
+      `<td><span class="odv4-pill odv4-pill-${escapeHtml(row.tone)}">${escapeHtml(row.label)}</span></td>`,
+      `<td>${escapeHtml(formatNumber(row.openCount || 0, '0'))}</td>`,
+      `<td>${escapeHtml(formatNumber(row.unclaimedCount || 0, '0'))}</td>`,
+      `<td>${escapeHtml(formatNumber(row.appealCount || 0, '0'))}</td>`,
+      `<td><a class="odv4-button odv4-button-secondary" href="${escapeHtml(row.sampleTenantId ? ownerSupportHref(row.sampleTenantId) : '/owner/tenants')}">${escapeHtml(row.openCount > 0 ? 'Inspect bucket' : 'View tenants')}</a></td>`,
+      '</tr>',
+    ].join('')).join('');
+    const tenantRiskTableRows = tenantRiskRows.map((row) => [
+      `<tr data-owner-tenant-risk="${escapeHtml(row.tenantId)}">`,
+      `<td><a href="${escapeHtml(ownerTenantHref(row.tenantId))}">${escapeHtml(row.tenantName)}</a><div class="odvc4-table-note">${escapeHtml(row.reasonLabel)}</div></td>`,
+      `<td>${escapeHtml(firstNonEmpty([row.packageLabel], '-'))}</td>`,
+      `<td><span class="odv4-pill odv4-pill-${escapeHtml(row.tone)}">${escapeHtml(formatNumber(row.score || 0, '0'))}</span></td>`,
+      `<td>${escapeHtml(formatNumber(row.openInvoiceCount || 0, '0'))}</td>`,
+      `<td>${escapeHtml(formatNumber(row.overdueSupportCount || 0, '0'))}</td>`,
+      `<td>${escapeHtml(formatNumber(row.runtimeRiskCount || 0, '0'))}</td>`,
+      `<td><a class="odv4-button odv4-button-secondary" href="${escapeHtml(row.actionHref)}">${escapeHtml(row.actionLabel)}</a></td>`,
+      '</tr>',
+    ].join('')).join('');
+    return [
+      '<section class="odv4-panel odvc4-panel" id="owner-analytics-workspace" data-owner-focus-route="analytics observability">',
+      '<div class="odv4-section-head"><span class="odv4-section-kicker">Analytics</span><h2 class="odv4-section-title">Platform and business analytics</h2><p class="odv4-section-copy">Combine tenant growth, package adoption, revenue visibility, and service health so owner decisions stay grounded in the same operating view.</p></div>',
+      `<div class="odvc4-metric-grid">${renderMetricCards([
+        { label: 'Total customers', value: formatNumber(tenantAnalytics.total || 0, '0'), detail: 'All customer workspaces currently tracked by the platform.', tone: 'info' },
+        { label: 'Active customers', value: formatNumber(tenantAnalytics.active || 0, '0'), detail: 'Customers with an active operating state right now.', tone: 'success' },
+        { label: 'MRR', value: formatCurrencyCents(subscriptionAnalytics.mrrCents || 0), detail: 'Latest recurring revenue snapshot across subscriptions.', tone: 'info' },
+        { label: 'Revenue this month', value: formatCurrencyCents(invoiceSummary.revenueMonthCents), detail: 'Collected invoice revenue for the current month.', tone: 'success' },
+        { label: 'Services online', value: formatNumber(runtimeOnline, '0'), detail: `${formatNumber(runtimeRows.length, '0')} service rows`, tone: runtimeOnline ? 'success' : 'warning' },
+        { label: 'Failed jobs', value: formatNumber(deliveryAnalytics.failedJobs || 0, '0'), detail: `Queue depth ${formatNumber(deliveryAnalytics.queueDepth || 0, '0')}`, tone: Number(deliveryAnalytics.failedJobs || 0) > 0 ? 'danger' : 'muted' },
+        { label: 'Open support', value: formatNumber(supportTicketSummary.openCount, '0'), detail: `Unclaimed ${formatNumber(supportTicketSummary.unclaimedCount, '0')}`, tone: supportTicketSummary.openCount > 0 ? 'warning' : 'success' },
+        { label: 'Appeals waiting', value: formatNumber(supportTicketSummary.appealCount, '0'), detail: `Aging queue ${formatNumber(supportTicketSummary.staleCount, '0')}`, tone: supportTicketSummary.appealCount > 0 || supportTicketSummary.staleCount > 0 ? 'warning' : 'muted' },
+      ])}</div>`,
+      '<div class="odvc4-card-grid" id="owner-analytics-priority-grid">',
+      `<div class="odvc4-note-card" data-owner-analytics-revenue-risk><strong>Billing pressure</strong><p>${escapeHtml(
+        billingRisk.recoveryItemCount
+          ? `Recovery items ${formatNumber(billingRisk.recoveryItemCount, '0')} across ${formatNumber(billingRisk.tenantCount, '0')} customers. Outstanding invoices ${formatCurrencyCents(billingRisk.outstandingInvoiceAmountCents)} - failed attempts ${formatNumber(billingRisk.failedAttemptCount, '0')} - collection gap ${formatCurrencyCents(collectionGapCents)}.`
+          : 'No urgent billing recovery signal is open right now.',
+      )}</p><div class="odvc4-action-row"><a class="odv4-button odv4-button-secondary" href="/owner/subscriptions">Open billing recovery</a></div></div>`,
+      `<div class="odvc4-note-card" data-owner-analytics-support-pressure><strong>Support escalation watch</strong><p>${escapeHtml(
+        supportTicketSummary.openCount
+          ? `Escalations ${formatNumber(supportPressure.escalationCount, '0')} across ${formatNumber(supportPressure.tenantCount, '0')} customers. Unclaimed ${formatNumber(supportTicketSummary.unclaimedCount, '0')} - overdue ${formatNumber(supportPressure.overdueCount, '0')} - oldest open ${formatNumber(supportPressure.oldestOpenHours, '0')}h.`
+          : 'Support queue is quiet right now.',
+      )}</p><div class="odvc4-action-row"><a class="odv4-button odv4-button-secondary" href="${escapeHtml(supportFollowUpHref)}">Review support cases</a></div></div>`,
+      '</div>',
+      '<div class="odvc4-split-grid">',
+      '<section class="odv4-panel odvc4-panel" id="owner-analytics-revenue-trend">',
+      '<div class="odv4-section-head"><span class="odv4-section-kicker">Revenue trend</span><h2 class="odv4-section-title">Collection quality over recent months</h2><p class="odv4-section-copy">Track whether paid revenue is landing cleanly, whether failed attempts are clustering, and whether open invoice pressure is growing.</p></div>',
+      '<div class="odvc4-table-wrap"><table class="odvc4-table"><thead><tr><th>Period</th><th>Paid revenue</th><th>Paid invoices</th><th>Failed attempts</th><th>Open invoice risk</th></tr></thead><tbody>',
+      revenueTrendTableRows || '<tr><td colspan="5">No revenue trend is available yet.</td></tr>',
+      '</tbody></table></div>',
+      '</section>',
+      '<section class="odv4-panel odvc4-panel" id="owner-analytics-support-workload">',
+      '<div class="odv4-section-head"><span class="odv4-section-kicker">Support workload</span><h2 class="odv4-section-title">Queue ownership and SLA pressure</h2><p class="odv4-section-copy">See who is carrying the queue, where tickets are still unclaimed, and which owners are holding the oldest open cases.</p></div>',
+      '<div class="odvc4-table-wrap"><table class="odvc4-table"><thead><tr><th>Queue owner</th><th>Open</th><th>Appeals</th><th>Overdue</th><th>Oldest open</th><th>Action</th></tr></thead><tbody>',
+      supportWorkloadTableRows || '<tr><td colspan="6">No support workload is open right now.</td></tr>',
+      '</tbody></table></div>',
+      '</section>',
+      '</div>',
+      '<div class="odvc4-split-grid">',
+      '<section class="odv4-panel odvc4-panel" id="owner-analytics-tenant-risk-board">',
+      '<div class="odv4-section-head"><span class="odv4-section-kicker">Customer risk</span><h2 class="odv4-section-title">Customers to pick up first</h2><p class="odv4-section-copy">Rank tenants by commercial, support, and runtime pressure so owner actions stay focused on the accounts most likely to churn or escalate.</p></div>',
+      '<div class="odvc4-table-wrap"><table class="odvc4-table"><thead><tr><th>Tenant</th><th>Package</th><th>Risk score</th><th>Open invoices</th><th>Overdue tickets</th><th>Runtime issues</th><th>Action</th></tr></thead><tbody>',
+      tenantRiskTableRows || '<tr><td colspan="7">No urgent customer risk is open right now.</td></tr>',
+      '</tbody></table></div>',
+      '</section>',
+      '<section class="odv4-panel odvc4-panel" id="owner-analytics-support-sla-buckets">',
+      '<div class="odv4-section-head"><span class="odv4-section-kicker">SLA buckets</span><h2 class="odv4-section-title">Open queue age distribution</h2><p class="odv4-section-copy">Watch where the queue is clustering by age so the owner can step in before unresolved support starts compounding.</p></div>',
+      '<div class="odvc4-table-wrap"><table class="odvc4-table"><thead><tr><th>Age bucket</th><th>Open</th><th>Unclaimed</th><th>Appeals</th><th>Action</th></tr></thead><tbody>',
+      supportSlaBucketTableRows || '<tr><td colspan="5">No support SLA pressure is open right now.</td></tr>',
+      '</tbody></table></div>',
+      '</section>',
+      '</div>',
+      '<div class="odvc4-table-wrap"><table class="odvc4-table"><thead><tr><th>Package</th><th>Customer count</th><th>Features</th></tr></thead><tbody>',
+      packageRows || '<tr><td colspan="3">No package usage is available yet.</td></tr>',
+      '</tbody></table></div>',
+      '<section class="odv4-panel odvc4-panel" id="owner-analytics-support-queue">',
+      '<div class="odv4-section-head"><span class="odv4-section-kicker">Support queue</span><h2 class="odv4-section-title">Commercial and support watchlist</h2><p class="odv4-section-copy">Keep the owner view grounded in live support pressure so revenue, package adoption, and customer risk stay in the same decision loop.</p></div>',
+      '<div class="odvc4-table-wrap"><table class="odvc4-table"><thead><tr><th>Tenant</th><th>Type</th><th>Status</th><th>Owner</th><th>Opened</th><th>Action</th></tr></thead><tbody>',
+      supportQueueRows || '<tr><td colspan="6">No open support queue is waiting right now.</td></tr>',
+      '</tbody></table></div>',
+      '</section>',
       '</section>',
     ].join('');
   }
@@ -3015,6 +3661,12 @@
       const selectedSupportDeadLetters = routeKind === 'support-detail' && Array.isArray(settings.supportDeadLetters)
         ? settings.supportDeadLetters
         : [];
+      const selectedSupportTickets = routeKind === 'support-detail'
+        ? buildOwnerSupportTicketRows(state.supportTickets, tenantRows, {
+          tenantId: selectedTenantId,
+          limit: 8,
+        })
+        : [];
       const selectedRuntime = trimText(settings.selectedRuntimeKey, 160)
         ? runtimeRows.find((row) => row.runtimeKey === trimText(settings.selectedRuntimeKey, 160))
         : null;
@@ -3041,6 +3693,7 @@
           selectedSupportCase,
           runtimeRows,
           selectedSupportDeadLetters,
+          selectedSupportTickets,
           settings.supportCaseLoading === true,
           settings.supportDeadLettersLoading === true,
         ));
@@ -3063,7 +3716,7 @@
         sections.push(renderRuntimeWorkspace(runtimeRows, selectedRuntime, settings.runtimeBootstrap, state));
       headerAction = { label: 'เปิดทะเบียนบริการ', href: '#owner-runtime-workspace', localFocus: true };
       } else if (routeKind === 'analytics') {
-        sections.push(renderAnalyticsWorkspace(state, packageUsageRows, runtimeRows, invoiceSummary));
+        sections.push(renderAnalyticsWorkspaceV2(state, tenantRows, packageUsageRows, runtimeRows, invoiceSummary));
         headerAction = { label: 'ดูตัวชี้วัดธุรกิจ', href: '#owner-analytics-workspace', localFocus: true };
       } else if (routeKind === 'audit') {
         sections.push(renderAuditWorkspaceV2(state));
@@ -3082,3 +3735,4 @@
     buildOwnerControlV4Html,
   };
 });
+

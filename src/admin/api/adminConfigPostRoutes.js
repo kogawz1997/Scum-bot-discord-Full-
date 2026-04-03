@@ -10,6 +10,43 @@ const {
   requireTenantPermission,
 } = require('./tenantRoutePermissions');
 
+const MODULE_SCOPE_RULES = Object.freeze([
+  {
+    featureKey: 'bot_delivery',
+    dependencies: ['orders_module', 'execute_agent'],
+  },
+  {
+    featureKey: 'bot_log',
+    dependencies: ['sync_agent'],
+  },
+  {
+    featureKey: 'donation_module',
+    dependencies: ['orders_module', 'player_module'],
+  },
+  {
+    featureKey: 'event_module',
+    dependencies: [],
+  },
+  {
+    featureKey: 'wallet_module',
+    dependencies: ['orders_module', 'player_module'],
+  },
+  {
+    featureKey: 'ranking_module',
+    dependencies: ['player_module'],
+  },
+  {
+    featureKey: 'support_module',
+    dependencies: ['discord_integration'],
+  },
+  {
+    featureKey: 'analytics_module',
+    dependencies: [],
+  },
+]);
+
+const MODULE_SCOPE_FEATURE_KEYS = new Set(MODULE_SCOPE_RULES.map((entry) => entry.featureKey));
+
 function createAdminConfigPostRoutes(deps) {
   const {
     sendJson,
@@ -31,6 +68,7 @@ function createAdminConfigPostRoutes(deps) {
     config,
     resolveScopedTenantId,
     getPlatformTenantById,
+    getPlatformTenantConfig,
     upsertPlatformTenantConfig,
     getTenantFeatureAccess,
     buildTenantProductEntitlements,
@@ -71,6 +109,193 @@ function createAdminConfigPostRoutes(deps) {
       'Retry-After': String(retryAfterSec),
     });
     return true;
+  }
+
+  function cloneDraftPortalEnvPatch(value) {
+    const patch = value && typeof value === 'object' && !Array.isArray(value)
+      ? { ...value }
+      : {};
+    delete patch.publishedBranding;
+    delete patch.publishedBrandingHistory;
+    return patch;
+  }
+
+  function cloneFeatureFlags(value) {
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? { ...value }
+      : {};
+  }
+
+  function normalizeFeatureKey(value) {
+    return String(value || '').trim();
+  }
+
+  function featureFlagValueEquals(left, right) {
+    if (left === right) return true;
+    try {
+      return JSON.stringify(left) === JSON.stringify(right);
+    } catch {
+      return false;
+    }
+  }
+
+  function buildEffectiveFeatureSet(packageFeatures, featureFlags) {
+    const baseFeatures = packageFeatures instanceof Set
+      ? [...packageFeatures]
+      : Array.isArray(packageFeatures)
+        ? packageFeatures
+        : [];
+    const enabled = new Set(
+      baseFeatures
+        .map(normalizeFeatureKey)
+        .filter(Boolean),
+    );
+    Object.entries(featureFlags || {}).forEach(([rawKey, rawValue]) => {
+      const featureKey = normalizeFeatureKey(rawKey);
+      if (!featureKey) return;
+      if (rawValue === true) enabled.add(featureKey);
+      if (rawValue === false) enabled.delete(featureKey);
+    });
+    return enabled;
+  }
+
+  function validateModuleScopeFeatureFlags({
+    requestedFeatureFlags,
+    currentFeatureFlags,
+    tenantFeatureAccess,
+  }) {
+    const current = cloneFeatureFlags(currentFeatureFlags);
+    const requested = cloneFeatureFlags(requestedFeatureFlags);
+    const currentEnabledFeatureSet = new Set(
+      (Array.isArray(tenantFeatureAccess?.enabledFeatureKeys) ? tenantFeatureAccess.enabledFeatureKeys : [])
+        .map(normalizeFeatureKey)
+        .filter(Boolean),
+    );
+    const packageFeatureSet = new Set(
+      (Array.isArray(tenantFeatureAccess?.package?.features) ? tenantFeatureAccess.package.features : [])
+        .map(normalizeFeatureKey)
+        .filter(Boolean),
+    );
+    const manageableFeatureSet = new Set(packageFeatureSet);
+    MODULE_SCOPE_RULES.forEach((entry) => {
+      if (currentEnabledFeatureSet.has(entry.featureKey)) {
+        manageableFeatureSet.add(entry.featureKey);
+      }
+    });
+
+    for (const [rawKey, rawValue] of Object.entries(requested)) {
+      const featureKey = normalizeFeatureKey(rawKey);
+      if (!featureKey) continue;
+      if (!MODULE_SCOPE_FEATURE_KEYS.has(featureKey)) {
+        if (!featureFlagValueEquals(rawValue, current[featureKey])) {
+          return {
+            ok: false,
+            statusCode: 400,
+            error: 'module-scope-invalid-feature-flag',
+            data: {
+              featureKey,
+              message: `Modules can only change module feature flags. Move ${featureKey} to the settings flow instead.`,
+            },
+          };
+        }
+        continue;
+      }
+      if (rawValue !== true && rawValue !== false) {
+        return {
+          ok: false,
+          statusCode: 400,
+          error: 'module-scope-invalid-feature-value',
+          data: {
+            featureKey,
+            message: `Module overrides for ${featureKey} must be true or false.`,
+          },
+        };
+      }
+      current[featureKey] = rawValue;
+    }
+
+    for (const featureKey of MODULE_SCOPE_FEATURE_KEYS) {
+      if (current[featureKey] === true && !manageableFeatureSet.has(featureKey)) {
+        return {
+          ok: false,
+          statusCode: 409,
+          error: 'module-package-upgrade-required',
+          data: {
+            featureKey,
+            message: `${featureKey} is not included in the tenant package and cannot be enabled from Bot Modules.`,
+          },
+        };
+      }
+    }
+
+    const effectiveFeatureSet = buildEffectiveFeatureSet(packageFeatureSet, current);
+    for (const entry of MODULE_SCOPE_RULES) {
+      if (!effectiveFeatureSet.has(entry.featureKey)) continue;
+      const missingDependencies = entry.dependencies.filter((dependencyKey) => !effectiveFeatureSet.has(dependencyKey));
+      if (!missingDependencies.length) continue;
+      return {
+        ok: false,
+        statusCode: 409,
+        error: 'module-dependency-missing',
+        data: {
+          featureKey: entry.featureKey,
+          missingDependencies,
+          message: `${entry.featureKey} still requires: ${missingDependencies.join(', ')}.`,
+        },
+      };
+    }
+
+    return {
+      ok: true,
+      featureFlags: current,
+    };
+  }
+
+  function normalizePublishedBrandingSnapshot(raw) {
+    const published = raw && typeof raw === 'object' && !Array.isArray(raw)
+      ? raw
+      : null;
+    const settings = published?.settings && typeof published.settings === 'object' && !Array.isArray(published.settings)
+      ? cloneDraftPortalEnvPatch(published.settings)
+      : null;
+    if (!settings || Object.keys(settings).length === 0) {
+      return null;
+    }
+    const version = Number.isFinite(Number(published?.version))
+      ? Math.max(1, Math.trunc(Number(published.version)))
+      : 1;
+    return {
+      version,
+      publishedAt: requiredString(published?.publishedAt) || null,
+      publishedBy: requiredString(published?.publishedBy) || null,
+      settings,
+    };
+  }
+
+  function normalizePublishedBrandingHistory(raw) {
+    const snapshots = Array.isArray(raw) ? raw : [];
+    const seenVersions = new Set();
+    return snapshots
+      .map(normalizePublishedBrandingSnapshot)
+      .filter((snapshot) => {
+        if (!snapshot) return false;
+        if (seenVersions.has(snapshot.version)) return false;
+        seenVersions.add(snapshot.version);
+        return true;
+      })
+      .sort((left, right) => right.version - left.version)
+      .slice(0, 12);
+  }
+
+  function attachBrandingSnapshotsToDraft(draftPortalEnvPatch, publishedBranding, publishedBrandingHistory) {
+    const nextPatch = cloneDraftPortalEnvPatch(draftPortalEnvPatch);
+    if (publishedBranding) {
+      nextPatch.publishedBranding = publishedBranding;
+    }
+    if (Array.isArray(publishedBrandingHistory) && publishedBrandingHistory.length) {
+      nextPatch.publishedBrandingHistory = publishedBrandingHistory;
+    }
+    return nextPatch;
   }
 
   return async function handleAdminConfigPostRoute(context) {
@@ -366,11 +591,115 @@ function createAdminConfigPostRoutes(deps) {
         sendJson(res, 404, { ok: false, error: 'tenant-not-found' });
         return true;
       }
+      const currentConfig = typeof getPlatformTenantConfig === 'function'
+        ? await getPlatformTenantConfig(tenantId).catch(() => null)
+        : null;
+      const currentFeatureFlags = cloneFeatureFlags(currentConfig?.featureFlags);
+      const currentPortalEnvPatch = currentConfig?.portalEnvPatch && typeof currentConfig.portalEnvPatch === 'object'
+        ? { ...currentConfig.portalEnvPatch }
+        : {};
+      const tenantFeatureAccess = typeof getTenantFeatureAccess === 'function'
+        ? await getTenantFeatureAccess(tenantId, { cache: false }).catch(() => null)
+        : null;
+      const currentPublishedBranding = normalizePublishedBrandingSnapshot(currentPortalEnvPatch.publishedBranding);
+      const currentPublishedBrandingHistory = normalizePublishedBrandingHistory([
+        ...(Array.isArray(currentPortalEnvPatch.publishedBrandingHistory) ? currentPortalEnvPatch.publishedBrandingHistory : []),
+        ...(currentPublishedBranding ? [currentPublishedBranding] : []),
+      ]);
+      const inputPortalEnvPatch = body?.portalEnvPatch && typeof body.portalEnvPatch === 'object' && !Array.isArray(body.portalEnvPatch)
+        ? cloneDraftPortalEnvPatch(body.portalEnvPatch)
+        : cloneDraftPortalEnvPatch(currentPortalEnvPatch);
+      let nextPortalEnvPatch = attachBrandingSnapshotsToDraft(
+        inputPortalEnvPatch,
+        currentPublishedBranding,
+        currentPublishedBrandingHistory,
+      );
+      if (updateScope === 'branding-publish') {
+        const draftSnapshot = cloneDraftPortalEnvPatch(inputPortalEnvPatch);
+        const nextVersion = Math.max(
+          Number(currentPublishedBranding?.version || 0),
+          ...currentPublishedBrandingHistory.map((entry) => Number(entry?.version || 0)),
+        ) + 1;
+        const publishedSnapshot = {
+          version: Math.max(1, nextVersion),
+          publishedAt: new Date().toISOString(),
+          publishedBy: auth?.user || null,
+          settings: draftSnapshot,
+        };
+        const nextHistory = normalizePublishedBrandingHistory([
+          publishedSnapshot,
+          ...currentPublishedBrandingHistory,
+        ]);
+        nextPortalEnvPatch = {
+          ...draftSnapshot,
+          publishedBranding: publishedSnapshot,
+          publishedBrandingHistory: nextHistory,
+        };
+      }
+      if (updateScope === 'branding-restore-draft') {
+        const publishedSettings = currentPublishedBranding?.settings
+          && typeof currentPublishedBranding.settings === 'object'
+          && !Array.isArray(currentPublishedBranding.settings)
+            ? { ...currentPublishedBranding.settings }
+            : null;
+        if (!publishedSettings || Object.keys(publishedSettings).length === 0) {
+          sendJson(res, 409, {
+            ok: false,
+            error: 'published-branding-not-found',
+            data: {
+              message: 'Publish portal branding once before restoring the draft.',
+            },
+          });
+          return true;
+        }
+        nextPortalEnvPatch = attachBrandingSnapshotsToDraft(
+          publishedSettings,
+          currentPublishedBranding,
+          currentPublishedBrandingHistory,
+        );
+      }
+      if (updateScope === 'branding-restore-version') {
+        const requestedVersion = Number(body?.brandingVersion);
+        const version = Number.isFinite(requestedVersion) ? Math.max(1, Math.trunc(requestedVersion)) : 0;
+        const targetSnapshot = currentPublishedBrandingHistory.find((entry) => Number(entry?.version || 0) === version) || null;
+        if (!targetSnapshot) {
+          sendJson(res, 404, {
+            ok: false,
+            error: 'published-branding-version-not-found',
+            data: {
+              message: 'The requested branding version could not be restored.',
+            },
+          });
+          return true;
+        }
+        nextPortalEnvPatch = attachBrandingSnapshotsToDraft(
+          targetSnapshot.settings,
+          currentPublishedBranding,
+          currentPublishedBrandingHistory,
+        );
+      }
+      let nextFeatureFlags = body?.featureFlags;
+      if (updateScope === 'modules') {
+        const validation = validateModuleScopeFeatureFlags({
+          requestedFeatureFlags: body?.featureFlags,
+          currentFeatureFlags,
+          tenantFeatureAccess,
+        });
+        if (!validation.ok) {
+          sendJson(res, validation.statusCode || 400, {
+            ok: false,
+            error: validation.error || 'module-scope-invalid',
+            data: validation.data || null,
+          });
+          return true;
+        }
+        nextFeatureFlags = validation.featureFlags;
+      }
       const result = await upsertPlatformTenantConfig({
         tenantId,
         configPatch: body?.configPatch,
-        portalEnvPatch: body?.portalEnvPatch,
-        featureFlags: body?.featureFlags,
+        portalEnvPatch: nextPortalEnvPatch,
+        featureFlags: nextFeatureFlags,
         updatedBy: auth?.user || null,
       });
       if (!result.ok) {
