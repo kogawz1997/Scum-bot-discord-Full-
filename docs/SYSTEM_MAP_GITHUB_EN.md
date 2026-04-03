@@ -1,5 +1,10 @@
 # System Map For GitHub
 
+Language:
+
+- English: `SYSTEM_MAP_GITHUB_EN.md`
+- Thai: [SYSTEM_MAP_GITHUB_TH.md](./SYSTEM_MAP_GITHUB_TH.md)
+
 Last updated: **2026-03-27**
 
 This document is written for GitHub-first viewing and uses Mermaid blocks that GitHub can render directly.

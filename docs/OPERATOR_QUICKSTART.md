@@ -1,5 +1,10 @@
 # Operator Quickstart
 
+Language:
+
+- English: `OPERATOR_QUICKSTART.md`
+- Thai: [OPERATOR_QUICKSTART_TH.md](./OPERATOR_QUICKSTART_TH.md)
+
 This document is the shortest operator path for the current platform.
 
 If you want the even shorter bootstrap-first path for a fresh setup, start with [FIFTEEN_MINUTE_SETUP.md](./FIFTEEN_MINUTE_SETUP.md).

@@ -1,5 +1,10 @@
 # Architecture Overview
 
+Language:
+
+- English: `ARCHITECTURE.md`
+- Thai: [ARCHITECTURE_TH.md](./ARCHITECTURE_TH.md)
+
 This document describes the current architecture from the repository and active runtime model. It is intended to stay aligned with the code, not with historical deployment notes.
 
 For verification status, see [VERIFICATION_STATUS_TH.md](./VERIFICATION_STATUS_TH.md).  

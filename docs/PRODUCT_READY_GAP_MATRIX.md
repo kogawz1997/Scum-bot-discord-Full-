@@ -1,5 +1,10 @@
 # Product-Ready Gap Matrix
 
+Language:
+
+- English: `PRODUCT_READY_GAP_MATRIX.md`
+- Thai: [PRODUCT_READY_GAP_MATRIX_TH.md](./PRODUCT_READY_GAP_MATRIX_TH.md)
+
 Last updated: `2026-04-02`
 
 This file is a stricter product-readiness overlay, not the same thing as the required backlog in [WORKLIST.md](./WORKLIST.md).

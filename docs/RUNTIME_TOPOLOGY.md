@@ -1,5 +1,10 @@
 # Runtime Topology
 
+Language:
+
+- English: `RUNTIME_TOPOLOGY.md`
+- Thai: [RUNTIME_TOPOLOGY_TH.md](./RUNTIME_TOPOLOGY_TH.md)
+
 This document describes the runtime split that the repository currently supports and the files that own each boundary.
 
 ## Active Runtime Roles

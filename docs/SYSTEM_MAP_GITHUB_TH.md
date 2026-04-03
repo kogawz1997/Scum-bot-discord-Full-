@@ -1,9 +1,19 @@
-# System Map For GitHub
+# แผนภาพระบบสำหรับดูบน GitHub
 
-Last updated: **2026-03-27**
+Language:
 
-เอกสารนี้ทำไว้สำหรับดูบน GitHub โดยตรง และใช้ Mermaid ที่ GitHub เรนเดอร์ได้จริง
-เป้าหมายคือให้เห็นภาพรวมระบบปัจจุบันแบบอ่านง่าย เร็ว และดูเป็นระบบ
+- English: [SYSTEM_MAP_GITHUB_EN.md](./SYSTEM_MAP_GITHUB_EN.md)
+- Thai: `SYSTEM_MAP_GITHUB_TH.md`
+
+อัปเดตล่าสุด: **2026-03-27**
+
+เอกสารนี้ทำไว้สำหรับการอ่านบน GitHub โดยตรง และใช้ Mermaid ที่ GitHub render ได้จริง
+
+เป้าหมายคือ:
+
+- ให้เห็นภาพรวมระบบในหน้าเดียว
+- แยก web surface, control plane, และ game-side runtime ให้ชัด
+- ใช้เป็นแผนที่นำทางก่อนลงไปอ่านไฟล์เชิงลึกใน `src/`, `apps/`, และ `docs/`
 
 ## 1. ภาพรวมทั้งแพลตฟอร์ม
 
@@ -76,7 +86,14 @@ flowchart LR
   WORKER --> MONITOR
 ```
 
-## 2. แยกบทบาทของเว็บทั้ง 3 ฝั่ง
+สรุปสั้น:
+
+- ฝั่ง web มี 3 surface หลักคือ Owner, Tenant Admin, และ Player/Public
+- control plane กลางพึ่ง `PostgreSQL + Prisma`
+- game-side runtime ถูกแยกเป็น `Server Bot / Watcher` กับ `Delivery Agent`
+- `Delivery Agent` กับ `Server Bot` ไม่ควรถูกอธิบายว่าเป็น runtime เดียวกัน
+
+## 2. การแยกบทบาทของเว็บทั้ง 3 ฝั่ง
 
 ```mermaid
 flowchart TB
@@ -103,6 +120,12 @@ flowchart TB
   end
 ```
 
+สรุปสั้น:
+
+- `Owner Panel` เน้นการคุมแพลตฟอร์มและ tenant fleet
+- `Tenant Admin Panel` เน้นการดูแลเซิร์ฟเวอร์, order, runtime, และ diagnostics ของ tenant
+- `Player Portal` เน้นประสบการณ์ผู้เล่น เช่น wallet, shop, orders, delivery, และ profile
+
 ## 3. เส้นแบ่งระหว่าง Delivery Agent และ Server Bot
 
 ```mermaid
@@ -118,118 +141,23 @@ flowchart LR
     S1["อ่าน SCUM.log"]
     S2["sync event / state"]
     S3["ดู config / backup / apply"]
-    S4["ช่วยงาน restart / health"]
+    S4["ช่วยเรื่อง restart / health"]
   end
-
-  D1 --> D2 --> D3
-  D2 --> D4
-  S1 --> S2
-  S3 --> S4
 ```
 
-## 4. เส้นทางคำสั่งซื้อและการส่งของ
+ข้อสำคัญ:
 
-```mermaid
-flowchart LR
-  PLAYER["Player / Admin Action"] --> ORDER["Order / Purchase API"]
-  ORDER --> DB[("PostgreSQL")]
-  ORDER --> QUEUE["Worker Queue"]
-  QUEUE --> MODE{"Execution Mode"}
-  MODE -->|agent| AGENT["Delivery Agent"]
-  MODE -->|rcon| RCON["RCON Path"]
-  AGENT --> CLIENT["SCUM Client"]
-  AGENT --> RESULT["Delivery Result / Evidence"]
-  RCON --> RESULT
-  RESULT --> DB
-```
+- `Delivery Agent` ต้องอยู่บนเครื่องที่เปิด SCUM client
+- `Server Bot` อยู่ฝั่งเครื่องเซิร์ฟเวอร์และดูเรื่อง log/config/control
+- ถ้าระบบอธิบายสองตัวนี้ปนกัน จะทำให้ deployment และ troubleshooting ผิดทิศได้ง่าย
 
-## 5. เส้นทาง log, sync, และการมองเห็นเหตุการณ์
+## 4. ควรอ่านอะไรต่อ
 
-```mermaid
-flowchart LR
-  LOG["SCUM.log"] --> WATCHER["Server Bot / Watcher"]
-  WATCHER --> SYNC["Sync Ingestion"]
-  SYNC --> DB[("PostgreSQL")]
-  DB --> OWNER["Owner Panel"]
-  DB --> TENANT["Tenant Panel"]
-  DB --> PLAYER["Player Activity / Stats"]
-```
-
-## 6. เส้นทาง provisioning และ activation
-
-```mermaid
-flowchart LR
-  OWNER["Owner / Admin"] --> PROVISION["Provision Runtime"]
-  PROVISION --> TOKEN["One-time Setup Token"]
-  TOKEN --> RUNTIME["Agent / Bot Installer"]
-  RUNTIME --> ACTIVATE["/platform/api/v1/agent/activate"]
-  ACTIVATE --> BIND["Device Binding"]
-  BIND --> CREDS["Long-lived Credential"]
-  CREDS --> SESSION["Heartbeat / Session Refresh"]
-  SESSION --> REGISTRY["Runtime Registry / Status"]
-  REGISTRY --> OWNERVIEW["Owner / Tenant Runtime Views"]
-```
-
-## 7. เส้นทาง config, diagnostics, และ restart
-
-```mermaid
-flowchart LR
-  TENANT["Tenant Admin Panel"] --> CONFIG["Config / Diagnostics / Restart UI"]
-  CONFIG --> ADMINAPI["Admin API"]
-  ADMINAPI --> PLATFORM["Platform Service"]
-  PLATFORM --> SNAPSHOT["Snapshot / Restore / Audit"]
-  PLATFORM --> RUNTIME["Server Bot / Watcher / Worker"]
-  SNAPSHOT --> DB[("PostgreSQL")]
-  RUNTIME --> DB
-```
-
-## 8. ระบบที่มีอยู่ตอนนี้ แยกเป็นหมวด
-
-### Web
-
-- Owner Panel
-- Tenant Admin Panel
-- Public / Auth
-- Player Portal
-
-### Runtime
-
-- Discord Bot
-- Worker
-- Server Bot / Watcher
-- Delivery Agent
-
-### Core Platform
-
-- auth / RBAC / session
-- package / feature gating
-- tenant / preview / quota
-- provisioning / activation / heartbeat / sync
-- observability / audit / notifications / diagnostics
-
-### Commerce And Community
-
-- shop / cart / wallet / orders / delivery
-- redeem / VIP / giveaways / events
-- stats / leaderboards / tickets / moderation
-
-### Data
-
-- PostgreSQL
-- Prisma
-- schema-per-tenant topology
-
-## 9. อ่านแผนผังนี้ยังไง
-
-- ถ้าดูภาพรวมระบบ ให้เริ่มที่ `ภาพรวมทั้งแพลตฟอร์ม`
-- ถ้าดูว่า `Owner`, `Tenant`, `Player` ต่างกันยังไง ให้ดู `แยกบทบาทของเว็บทั้ง 3 ฝั่ง`
-- ถ้าดูว่า `Delivery Agent` กับ `Server Bot` ต่างกันยังไง ให้ดู `เส้นแบ่งระหว่าง Delivery Agent และ Server Bot`
-- ถ้าดู flow สำคัญ ให้ดู `คำสั่งซื้อและการส่งของ`, `log/sync`, `provisioning`, และ `config/restart`
-
-## Related Docs
-
-- [SYSTEM_MAP_GITHUB_EN.md](./SYSTEM_MAP_GITHUB_EN.md)
 - [ARCHITECTURE.md](./ARCHITECTURE.md)
+- [ARCHITECTURE_TH.md](./ARCHITECTURE_TH.md)
 - [RUNTIME_TOPOLOGY.md](./RUNTIME_TOPOLOGY.md)
-- [PLATFORM_PACKAGE_AND_AGENT_MODEL.md](./PLATFORM_PACKAGE_AND_AGENT_MODEL.md)
-- [PROJECT_HQ.md](../PROJECT_HQ.md)
+- [RUNTIME_TOPOLOGY_TH.md](./RUNTIME_TOPOLOGY_TH.md)
+- [PRODUCT_READY_GAP_MATRIX.md](./PRODUCT_READY_GAP_MATRIX.md)
+- [PRODUCT_READY_GAP_MATRIX_TH.md](./PRODUCT_READY_GAP_MATRIX_TH.md)
+
+ถ้าต้องการข้อความ canonical ให้ยึดเวอร์ชันอังกฤษประกอบด้วย และใช้ไฟล์นี้เป็นแผนที่ภาษาไทยสำหรับคนที่เปิดอ่านจาก GitHub ก่อน
