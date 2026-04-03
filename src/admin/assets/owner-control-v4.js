@@ -1267,9 +1267,20 @@
     const safeModel = model && typeof model === 'object' ? model : {};
     const sectionHtml = Array.isArray(safeModel.sections) ? safeModel.sections.join('') : '';
     if (!sectionHtml) return '';
+    const polishedSectionHtml = sectionHtml
+      .replaceAll('Risk spotlight', 'จุดเฝ้าระวังรายได้')
+      .replaceAll('Export billing evidence', 'ส่งออกหลักฐานการชำระเงิน')
+      .replaceAll('No urgent billing recovery signals right now.', 'ยังไม่มีสัญญาณกู้คืนการชำระเงินที่เร่งด่วนตอนนี้')
+      .replace(/(\d+) invoices and (\d+) payment attempts are available for export\./g, 'มีใบแจ้งหนี้ $1 รายการ และความพยายามชำระเงิน $2 รายการพร้อมส่งออก')
+      .replaceAll('Export CSV', 'ส่งออก CSV')
+      .replaceAll('Export JSON', 'ส่งออก JSON')
+      .replaceAll('Mark disputed', 'บันทึกว่าโต้แย้งการชำระ')
+      .replaceAll('Mark refunded', 'บันทึกว่าเงินคืนแล้ว')
+      .replaceAll('No extra actions', 'ไม่มีการทำงานเพิ่มเติม')
+      .replaceAll(' Â· ', ' / ');
     return [
       `<section id="owner-control-workspace" class="odvc4-stack" data-owner-control-page="${escapeHtml(safeModel.routeKind || 'overview')}" data-owner-primary-label="${escapeHtml(safeModel.headerAction && safeModel.headerAction.label || '')}" data-owner-primary-href="${escapeHtml(safeModel.headerAction && safeModel.headerAction.href || '')}" data-owner-primary-local-focus="${safeModel.headerAction && safeModel.headerAction.localFocus ? '1' : '0'}">`,
-      sectionHtml,
+      polishedSectionHtml,
       '</section>',
     ].join('');
   }
@@ -2647,10 +2658,10 @@
           ? `<button class="odv4-button odv4-button-secondary" type="button" data-owner-action="update-billing-invoice-status" data-tenant-id="${escapeHtml(tenantId)}" data-invoice-id="${escapeHtml(invoiceId)}" data-target-status="past_due">บันทึกว่าค้างชำระ</button>`
           : '',
         trimText(row && row.status, 40).toLowerCase() !== 'disputed'
-          ? `<button class="odv4-button odv4-button-secondary" type="button" data-owner-action="update-billing-invoice-status" data-tenant-id="${escapeHtml(tenantId)}" data-invoice-id="${escapeHtml(invoiceId)}" data-target-status="disputed">Mark disputed</button>`
+          ? `<button class="odv4-button odv4-button-secondary" type="button" data-owner-action="update-billing-invoice-status" data-tenant-id="${escapeHtml(tenantId)}" data-invoice-id="${escapeHtml(invoiceId)}" data-target-status="disputed">บันทึกว่าโต้แย้งการชำระ</button>`
           : '',
         trimText(row && row.status, 40).toLowerCase() !== 'refunded'
-          ? `<button class="odv4-button odv4-button-secondary" type="button" data-owner-action="update-billing-invoice-status" data-tenant-id="${escapeHtml(tenantId)}" data-invoice-id="${escapeHtml(invoiceId)}" data-target-status="refunded">Mark refunded</button>`
+          ? `<button class="odv4-button odv4-button-secondary" type="button" data-owner-action="update-billing-invoice-status" data-tenant-id="${escapeHtml(tenantId)}" data-invoice-id="${escapeHtml(invoiceId)}" data-target-status="refunded">บันทึกว่าเงินคืนแล้ว</button>`
           : '',
         trimText(row && row.status, 40).toLowerCase() !== 'void'
           ? `<button class="odv4-button odv4-button-secondary" type="button" data-owner-action="update-billing-invoice-status" data-tenant-id="${escapeHtml(tenantId)}" data-invoice-id="${escapeHtml(invoiceId)}" data-target-status="void">ยกเลิกใบแจ้งหนี้</button>`

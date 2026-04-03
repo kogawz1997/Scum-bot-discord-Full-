@@ -402,11 +402,17 @@ test('owner control subscriptions workspace exposes quick update forms', () => {
   assert.match(html, /data-owner-billing-export-actions/);
   assert.match(html, /data-owner-billing-recovery-queue/);
   assert.match(html, /data-owner-billing-recovery-item="attempt-pay-1"/);
+  assert.match(html, /จุดเฝ้าระวังรายได้/);
+  assert.match(html, /ส่งออกหลักฐานการชำระเงิน/);
+  assert.doesNotMatch(html, /Risk spotlight/);
+  assert.doesNotMatch(html, /Export billing evidence/);
   assert.match(html, /\/owner\/api\/platform\/billing\/export\?format=csv/);
   assert.match(html, /\/owner\/api\/platform\/billing\/export\?format=json/);
   assert.match(html, /data-owner-action="update-billing-invoice-status"/);
   assert.match(html, /data-target-status="disputed"/);
   assert.match(html, /data-target-status="refunded"/);
+  assert.doesNotMatch(html, /Mark disputed/);
+  assert.doesNotMatch(html, /Mark refunded/);
   assert.match(html, /data-owner-action="update-payment-attempt-status"/);
   assert.match(html, /data-owner-action="retry-billing-checkout"/);
   assert.match(html, /data-owner-action="cancel-billing-subscription"/);

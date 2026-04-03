@@ -72,3 +72,47 @@ test('admin security runtime rate limits repeated sensitive actions and records 
   assert.equal(liveUpdates.length, 1);
   assert.equal(liveUpdates[0].type, 'admin-security');
 });
+
+test('admin security runtime can record warn signals without creating notifications', () => {
+  const events = [];
+  const notifications = [];
+  const liveUpdates = [];
+
+  const runtime = createAdminSecurityRuntime({
+    loginRateLimitWindowMs: 60_000,
+    loginRateLimitMaxAttempts: 5,
+    loginSpikeWindowMs: 60_000,
+    loginSpikeThreshold: 10,
+    loginSpikeIpThreshold: 5,
+    loginSpikeAlertCooldownMs: 60_000,
+    getClientIp: () => '127.0.0.1',
+    publishAdminLiveUpdate: (type, payload) => {
+      liveUpdates.push({ type, payload });
+    },
+    addAdminNotification: (entry) => {
+      notifications.push(entry);
+      return entry;
+    },
+    recordAdminSecurityEvent: (entry) => {
+      const event = { id: `evt-${events.length + 1}`, ...entry };
+      events.push(event);
+      return event;
+    },
+    logger: { warn() {} },
+  });
+
+  const event = runtime.recordAdminSecuritySignal('tenant-scope-mismatch', {
+    severity: 'warn',
+    suppressNotification: true,
+    actor: 'tenant-admin',
+    ip: '10.0.0.5',
+    reason: 'tenant-scope-mismatch',
+    detail: 'Tenant-scoped admin attempted to access another tenant scope',
+  });
+
+  assert.equal(event.type, 'tenant-scope-mismatch');
+  assert.equal(events.length, 1);
+  assert.equal(notifications.length, 0);
+  assert.equal(liveUpdates.length, 1);
+  assert.equal(liveUpdates[0].type, 'admin-security');
+});

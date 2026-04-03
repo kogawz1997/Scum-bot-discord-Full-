@@ -655,6 +655,8 @@ const {
   setRequestMeta: (...args) => setRequestMeta(...args),
   getAdminPermissionForPath,
   resolveItemIconUrl,
+  getClientIp,
+  recordAdminSecuritySignal,
 });
 
 const adminAuthRuntime = createAdminAuthRuntime({

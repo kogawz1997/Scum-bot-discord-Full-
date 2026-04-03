@@ -19,6 +19,7 @@ const {
   getCheckoutSessionByToken,
   listBillingInvoices,
   listBillingPaymentAttempts,
+  processBillingWebhookEvent,
   recordPaymentAttempt,
   recordSubscriptionEvent,
   updateInvoiceStatus,
@@ -459,6 +460,84 @@ test('platform billing lifecycle service creates and finalizes a checkout sessio
   assert.equal(String(finalized.invoice?.status || ''), 'paid');
   assert.equal(String(finalized.subscription?.status || ''), 'active');
   assert.equal(String(finalized.subscription?.planId || ''), 'platform-starter');
+});
+
+test('platform billing lifecycle service dedupes replayed webhook events by provider event id', async (t) => {
+  await cleanupBillingFixtures();
+  t.after(cleanupBillingFixtures);
+
+  await prisma.platformTenant.create({
+    data: {
+      id: 'tenant-billing-test',
+      slug: 'tenant-billing-test',
+      name: 'Billing Webhook Replay Test',
+    },
+  });
+
+  await prisma.platformSubscription.create({
+    data: {
+      id: 'sub-billing-webhook',
+      tenantId: 'tenant-billing-test',
+      planId: 'platform-starter',
+      billingCycle: 'monthly',
+      status: 'trialing',
+      amountCents: 490000,
+      currency: 'THB',
+    },
+  });
+
+  const customer = await ensureBillingCustomer({
+    tenantId: 'tenant-billing-test',
+    email: 'webhook@example.com',
+    displayName: 'Webhook Replay Test',
+  });
+
+  const session = await createCheckoutSession({
+    tenantId: 'tenant-billing-test',
+    subscriptionId: 'sub-billing-webhook',
+    customerId: customer.customer.id,
+    planId: 'platform-starter',
+    packageId: 'BOT_LOG_DELIVERY',
+    billingCycle: 'monthly',
+    amountCents: 490000,
+    currency: 'THB',
+  });
+
+  const webhookInput = {
+    tenantId: 'tenant-billing-test',
+    provider: 'platform_local',
+    eventType: 'invoice.paid',
+    invoiceId: session.invoice.id,
+    subscriptionId: 'sub-billing-webhook',
+    externalRef: session.session.sessionToken,
+    payload: {
+      id: 'evt_webhook_replay_1',
+      invoiceId: session.invoice.id,
+      subscriptionId: 'sub-billing-webhook',
+      tenantId: 'tenant-billing-test',
+      sessionToken: session.session.sessionToken,
+      action: 'paid',
+    },
+  };
+
+  const first = await processBillingWebhookEvent(webhookInput);
+  const second = await processBillingWebhookEvent(webhookInput);
+
+  const events = await prisma.platformSubscriptionEvent.findMany({
+    where: {
+      tenantId: 'tenant-billing-test',
+      subscriptionId: 'sub-billing-webhook',
+    },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  assert.equal(first.ok, true);
+  assert.equal(second.ok, true);
+  assert.equal(second.reused, true);
+  assert.equal(String(second.event?.id || ''), String(first.event?.id || ''));
+  assert.equal(events.length, 2);
+  assert.equal(String(events[0]?.eventType || ''), 'checkout.session_created');
+  assert.equal(String(events[1]?.eventType || ''), 'invoice.paid');
 });
 
 test('platform billing lifecycle service reuses an open checkout session for duplicate requests', async (t) => {

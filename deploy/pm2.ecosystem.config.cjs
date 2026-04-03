@@ -124,7 +124,7 @@ module.exports = {
     },
     {
       name: 'scum-console-agent',
-      script: 'src/scum-console-agent.js',
+      script: 'apps/agent/server.js',
       cwd: '.',
       instances: 1,
       exec_mode: 'fork',
@@ -140,6 +140,7 @@ module.exports = {
         PLATFORM_OPS_STATE_STORE_MODE: 'db',
         CONTROL_PLANE_REGISTRY_STORE_MODE: 'db',
         CONTROL_PLANE_REGISTRY_FILE_MIRROR_SLICES: 'none',
+        SCUM_CONSOLE_AGENT_NAME: 'Delivery Agent',
         SCUM_CONSOLE_AGENT_HOST: '127.0.0.1',
         SCUM_CONSOLE_AGENT_PORT: '3213',
       },

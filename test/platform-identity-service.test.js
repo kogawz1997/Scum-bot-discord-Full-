@@ -274,6 +274,68 @@ test('platform identity service builds fallback linked-account summary when only
   assert.equal(summary.readiness.hasSteam, true);
 });
 
+test('platform identity service treats standard email identities as linked email accounts', async () => {
+  const summary = buildLinkedAccountSummary({
+    user: {
+      id: 'platform-user-email-test',
+      primaryEmail: 'identity-test@example.com',
+    },
+    profile: null,
+    identities: [
+      {
+        provider: 'email',
+        providerEmail: 'identity-test@example.com',
+        verifiedAt: '2026-04-01T10:00:00.000Z',
+      },
+    ],
+    memberships: [],
+  });
+
+  assert.equal(summary.linkedAccounts.email.linked, true);
+  assert.equal(summary.linkedAccounts.email.verified, true);
+  assert.equal(summary.linkedAccounts.email.value, 'identity-test@example.com');
+});
+
+test('platform identity summary for preview accounts includes player profile readiness', async (t) => {
+  await cleanupIdentityFixtures();
+  t.after(cleanupIdentityFixtures);
+
+  await ensurePlatformPlayerIdentity({
+    provider: 'discord',
+    providerUserId: '123456789012345678',
+    providerEmail: 'identity-test@example.com',
+    email: 'identity-test@example.com',
+    displayName: 'Identity Player',
+    tenantId: 'tenant-identity-test',
+    discordUserId: '123456789012345678',
+    verificationState: 'discord_verified',
+  });
+
+  await ensurePlatformPlayerIdentity({
+    provider: 'steam',
+    providerUserId: '76561199012345678',
+    email: 'identity-test@example.com',
+    tenantId: 'tenant-identity-test',
+    discordUserId: '123456789012345678',
+    steamId: '76561199012345678',
+    inGameName: 'Identity Survivor',
+    verificationState: 'fully_verified',
+  });
+
+  const summary = await getIdentitySummaryForPreviewAccount({
+    id: 'preview-account-identity-test',
+    email: 'identity-test@example.com',
+    tenantId: 'tenant-identity-test',
+  });
+
+  assert.ok(summary?.profile);
+  assert.equal(summary.profile.steamId, '76561199012345678');
+  assert.equal(summary.identitySummary.linkedAccounts.discord.linked, true);
+  assert.equal(summary.identitySummary.linkedAccounts.steam.linked, true);
+  assert.equal(summary.identitySummary.linkedAccounts.inGame.linked, true);
+  assert.equal(summary.identitySummary.readiness.hasInGameProfile, true);
+});
+
 test('platform identity service can clear steam link from a shared player profile', async (t) => {
   await cleanupIdentityFixtures();
   t.after(cleanupIdentityFixtures);

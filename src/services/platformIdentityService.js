@@ -443,6 +443,13 @@ function findIdentityByProviderName(identities = [], provider) {
   ) || null;
 }
 
+function findEmailIdentity(identities = []) {
+  return identities.find((entry) => {
+    const provider = trimText(entry?.provider, 80).toLowerCase();
+    return provider === 'email_preview' || provider === 'email';
+  }) || null;
+}
+
 function findActiveMembershipForTenant(memberships = [], tenantId = null) {
   const normalizedTenantId = trimText(tenantId, 160) || null;
   return memberships.find((entry) => trimText(entry?.tenantId, 160) === normalizedTenantId)
@@ -463,7 +470,7 @@ function buildLinkedAccountSummary(input = {}) {
   const fallbackEmail = normalizeEmail(input?.fallbackEmail);
   const fallbackDiscordUserId = trimText(input?.fallbackDiscordUserId, 200) || null;
 
-  const emailIdentity = findIdentityByProviderName(identities, 'email_preview');
+  const emailIdentity = findEmailIdentity(identities);
   const discordIdentity = findIdentityByProviderName(identities, 'discord');
   const steamIdentity = findIdentityByProviderName(identities, 'steam');
   const activeMembership = findActiveMembershipForTenant(memberships, tenantId);
@@ -1005,15 +1012,38 @@ async function ensurePlatformPlayerIdentity(input = {}, db = prisma) {
 async function getIdentitySummaryForPreviewAccount(account = {}, db = prisma) {
   const email = normalizeEmail(account.email);
   const previewAccountId = trimText(account.id, 160);
+  const tenantId = trimText(account.tenantId, 160) || null;
   if (!email && !previewAccountId) return null;
   await ensurePlatformIdentityTables(db);
-  const user = email ? await findUserByPrimaryEmail(db, email) : null;
+  const previewIdentity = previewAccountId
+    ? await findIdentityByProvider(db, 'email_preview', previewAccountId)
+    : null;
+  let user = previewIdentity?.userId ? await findUserById(db, previewIdentity.userId) : null;
+  if (!user && email) {
+    user = await findUserByPrimaryEmail(db, email);
+  }
   if (!user) return null;
+  const [identities, memberships] = await Promise.all([
+    listIdentitiesForUser(db, user.id),
+    listMembershipsForUser(db, user.id),
+  ]);
+  const profile = tenantId
+    ? await findPlayerProfile(db, user.id, tenantId)
+    : await findLatestPlayerProfileForUser(db, user.id);
   return {
     user,
-    identities: await listIdentitiesForUser(db, user.id),
-    memberships: await listMembershipsForUser(db, user.id),
+    identities,
+    memberships,
+    profile,
     previewAccountId: previewAccountId || null,
+    identitySummary: buildLinkedAccountSummary({
+      user,
+      profile,
+      identities,
+      memberships,
+      tenantId,
+      fallbackEmail: email || previewIdentity?.providerEmail || null,
+    }),
   };
 }
 

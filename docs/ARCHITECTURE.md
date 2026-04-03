@@ -24,7 +24,7 @@ Do not describe SQLite as the active production runtime for this repository unle
 | Discord bot   | `src/bot.js`                                                    | Discord gateway, command routing, admin web bootstrap, SCUM webhook receiver | Still a large bootstrap entrypoint                              |
 | Worker        | `src/worker.js`                                                 | Delivery queue worker, rent bike runtime, background jobs                    | Split from bot runtime                                          |
 | Watcher       | `src/services/scumLogWatcherRuntime.js`                         | Tail `SCUM.log`, parse events, send them to webhook                          | Can report `disabled` or `degraded` without exiting immediately |
-| Console agent | `src/scum-console-agent.js`, `src/services/scumConsoleAgent.js` | Command bridge to SCUM admin client                                          | Optional runtime depending on execution mode                    |
+| Delivery Agent | `apps/agent/server.js`, `src/delivery-agent.js`, `src/scum-console-agent.js`, `src/services/scumConsoleAgent.js` | In-game delivery/announce execution runtime on the machine that has the SCUM client open | Runtime key and legacy compatibility naming still use `console-agent` internally |
 | Admin web     | `src/adminWebServer.js`                                         | Admin API, auth, RBAC, backup/restore, observability, control panel          | Mounted from bot runtime                                        |
 | Player portal | `apps/web-portal-standalone/server.js`                          | Player login, wallet, purchase history, redeem, profile, Steam link          | Deployable as a separate runtime                                |
 
@@ -68,6 +68,8 @@ Key files:
 - `src/services/rconDelivery.js`
 - `src/store/deliveryAuditStore.js`
 - `src/store/deliveryEvidenceStore.js`
+- `apps/agent/server.js`
+- `src/delivery-agent.js`
 - `src/services/scumConsoleAgent.js`
 - `test/rcon-delivery.integration.test.js`
 
@@ -185,7 +187,7 @@ Health endpoints:
 - bot: `http://<BOT_HEALTH_HOST>:<BOT_HEALTH_PORT>/healthz`
 - worker: `http://<WORKER_HEALTH_HOST>:<WORKER_HEALTH_PORT>/healthz`
 - watcher: `http://<SCUM_WATCHER_HEALTH_HOST>:<SCUM_WATCHER_HEALTH_PORT>/healthz`
-- console-agent: `http://<SCUM_CONSOLE_AGENT_HOST>:<SCUM_CONSOLE_AGENT_PORT>/healthz`
+- delivery agent (`console-agent` runtime key): `http://<SCUM_CONSOLE_AGENT_HOST>:<SCUM_CONSOLE_AGENT_PORT>/healthz`
 - admin web: `http://<ADMIN_WEB_HOST>:<ADMIN_WEB_PORT>/healthz`
 - player portal: `http://<WEB_PORTAL_HOST>:<WEB_PORTAL_PORT>/healthz`
 

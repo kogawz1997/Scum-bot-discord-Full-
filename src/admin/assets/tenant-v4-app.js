@@ -1,4 +1,4 @@
-(function () {
+﻿(function () {
   'use strict';
 
   const PAGE_ALIASES = {
@@ -309,6 +309,18 @@
     if (!text) return '';
     if (TENANT_ACTIVE_TEXT_MAP[text]) return TENANT_ACTIVE_TEXT_MAP[text];
     return text
+      .replace(/^Preview mode cannot create bots yet\\.$/u, 'โหมดพรีวิวยังสร้างบอทไม่ได้')
+      .replace(/^Preview mode cannot manage bots yet\\.$/u, 'โหมดพรีวิวยังจัดการบอทไม่ได้')
+      .replace(/^Preview mode cannot roll back live config\\.$/u, 'โหมดพรีวิวยังโรลกลับค่าจริงไม่ได้')
+      .replace(/^Preview mode cannot send Server Bot test jobs\\.$/u, 'โหมดพรีวิวยังส่งงานทดสอบ Server Bot ไม่ได้')
+      .replace(/^Create or reconnect a Server Bot before running this test\\.$/u, 'สร้างหรือเชื่อมต่อ Server Bot ก่อนรันการทดสอบนี้')
+      .replace(/^Create or reconnect a Server Bot before controlling the server\\.$/u, 'สร้างหรือเชื่อมต่อ Server Bot ก่อนควบคุมเซิร์ฟเวอร์')
+      .replace(/^Your tenant role cannot manage Delivery Agents\\.$/u, 'บทบาทของคุณไม่มีสิทธิ์จัดการ Delivery Agent')
+      .replace(/^Your tenant role cannot manage Server Bots\\.$/u, 'บทบาทของคุณไม่มีสิทธิ์จัดการ Server Bot')
+      .replace(/^Delivery Agent setup is locked in the current package\\.$/u, 'การตั้งค่า Delivery Agent ถูกล็อกอยู่ในแพ็กเกจปัจจุบัน')
+      .replace(/^Server Bot setup is locked in the current package\\.$/u, 'การตั้งค่า Server Bot ถูกล็อกอยู่ในแพ็กเกจปัจจุบัน')
+      .replace(/^Logs & Sync refresh is locked in the current package\\.$/u, 'การรีเฟรช Logs & Sync ถูกล็อกอยู่ในแพ็กเกจปัจจุบัน')
+      .replace(/^Your tenant role cannot change bot modules\\.$/u, 'บทบาทของคุณไม่มีสิทธิ์เปลี่ยนโมดูลบอท')
       .replace(/^Donation package (.+) created\.$/u, 'สร้างแพ็กเกจโดเนต $1 แล้ว')
       .replace(/^Donation package (.+) saved\.$/u, 'บันทึกแพ็กเกจโดเนต $1 แล้ว')
       .replace(/^Donation package (.+) deleted\.$/u, 'ลบแพ็กเกจโดเนต $1 แล้ว')
@@ -1757,7 +1769,7 @@
       lines.push(
         'Delivery Agent notes',
         '--------------------',
-        '- The installer will ask for the shared console-agent token on first run if you have not baked it into the file yet.',
+        '- The installer will ask for the shared Delivery Agent token on first run if you have not baked it into the file yet.',
         '- The default command template uses C:\\new\\scripts\\send-scum-admin-command.ps1 and assumes the SCUM window title/process name is "SCUM".',
         '- If your machine uses a different window title, adjust the generated delivery-agent env file after install.',
       );
@@ -1793,7 +1805,7 @@
       '  -ConfigRoot $configRoot `',
       '  -StartBot',
       "Write-Host ''",
-      "Write-Host 'Server Bot install finished. Refresh Tenant web to confirm Bot Status.' -ForegroundColor Green",
+      "Write-Host 'Server Bot install finished. Refresh Tenant web to confirm runtime status.' -ForegroundColor Green",
       '',
     ].join('\r\n');
   }
@@ -1813,8 +1825,8 @@
       "$consoleAgentToken = ''",
       'if ([string]::IsNullOrWhiteSpace($consoleAgentToken)) {',
       "  Write-Host ''",
-      "  Write-Host 'Enter the shared SCUM console-agent token for this machine.' -ForegroundColor Yellow",
-      "  $consoleAgentToken = Read-Host 'SCUM console-agent token'",
+      "  Write-Host 'Enter the shared Delivery Agent token for this machine.' -ForegroundColor Yellow",
+      "  $consoleAgentToken = Read-Host 'Delivery Agent token'",
       '}',
       `$defaultExecTemplate = ${buildPowerShellQuotedValue(defaultExecTemplate)}`,
       '& $installerPath `',
@@ -1829,7 +1841,7 @@
       '  -ExecTemplate $defaultExecTemplate `',
       '  -StartBot',
       "Write-Host ''",
-      "Write-Host 'Delivery Agent install finished. Refresh Tenant web to confirm Bot Status.' -ForegroundColor Green",
+      "Write-Host 'Delivery Agent install finished. Refresh Tenant web to confirm runtime status.' -ForegroundColor Green",
       "Write-Host 'If your SCUM window title differs from \"SCUM\", update .runtime\\delivery-agent.env after install.' -ForegroundColor Yellow",
       '',
     ].join('\r\n');
@@ -5236,3 +5248,4 @@
     refreshState({ silent: false });
   });
 })();
+

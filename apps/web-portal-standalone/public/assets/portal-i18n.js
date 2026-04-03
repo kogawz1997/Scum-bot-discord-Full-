@@ -2102,6 +2102,21 @@
     'player.app.action.linkingSteam': 'กำลังเชื่อม Steam...',
     'player.app.checkout.successWithCount': 'สั่งซื้อเรียบร้อยแล้ว ({count} คำสั่งซื้อ)',
   });
+  Object.assign(EN, {
+    'player.app.server.noneTitle': 'No playable server is linked to this player scope yet',
+    'player.notice.lockedDetail': 'You can still browse this page, but the current server package has not enabled the live features behind it yet.',
+    'player.app.status.switchSuccess': 'Live view switched to {name}',
+    'player.app.raid.describeBeforeSubmit': 'Describe the raid request before sending it',
+    'player.app.raid.submitting': 'Sending raid request...',
+    'player.app.raid.submitted': 'Raid request sent',
+    'player.app.error.requestFailed': 'Action failed ({status})',
+  });
+  Object.assign(TH, {
+    'player.notice.lockedDetail': 'คุณยังเปิดหน้านี้เพื่อดูข้อมูลได้ แต่แพ็กเกจของเซิร์ฟเวอร์ปัจจุบันยังไม่เปิดฟีเจอร์สดที่อยู่เบื้องหลังหน้านี้',
+    'player.app.status.switchSuccess': 'สลับมาดูข้อมูลสดของ {name} แล้ว',
+    'player.app.raid.describeBeforeSubmit': 'อธิบายคำขอ raid ก่อนกดส่ง',
+    'player.app.error.requestFailed': 'การทำงานล้มเหลว ({status})',
+  });
   SUPPORTED_LANGUAGES.splice(0, SUPPORTED_LANGUAGES.length,
     ['en', 'English'],
     ['th', 'ไทย'],

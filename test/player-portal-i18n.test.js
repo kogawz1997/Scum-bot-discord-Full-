@@ -75,16 +75,16 @@ test('portal i18n resolves player server and raid workflow copy in both locales'
   assert.equal(runtime.t('player.app.server.noneOption'), 'No server');
   assert.equal(
     runtime.t('player.app.status.switchSuccess', null, { name: 'Prime' }),
-    'Now viewing Prime',
+    'Live view switched to Prime',
   );
   assert.equal(
     runtime.t('player.notice.lockedDetail'),
-    'You can still open this page, but the current server package has not enabled the live features behind it yet.',
+    'You can still browse this page, but the current server package has not enabled the live features behind it yet.',
   );
   assert.equal(runtime.t('player.app.action.adding'), 'Adding...');
   assert.equal(
     runtime.t('player.app.error.requestFailed', null, { status: 429 }),
-    'Request failed (429)',
+    'Action failed (429)',
   );
 
   await runtime.setLocale('th', { persist: false });

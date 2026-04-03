@@ -135,6 +135,7 @@ function sanitizePreviewState(account, tenantSnapshot, featureAccess) {
 
 function buildPreviewIdentityPayload(summary) {
   if (!summary?.user) return null;
+  const linkedSummary = summary?.identitySummary || null;
   return {
     userId: summary.user?.id || null,
     providers: Array.isArray(summary.identities)
@@ -147,6 +148,9 @@ function buildPreviewIdentityPayload(summary) {
         membershipType: entry.membershipType,
       }))
       : [],
+    verificationState: trimText(linkedSummary?.verificationState, 80) || null,
+    linkedAccounts: linkedSummary?.linkedAccounts || null,
+    activeMembership: linkedSummary?.activeMembership || null,
   };
 }
 
@@ -155,21 +159,30 @@ function derivePreviewLinkedIdentities(account, identitySummary) {
     ? account.linkedIdentities
     : {};
   const identities = Array.isArray(identitySummary?.identities) ? identitySummary.identities : [];
+  const linkedSummary = identitySummary?.identitySummary || null;
+  const linkedAccounts = linkedSummary?.linkedAccounts || {};
   const hasDiscord = identities.some((entry) => trimText(entry?.provider, 80).toLowerCase() === 'discord');
   const hasVerifiedDiscord = identities.some(
     (entry) => trimText(entry?.provider, 80).toLowerCase() === 'discord' && Boolean(entry?.verifiedAt),
   );
   const hasSteam = identities.some((entry) => trimText(entry?.provider, 80).toLowerCase() === 'steam');
-  const playerMatched = existing.playerMatched === true;
-  const emailVerified = trimText(account?.verificationState, 80).toLowerCase() === 'email_verified';
+  const playerMatched = linkedAccounts?.inGame?.linked === true
+    || linkedSummary?.readiness?.hasInGameProfile === true
+    || existing.playerMatched === true;
+  const emailVerified = trimText(account?.verificationState, 80).toLowerCase() === 'email_verified'
+    || linkedAccounts?.email?.verified === true;
+  const discordLinked = linkedAccounts?.discord?.linked === true || hasDiscord;
+  const discordVerified = linkedAccounts?.discord?.verified === true || hasVerifiedDiscord;
+  const steamLinked = linkedAccounts?.steam?.linked === true || hasSteam;
 
   return {
-    discordLinked: hasDiscord,
-    discordVerified: hasVerifiedDiscord,
-    steamLinked: hasSteam,
+    discordLinked,
+    discordVerified,
+    steamLinked,
     playerMatched,
     fullyVerified: existing.fullyVerified === true
-      || (emailVerified && hasDiscord && hasSteam && playerMatched),
+      || trimText(linkedSummary?.verificationState, 80).toLowerCase() === 'fully_verified'
+      || (emailVerified && discordLinked && steamLinked && playerMatched),
   };
 }
 
@@ -298,6 +311,37 @@ function createPublicPreviewService(deps = {}) {
   const completePasswordResetImpl =
     deps.completePasswordReset || completePasswordReset;
   const exposeDebugTokens = deps.exposeDebugTokens === true || String(process.env.PUBLIC_PREVIEW_DEBUG_TOKENS || '').trim().toLowerCase() === 'true';
+
+  function linkedIdentitiesNeedSync(account, nextLinkedIdentities) {
+    const current = account?.linkedIdentities && typeof account.linkedIdentities === 'object'
+      ? account.linkedIdentities
+      : {};
+    return current.discordLinked !== nextLinkedIdentities.discordLinked
+      || current.discordVerified !== nextLinkedIdentities.discordVerified
+      || current.steamLinked !== nextLinkedIdentities.steamLinked
+      || current.playerMatched !== nextLinkedIdentities.playerMatched
+      || current.fullyVerified !== nextLinkedIdentities.fullyVerified;
+  }
+
+  async function syncPreviewIdentitySnapshot(account, identitySummary) {
+    if (!account?.id || !identitySummary) {
+      return account;
+    }
+    const nextLinkedIdentities = derivePreviewLinkedIdentities(account, identitySummary);
+    if (!linkedIdentitiesNeedSync(account, nextLinkedIdentities)) {
+      return account;
+    }
+    const updated = await Promise.resolve(updatePreviewAccountImpl(account.id, {
+      linkedIdentities: nextLinkedIdentities,
+    })).catch(() => null);
+    if (updated) {
+      return updated;
+    }
+    return {
+      ...account,
+      linkedIdentities: nextLinkedIdentities,
+    };
+  }
 
   async function registerPreviewAccount(input = {}) {
     const email = normalizeEmail(input.email);
@@ -482,7 +526,8 @@ function createPublicPreviewService(deps = {}) {
     const updated = await updatePreviewAccountImpl(account.id, {
       lastLoginAt: new Date().toISOString(),
     });
-    const identitySummary = await getIdentitySummaryForPreviewAccountImpl(updated || account).catch(() => null);
+    const syncedAccount = await syncPreviewIdentitySnapshot(updated || account, await getIdentitySummaryForPreviewAccountImpl(updated || account).catch(() => null));
+    const identitySummary = await getIdentitySummaryForPreviewAccountImpl(syncedAccount || updated || account).catch(() => null);
     const identity = await ensurePlatformUserIdentityImpl({
       provider: 'email_preview',
       providerUserId: account.id || email,
@@ -503,7 +548,7 @@ function createPublicPreviewService(deps = {}) {
     return {
       ok: true,
       account: {
-        ...decoratePreviewAccount(updated || account, {
+        ...decoratePreviewAccount(syncedAccount || updated || account, {
           identitySummary,
         }),
         identity: buildPreviewIdentityPayload(identitySummary)
@@ -534,12 +579,13 @@ function createPublicPreviewService(deps = {}) {
       ? featureAccessRaw
       : buildFallbackFeatureAccess(account.packageId);
     const tenantSnapshot = tenantSnapshotRaw || buildFallbackTenantSnapshot(account, featureAccess);
-    const identitySummary = await getIdentitySummaryForPreviewAccountImpl(account).catch(() => null);
+    const syncedAccount = await syncPreviewIdentitySnapshot(account, await getIdentitySummaryForPreviewAccountImpl(account).catch(() => null));
+    const identitySummary = await getIdentitySummaryForPreviewAccountImpl(syncedAccount || account).catch(() => null);
 
     return {
       ok: true,
       state: sanitizePreviewState(
-        decoratePreviewAccount(account, {
+        decoratePreviewAccount(syncedAccount || account, {
           identitySummary,
           tenantSnapshot,
         }),
@@ -673,7 +719,8 @@ function createPublicPreviewService(deps = {}) {
     const updated = await updatePreviewAccountImpl(account.id, {
       verificationState: 'email_verified',
     });
-    const identitySummary = await getIdentitySummaryForPreviewAccountImpl(updated || account).catch(() => null);
+    const syncedAccount = await syncPreviewIdentitySnapshot(updated || account, await getIdentitySummaryForPreviewAccountImpl(updated || account).catch(() => null));
+    const identitySummary = await getIdentitySummaryForPreviewAccountImpl(syncedAccount || updated || account).catch(() => null);
     const identity = await ensurePlatformUserIdentityImpl({
       provider: 'email_preview',
       providerUserId: account.id || account.email,
@@ -692,7 +739,7 @@ function createPublicPreviewService(deps = {}) {
     return {
       ok: true,
       account: {
-        ...decoratePreviewAccount(updated || account, {
+        ...decoratePreviewAccount(syncedAccount || updated || account, {
           identitySummary,
         }),
         identity: buildPreviewIdentityPayload(identitySummary)
@@ -734,10 +781,11 @@ function createPublicPreviewService(deps = {}) {
     const updated = await updatePreviewAccountImpl(account.id, {
       passwordHash: createPasswordHash(nextPassword),
     });
-    const identitySummary = await getIdentitySummaryForPreviewAccountImpl(updated || account).catch(() => null);
+    const syncedAccount = await syncPreviewIdentitySnapshot(updated || account, await getIdentitySummaryForPreviewAccountImpl(updated || account).catch(() => null));
+    const identitySummary = await getIdentitySummaryForPreviewAccountImpl(syncedAccount || updated || account).catch(() => null);
     return {
       ok: true,
-      account: decoratePreviewAccount(updated || account, {
+      account: decoratePreviewAccount(syncedAccount || updated || account, {
         identitySummary,
       }),
       nextUrl: '/login',

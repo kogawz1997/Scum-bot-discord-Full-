@@ -12,6 +12,8 @@ const {
 } = require('../src/store/adminRequestLogStore');
 const {
   clearAdminSecurityEvents,
+  listAdminSecurityEvents,
+  waitForAdminSecurityEventPersistence,
 } = require('../src/store/adminSecurityEventStore');
 const {
   resetPlatformOpsState,
@@ -757,5 +759,17 @@ test('tenant-scoped admin cannot cross tenant boundaries on platform read/write 
   assert.equal(
     String(monitoringRes.data.error || ''),
     'Tenant-scoped admin cannot run shared platform monitoring directly',
+  );
+
+  await waitForAdminSecurityEventPersistence();
+  const securityEvents = await listAdminSecurityEvents({ limit: 100 });
+  assert.ok(
+    securityEvents.some((entry) => {
+      return String(entry?.type || '') === 'tenant-scope-mismatch'
+        && String(entry?.actor || '') === tenantAdminUser
+        && String(entry?.reason || '') === 'tenant-scope-mismatch'
+        && String(entry?.data?.authTenantId || '') === tenantId
+        && String(entry?.data?.requestedTenantId || '') === otherTenantId;
+    }),
   );
 });

@@ -110,7 +110,7 @@
     if (!items.length) {
       node.innerHTML = `<option value="">${escapeHtml(t('player.app.server.noneOption', 'No server'))}</option>`;
       node.disabled = true;
-      node.title = t('player.app.server.noneTitle', 'No server is registered for this player scope yet');
+      node.title = t('player.app.server.noneTitle', 'No playable server is linked to this player scope yet');
       return;
     }
 
@@ -169,7 +169,7 @@
       || payload?.data?.detail
       || payload?.message
       || humanizeErrorCode(payload?.error)
-      || t('player.app.error.requestFailed', 'Request failed ({status})', { status: response.status }),
+      || t('player.app.error.requestFailed', 'Action failed ({status})', { status: response.status }),
     );
   }
 
@@ -353,7 +353,7 @@
           }),
           detail: t(
             'player.notice.lockedDetail',
-            'You can still open this page, but the current server package has not enabled the live features behind it yet.',
+            'You can still browse this page, but the current server package has not enabled the live features behind it yet.',
           ),
         }
       : null;
@@ -595,7 +595,7 @@
       const surfaceState = renderCurrentPage();
       applyPlayerSurfaceStatus(surfaceState);
       setStatus(
-        String(result?.message || t('player.app.status.switchSuccess', 'Now viewing {name}', { name: result?.activeServerName || serverId })),
+        String(result?.message || t('player.app.status.switchSuccess', 'Live view switched to {name}', { name: result?.activeServerName || serverId })),
         'success',
       );
     } finally {
@@ -721,11 +721,11 @@
       const requestText = String(form.elements.requestText?.value || '').trim();
       const preferredWindow = String(form.elements.preferredWindow?.value || '').trim();
       if (!requestText) {
-        setStatus(t('player.app.raid.describeBeforeSubmit', 'Describe the raid request before submitting the form'), 'warning');
+        setStatus(t('player.app.raid.describeBeforeSubmit', 'Describe the raid request before sending it'), 'warning');
         return;
       }
       const button = form.querySelector('button[type="submit"]');
-      await runPlayerAction(button, t('player.app.raid.submitting', 'Submitting raid request...'), async () => {
+      await runPlayerAction(button, t('player.app.raid.submitting', 'Sending raid request...'), async () => {
         const result = await apiRequest('/player/api/raids/request', {
           method: 'POST',
           body: {
@@ -734,7 +734,7 @@
           },
         }, null);
         form.reset();
-        await completePlayerAction(result?.message || t('player.app.raid.submitted', 'Raid request submitted'));
+        await completePlayerAction(result?.message || t('player.app.raid.submitted', 'Raid request sent'));
       });
     }
   }

@@ -239,6 +239,9 @@ function createAdminSecurityRuntime(options = {}) {
     const normalizedType = String(type || 'security-event').trim() || 'security-event';
     const severity =
       String(optionsArg.severity || (optionsArg.notify ? 'warn' : 'info')).trim() || 'info';
+    const shouldNotify = optionsArg.suppressNotification === true
+      ? false
+      : optionsArg.notify === true || severity === 'warn' || severity === 'error';
     const event = recordAdminSecurityEvent({
       type: normalizedType,
       severity,
@@ -254,7 +257,7 @@ function createAdminSecurityRuntime(options = {}) {
       data: optionsArg.data || null,
     });
     publishAdminLiveUpdate('admin-security', event);
-    if (optionsArg.notify === true || severity === 'warn' || severity === 'error') {
+    if (shouldNotify) {
       addAdminNotification({
         type: 'security',
         source: 'admin-auth',

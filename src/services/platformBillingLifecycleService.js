@@ -797,6 +797,20 @@ function getBillingProviderConfigSummary() {
   };
 }
 
+function normalizeDedupeKey(value) {
+  return trimText(value, 240) || null;
+}
+
+function escapeSqlLikePattern(value) {
+  return String(value || '').replace(/[\\%_]/g, '\\$&');
+}
+
+function buildSubscriptionEventDedupeNeedle(dedupeKey) {
+  const normalized = normalizeDedupeKey(dedupeKey);
+  if (!normalized) return null;
+  return `"dedupeKey":"${normalized.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
 async function getSubscriptionEventRowByIdRaw(db, eventId) {
   if (getBillingPersistenceMode(db) !== 'prisma') {
     const rows = await db.$queryRaw`
@@ -810,6 +824,44 @@ async function getSubscriptionEventRowByIdRaw(db, eventId) {
   const { subscriptionEvent } = getBillingDelegatesOrThrow(db);
   const row = await subscriptionEvent.findUnique({
     where: { id: eventId },
+  }).catch(() => null);
+  return normalizeSubscriptionEventRow(row);
+}
+
+async function findSubscriptionEventByDedupeKey(db, tenantId, subscriptionId, dedupeKey) {
+  const normalizedTenantId = trimText(tenantId, 160);
+  const normalizedSubscriptionId = trimText(subscriptionId, 160);
+  const normalizedDedupeKey = normalizeDedupeKey(dedupeKey);
+  const dedupeNeedle = buildSubscriptionEventDedupeNeedle(normalizedDedupeKey);
+  if (!normalizedTenantId || !normalizedSubscriptionId || !normalizedDedupeKey || !dedupeNeedle) {
+    return null;
+  }
+  if (getBillingPersistenceMode(db) !== 'prisma') {
+    const likePattern = `%${escapeSqlLikePattern(dedupeNeedle)}%`;
+    const rows = await db.$queryRaw`
+      SELECT id, tenantId, subscriptionId, eventType, billingStatus, actor, payloadJson, occurredAt, createdAt, updatedAt
+      FROM platform_subscription_events
+      WHERE tenantId = ${normalizedTenantId}
+        AND subscriptionId = ${normalizedSubscriptionId}
+        AND payloadJson LIKE ${likePattern} ESCAPE '\\'
+      ORDER BY occurredAt DESC, createdAt DESC
+      LIMIT 1
+    `;
+    return normalizeSubscriptionEventRow(Array.isArray(rows) ? rows[0] : null);
+  }
+  const { subscriptionEvent } = getBillingDelegatesOrThrow(db);
+  const row = await subscriptionEvent.findFirst({
+    where: {
+      tenantId: normalizedTenantId,
+      subscriptionId: normalizedSubscriptionId,
+      payloadJson: {
+        contains: dedupeNeedle,
+      },
+    },
+    orderBy: [
+      { occurredAt: 'desc' },
+      { createdAt: 'desc' },
+    ],
   }).catch(() => null);
   return normalizeSubscriptionEventRow(row);
 }
@@ -1396,6 +1448,22 @@ async function recordSubscriptionEvent(input = {}, db = prisma) {
   if (!tenantId || !subscriptionId) return { ok: false, reason: 'subscription-event-invalid' };
   const scopedDb = getScopedBillingDb(tenantId, db);
   await ensurePlatformBillingLifecycleTables(scopedDb);
+  const payload = input.payload && typeof input.payload === 'object' && !Array.isArray(input.payload)
+    ? { ...input.payload }
+    : {};
+  const dedupeKey = normalizeDedupeKey(input.dedupeKey || payload.dedupeKey);
+  if (dedupeKey) {
+    payload.dedupeKey = dedupeKey;
+    const existingEvent = await findSubscriptionEventByDedupeKey(
+      scopedDb,
+      tenantId,
+      subscriptionId,
+      dedupeKey,
+    ).catch(() => null);
+    if (existingEvent) {
+      return { ok: true, reused: true, event: existingEvent };
+    }
+  }
   if (getBillingPersistenceMode(scopedDb) !== 'prisma') {
     const eventId = trimText(input.id, 160) || createId('subevt');
     const now = new Date().toISOString();
@@ -1410,7 +1478,7 @@ async function recordSubscriptionEvent(input = {}, db = prisma) {
         ${trimText(input.eventType, 120) || 'subscription.updated'},
         ${trimText(input.billingStatus, 40) || null},
         ${trimText(input.actor, 200) || null},
-        ${buildJson(input.payload)},
+        ${buildJson(payload)},
         ${toIso(input.occurredAt) || now},
         ${now},
         ${now}
@@ -1429,7 +1497,7 @@ async function recordSubscriptionEvent(input = {}, db = prisma) {
       eventType: trimText(input.eventType, 120) || 'subscription.updated',
       billingStatus: trimText(input.billingStatus, 40) || null,
       actor: trimText(input.actor, 200) || null,
-      payloadJson: buildJson(input.payload),
+      payloadJson: buildJson(payload),
       occurredAt: parseDate(input.occurredAt) || now,
       createdAt: now,
       updatedAt: now,
@@ -1796,6 +1864,26 @@ async function processBillingWebhookEvent(input = {}, db = prisma) {
     }, scopedDb).catch(() => null);
   }
   const subscriptionId = trimText(input.subscriptionId || payload.subscriptionId || stripeMetadata.subscriptionId || invoice.subscriptionId, 160) || null;
+  const providerEventId = trimText(input.eventId || payload.id, 200) || null;
+  const webhookDedupeKey = providerEventId ? `webhook:${provider}:${providerEventId}` : null;
+  if (subscriptionId && webhookDedupeKey) {
+    const existingEvent = await findSubscriptionEventByDedupeKey(
+      scopedDb,
+      invoice.tenantId,
+      subscriptionId,
+      webhookDedupeKey,
+    ).catch(() => null);
+    if (existingEvent) {
+      return {
+        ok: true,
+        reused: true,
+        invoice,
+        attempt: existingAttempt || null,
+        subscription: await findTenantSubscription(scopedDb, invoice.tenantId, subscriptionId).catch(() => null),
+        event: existingEvent,
+      };
+    }
+  }
   let invoiceStatus = invoice.status;
   let paymentStatus = existingAttempt?.status || 'pending';
   let subscriptionPatch = null;
@@ -1903,7 +1991,14 @@ async function processBillingWebhookEvent(input = {}, db = prisma) {
       eventType: eventType || 'billing.webhook',
       billingStatus: subscriptionPatch?.status || invoiceStatus,
       actor: trimText(input.actor, 200) || 'billing-webhook',
-      payload: { invoiceId: invoice.id, provider, externalRef, webhookPayload: payload },
+      dedupeKey: webhookDedupeKey,
+      payload: {
+        invoiceId: invoice.id,
+        provider,
+        externalRef,
+        providerEventId,
+        webhookPayload: payload,
+      },
     }, scopedDb).catch(() => null)
     : null;
 

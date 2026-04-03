@@ -929,6 +929,17 @@ async function restoreAdminSnapshotData(snapshot = {}) {
 }
 
 function buildRestoreCounts(snapshot = {}) {
+  const countScopedUniqueRows = (rows, fields = ['id']) => {
+    const normalizedFields = Array.isArray(fields) ? fields : [fields];
+    const seen = new Set();
+    for (const row of Array.isArray(rows) ? rows : []) {
+      const tenantId = String(row?.tenantId || '').trim() || '__shared__';
+      const key = [tenantId, ...normalizedFields.map((field) => String(row?.[field] || ''))].join(':');
+      seen.add(key);
+    }
+    return seen.size;
+  };
+
   return {
     wallets: Array.isArray(snapshot.wallets) ? snapshot.wallets.length : 0,
     walletLedgers: Array.isArray(snapshot.walletLedgers)
@@ -969,7 +980,7 @@ function buildRestoreCounts(snapshot = {}) {
     deliveryDeadLetters: Array.isArray(snapshot.deliveryDeadLetters)
       ? snapshot.deliveryDeadLetters.length
       : 0,
-    deliveryAudit: Array.isArray(snapshot.deliveryAudit) ? snapshot.deliveryAudit.length : 0,
+    deliveryAudit: countScopedUniqueRows(snapshot.deliveryAudit, ['id']),
     adminNotifications: Array.isArray(snapshot.adminNotifications)
       ? snapshot.adminNotifications.length
       : 0,

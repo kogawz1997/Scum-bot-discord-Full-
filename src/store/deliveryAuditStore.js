@@ -5,6 +5,7 @@ const {
   runWithDeliveryPersistenceScope,
   readAcrossDeliveryPersistenceScopes,
   groupRowsByTenant,
+  dedupeScopedRows,
 } = require('../services/deliveryPersistenceDb');
 
 const MAX_AUDIT_ITEMS = 3000;
@@ -36,6 +37,36 @@ function normalizeAudit(entry) {
     message: entry.message ? String(entry.message) : '',
     meta: entry.meta && typeof entry.meta === 'object' ? entry.meta : null,
   };
+}
+
+function buildDeliveryAuditData(entry) {
+  return {
+    id: entry.id,
+    createdAt: entry.createdAt,
+    tenantId: entry.tenantId,
+    level: entry.level,
+    action: entry.action,
+    purchaseCode: entry.purchaseCode,
+    itemId: entry.itemId,
+    userId: entry.userId,
+    steamId: entry.steamId,
+    attempt: entry.attempt,
+    message: entry.message,
+    metaJson: entry.meta ? JSON.stringify(entry.meta) : null,
+  };
+}
+
+async function upsertDeliveryAuditRow(db, entry) {
+  const data = buildDeliveryAuditData(entry);
+  await db.deliveryAudit.upsert({
+    where: { id: data.id },
+    update: data,
+    create: data,
+  });
+}
+
+function dedupeAuditRowsByScope(rows) {
+  return dedupeScopedRows(Array.isArray(rows) ? rows : [], ['id']);
 }
 
 function queueDbWrite(work, label) {
@@ -101,36 +132,7 @@ async function hydrateFromPrisma() {
             for (const [tenantId, tenantEntries] of groups.entries()) {
               await runWithDeliveryPersistenceScope(tenantId, async (db) => {
                 for (const entry of tenantEntries) {
-                  await db.deliveryAudit.upsert({
-                    where: { id: entry.id },
-                    update: {
-                      createdAt: entry.createdAt,
-                      tenantId: entry.tenantId,
-                      level: entry.level,
-                      action: entry.action,
-                      purchaseCode: entry.purchaseCode,
-                      itemId: entry.itemId,
-                      userId: entry.userId,
-                      steamId: entry.steamId,
-                      attempt: entry.attempt,
-                      message: entry.message,
-                      metaJson: entry.meta ? JSON.stringify(entry.meta) : null,
-                    },
-                    create: {
-                      id: entry.id,
-                      createdAt: entry.createdAt,
-                      tenantId: entry.tenantId,
-                      level: entry.level,
-                      action: entry.action,
-                      purchaseCode: entry.purchaseCode,
-                      itemId: entry.itemId,
-                      userId: entry.userId,
-                      steamId: entry.steamId,
-                      attempt: entry.attempt,
-                      message: entry.message,
-                      metaJson: entry.meta ? JSON.stringify(entry.meta) : null,
-                    },
-                  });
+                  await upsertDeliveryAuditRow(db, entry);
                 }
               });
               await trimOldAuditRows({ tenantId });
@@ -213,36 +215,7 @@ function addDeliveryAudit(entry) {
   queueDbWrite(
     async () => {
       await runWithDeliveryPersistenceScope(normalized.tenantId, (db) =>
-        db.deliveryAudit.upsert({
-          where: { id: normalized.id },
-          update: {
-            createdAt: normalized.createdAt,
-            tenantId: normalized.tenantId,
-            level: normalized.level,
-            action: normalized.action,
-            purchaseCode: normalized.purchaseCode,
-            itemId: normalized.itemId,
-            userId: normalized.userId,
-            steamId: normalized.steamId,
-            attempt: normalized.attempt,
-            message: normalized.message,
-            metaJson: normalized.meta ? JSON.stringify(normalized.meta) : null,
-          },
-          create: {
-            id: normalized.id,
-            createdAt: normalized.createdAt,
-            tenantId: normalized.tenantId,
-            level: normalized.level,
-            action: normalized.action,
-            purchaseCode: normalized.purchaseCode,
-            itemId: normalized.itemId,
-            userId: normalized.userId,
-            steamId: normalized.steamId,
-            attempt: normalized.attempt,
-            message: normalized.message,
-            metaJson: normalized.meta ? JSON.stringify(normalized.meta) : null,
-          },
-        }));
+        upsertDeliveryAuditRow(db, normalized));
       await trimOldAuditRows({ tenantId: normalized.tenantId });
     },
     'add-delivery-audit',
@@ -300,6 +273,9 @@ function replaceDeliveryAudit(nextAudits = [], options = {}) {
     if (tenantId && normalized.tenantId !== tenantId) continue;
     audits.push(normalized);
   }
+  const dedupedAudits = dedupeAuditRowsByScope(audits);
+  audits.length = 0;
+  audits.push(...dedupedAudits);
   if (audits.length > MAX_AUDIT_ITEMS) {
     audits.splice(0, audits.length - MAX_AUDIT_ITEMS);
   }
@@ -309,70 +285,25 @@ function replaceDeliveryAudit(nextAudits = [], options = {}) {
       if (tenantId) {
         await runWithDeliveryPersistenceScope(tenantId, async (db) => {
           await db.deliveryAudit.deleteMany({ where: { tenantId } });
-          for (const entry of audits.filter((row) => row.tenantId === tenantId)) {
-            await db.deliveryAudit.create({
-              data: {
-                id: entry.id,
-                createdAt: entry.createdAt,
-                tenantId: entry.tenantId,
-                level: entry.level,
-                action: entry.action,
-                purchaseCode: entry.purchaseCode,
-                itemId: entry.itemId,
-                userId: entry.userId,
-                steamId: entry.steamId,
-                attempt: entry.attempt,
-                message: entry.message,
-                metaJson: entry.meta ? JSON.stringify(entry.meta) : null,
-              },
-            });
+          for (const entry of dedupeAuditRowsByScope(audits.filter((row) => row.tenantId === tenantId))) {
+            await upsertDeliveryAuditRow(db, entry);
           }
         });
         return;
       }
 
       const groups = groupRowsByTenant(audits);
-      const sharedRows = groups.get(null) || [];
+      const sharedRows = dedupeAuditRowsByScope(groups.get(null) || []);
       await prisma.deliveryAudit.deleteMany({});
       for (const entry of sharedRows) {
-        await prisma.deliveryAudit.create({
-          data: {
-            id: entry.id,
-            createdAt: entry.createdAt,
-            tenantId: entry.tenantId,
-            level: entry.level,
-            action: entry.action,
-            purchaseCode: entry.purchaseCode,
-            itemId: entry.itemId,
-            userId: entry.userId,
-            steamId: entry.steamId,
-            attempt: entry.attempt,
-            message: entry.message,
-            metaJson: entry.meta ? JSON.stringify(entry.meta) : null,
-          },
-        });
+        await upsertDeliveryAuditRow(prisma, entry);
       }
       for (const [scopedTenantId, tenantRows] of groups.entries()) {
         if (!scopedTenantId) continue;
         await runWithDeliveryPersistenceScope(scopedTenantId, async (db) => {
           await db.deliveryAudit.deleteMany({ where: { tenantId: scopedTenantId } });
-          for (const entry of tenantRows) {
-            await db.deliveryAudit.create({
-              data: {
-                id: entry.id,
-                createdAt: entry.createdAt,
-                tenantId: entry.tenantId,
-                level: entry.level,
-                action: entry.action,
-                purchaseCode: entry.purchaseCode,
-                itemId: entry.itemId,
-                userId: entry.userId,
-                steamId: entry.steamId,
-                attempt: entry.attempt,
-                message: entry.message,
-                metaJson: entry.meta ? JSON.stringify(entry.meta) : null,
-              },
-            });
+          for (const entry of dedupeAuditRowsByScope(tenantRows)) {
+            await upsertDeliveryAuditRow(db, entry);
           }
         });
       }

@@ -372,3 +372,99 @@ test('public preview service falls back to lightweight preview state when tenant
   assert.ok(state.state.entitlements.enabledFeatureKeys.includes('execute_agent'));
   assert.equal(String(state.state.identity?.userId || ''), 'user-preview-account-1');
 });
+
+test('public preview service derives linked identity state from centralized identity summary', async () => {
+  const createPublicPreviewService = loadCreatePublicPreviewService();
+  const store = createStoreHarness();
+  const created = await store.createPreviewAccount({
+    email: 'linked@example.com',
+    passwordHash: 'scrypt$seed$digest',
+    displayName: 'Linked User',
+    communityName: 'Linked Community',
+    locale: 'en',
+    packageId: 'BOT_LOG_DELIVERY',
+    accountState: 'trialing',
+    verificationState: 'email_verified',
+    tenantId: 'tenant-linked-1',
+    subscriptionId: 'sub-linked-1',
+    linkedIdentities: {
+      discordLinked: false,
+      discordVerified: false,
+      steamLinked: false,
+      playerMatched: false,
+      fullyVerified: false,
+    },
+  });
+  const service = createPublicPreviewService({
+    getTenantFeatureAccess: async () => ({
+      enabledFeatureKeys: ['bot_delivery'],
+      features: [{ key: 'bot_delivery', title: 'Bot Delivery', enabled: true }],
+      package: { id: 'BOT_LOG_DELIVERY', title: 'Bot Log + Delivery' },
+    }),
+    getTenantQuotaSnapshot: async () => ({
+      tenantId: 'tenant-linked-1',
+      quotas: { apiKeys: 1 },
+      usage: { apiKeys: 0 },
+      tenantStatus: 'trialing',
+      locale: 'en',
+      subscription: {
+        id: 'sub-linked-1',
+        lifecycleStatus: 'trialing',
+      },
+    }),
+    getPackageCatalog: () => [{ id: 'BOT_LOG_DELIVERY', title: 'Bot Log + Delivery' }],
+    getIdentitySummaryForPreviewAccount: async () => ({
+      user: { id: 'platform-user-linked-1' },
+      identities: [
+        { provider: 'email', providerEmail: 'linked@example.com', verifiedAt: '2026-04-01T10:00:00.000Z' },
+        { provider: 'discord', providerUserId: '123456789012345678', verifiedAt: '2026-04-01T10:01:00.000Z' },
+        { provider: 'steam', providerUserId: '76561199012345678', verifiedAt: '2026-04-01T10:02:00.000Z' },
+      ],
+      memberships: [
+        { tenantId: 'tenant-linked-1', role: 'owner', membershipType: 'tenant', status: 'active' },
+      ],
+      profile: {
+        id: 'platform-profile-linked-1',
+        steamId: '76561199012345678',
+        inGameName: 'Linked Survivor',
+        verificationState: 'fully_verified',
+      },
+      identitySummary: {
+        verificationState: 'fully_verified',
+        linkedAccounts: {
+          email: { linked: true, verified: true, value: 'linked@example.com' },
+          discord: { linked: true, verified: true, value: '123456789012345678' },
+          steam: { linked: true, verified: true, value: '76561199012345678' },
+          inGame: { linked: true, verified: true, value: 'Linked Survivor' },
+        },
+        activeMembership: {
+          tenantId: 'tenant-linked-1',
+          role: 'owner',
+          membershipType: 'tenant',
+          status: 'active',
+        },
+        readiness: {
+          hasEmail: true,
+          hasDiscord: true,
+          hasSteam: true,
+          hasInGameProfile: true,
+          hasActiveMembership: true,
+        },
+      },
+    }),
+    ...store,
+  });
+
+  const state = await service.getPreviewState(created.id);
+  const persisted = await store.getPreviewAccountById(created.id);
+
+  assert.equal(state.ok, true);
+  assert.equal(state.state.account.linkedIdentities.discordLinked, true);
+  assert.equal(state.state.account.linkedIdentities.discordVerified, true);
+  assert.equal(state.state.account.linkedIdentities.steamLinked, true);
+  assert.equal(state.state.account.linkedIdentities.playerMatched, true);
+  assert.equal(state.state.account.linkedIdentities.fullyVerified, true);
+  assert.equal(state.state.identity.verificationState, 'fully_verified');
+  assert.equal(state.state.identity.linkedAccounts.inGame.value, 'Linked Survivor');
+  assert.equal(persisted.linkedIdentities.fullyVerified, true);
+});

@@ -35,9 +35,9 @@ const MANAGED_RUNTIME_SERVICES = Object.freeze([
   },
   {
     key: 'console-agent',
-    label: 'Console Agent',
+    label: 'Delivery Agent',
     pm2Name: 'scum-console-agent',
-    description: 'Execution runtime for managed SCUM commands',
+    description: 'Execution runtime for in-game delivery and managed SCUM commands',
   },
   {
     key: 'player-portal',
