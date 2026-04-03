@@ -75,6 +75,8 @@
 - [C:\new\docs\RUNTIME_OPERATOR_CHECKLIST.md](/C:/new/docs/RUNTIME_OPERATOR_CHECKLIST.md)
 - [C:\new\docs\PR_DESCRIPTION_2026-04-03_TH.md](/C:/new/docs/PR_DESCRIPTION_2026-04-03_TH.md)
 - [C:\new\docs\PRODUCTION_ROLLOUT_PLAN_2026-04-03_TH.md](/C:/new/docs/PRODUCTION_ROLLOUT_PLAN_2026-04-03_TH.md)
+- [C:\new\docs\PR_OPENING_COMMENT_2026-04-03_TH.md](/C:/new/docs/PR_OPENING_COMMENT_2026-04-03_TH.md)
+- [C:\new\docs\STAGING_RUN_SHEET_2026-04-03_TH.md](/C:/new/docs/STAGING_RUN_SHEET_2026-04-03_TH.md)
 
 ## 4. Staging Validation Plan
 
@@ -162,7 +164,8 @@ npm run smoke:postdeploy
 
 1. เปิด PR จาก `codex/local-runtime-finish`
 2. ใช้ [C:\new\docs\PR_DESCRIPTION_2026-04-03_TH.md](/C:/new/docs/PR_DESCRIPTION_2026-04-03_TH.md) เป็นฐานสำหรับข้อความใน PR
-3. ใช้เอกสารนี้คู่กับ [C:\new\docs\GO_LIVE_CHECKLIST_TH.md](/C:/new/docs/GO_LIVE_CHECKLIST_TH.md)
-4. รัน staging validation ตามลำดับในหัวข้อ 4
-5. ใช้ [C:\new\docs\PRODUCTION_ROLLOUT_PLAN_2026-04-03_TH.md](/C:/new/docs/PRODUCTION_ROLLOUT_PLAN_2026-04-03_TH.md) ในวัน deploy จริง
-6. เก็บ external proof ก่อนตัดสินใจ deploy จริง
+3. ใช้ [C:\new\docs\PR_OPENING_COMMENT_2026-04-03_TH.md](/C:/new/docs/PR_OPENING_COMMENT_2026-04-03_TH.md) เป็น opening comment / reviewer note
+4. ใช้เอกสารนี้คู่กับ [C:\new\docs\GO_LIVE_CHECKLIST_TH.md](/C:/new/docs/GO_LIVE_CHECKLIST_TH.md)
+5. ใช้ [C:\new\docs\STAGING_RUN_SHEET_2026-04-03_TH.md](/C:/new/docs/STAGING_RUN_SHEET_2026-04-03_TH.md) ตอนรัน staging จริง
+6. ใช้ [C:\new\docs\PRODUCTION_ROLLOUT_PLAN_2026-04-03_TH.md](/C:/new/docs/PRODUCTION_ROLLOUT_PLAN_2026-04-03_TH.md) ในวัน deploy จริง
+7. เก็บ external proof ก่อนตัดสินใจ deploy จริง
