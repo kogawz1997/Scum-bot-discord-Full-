@@ -18,12 +18,14 @@ test('tenant server bots v4 model keeps runtime and discord management context',
         runtimeKey: 'watcher-1',
         status: 'online',
         lastSeenAt: '2026-03-27T10:00:00.000Z',
+        channel: 'beta',
         meta: {
           agentId: 'agent-sync-1',
           agentRole: 'sync',
           agentScope: 'sync_only',
           serverId: 'server-alpha',
           capabilities: ['sync', 'config', 'restart'],
+          minimumVersion: '2.1.0',
         },
       },
       {
@@ -102,10 +104,16 @@ test('tenant server bots v4 model keeps runtime and discord management context',
   assert.equal(model.rows[0].apiKeyId, 'apikey-1');
   assert.equal(model.rows[0].machine, 'server-bot-host');
   assert.equal(model.rows[0].version, '2.0.0');
+  assert.equal(model.rows[0].channel, 'beta');
+  assert.equal(model.rows[0].versionWatchTone, 'danger');
+  assert.equal(model.rows[0].versionWatchLabel, 'Upgrade to 2.1.0');
+  assert.equal(model.rows[0].bindingTone, 'success');
   assert.equal(model.tokens[0].tokenId, 'token-1');
   assert.equal(model.probeReadiness.restartConfigured, false);
   assert.equal(model.discordLinks.length, 1);
   assert.equal(model.history.length, 1);
+  assert.equal(model.fleetWatch.items[0].value, '1');
+  assert.equal(model.fleetWatch.items[1].value, '0');
 });
 
 test('tenant server bots v4 model falls back to session details and latest error', () => {
@@ -251,6 +259,8 @@ test('tenant server bots v4 html exposes provisioning, management, and discord m
   }));
 
   assert.match(html, /บอตเซิร์ฟเวอร์|Server Bot/);
+  assert.match(html, /data-runtime-fleet-watch="server-bots"/);
+  assert.match(html, /Fleet watch/);
   assert.match(html, /data-runtime-server-id="server-bots"/);
   assert.match(html, /data-runtime-display-name="server-bots"/);
   assert.match(html, /data-runtime-runtime-key="server-bots"/);

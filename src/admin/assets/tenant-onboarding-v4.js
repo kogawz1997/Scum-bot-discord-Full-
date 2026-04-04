@@ -83,7 +83,7 @@
     const meta = row && typeof row.meta === 'object' ? row.meta : {};
     const role = String(meta.agentRole || meta.role || row.role || '').trim().toLowerCase();
     const scope = String(meta.agentScope || meta.scope || row.scope || '').trim().toLowerCase();
-    if (['sync', 'hybrid'].includes(role) || ['sync_only', 'sync-only', 'synconly', 'sync_execute', 'sync-execute'].includes(scope)) return true;
+    if (role === 'sync' || ['sync_only', 'sync-only', 'synconly'].includes(scope)) return true;
     const text = [
       row && row.runtimeKey,
       row && row.channel,
@@ -180,6 +180,33 @@
     return 'muted';
   }
 
+  function isSuccessfulJobStatus(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    return ['done', 'completed', 'complete', 'succeeded', 'success', 'verified'].includes(normalized);
+  }
+
+  function hasSuccessfulConfigChange(state) {
+    const rows = Array.isArray(state && state.serverConfigJobs) ? state.serverConfigJobs : [];
+    return rows.some(function (row) {
+      return isSuccessfulJobStatus(row && (row.status || row.queueStatus || row.resultStatus));
+    });
+  }
+
+  function hasVerifiedRestart(state) {
+    const executions = Array.isArray(state && state.restartExecutions) ? state.restartExecutions : [];
+    if (executions.some(function (row) {
+      return isSuccessfulJobStatus(row && (row.resultStatus || row.status));
+    })) {
+      return true;
+    }
+    const plans = Array.isArray(state && state.restartPlans) ? state.restartPlans : [];
+    return plans.some(function (row) {
+      const healthStatus = String(row && row.healthStatus || '').trim().toLowerCase();
+      return Boolean(row && row.healthVerifiedAt)
+        || ['verified', 'healthy', 'succeeded', 'success'].includes(healthStatus);
+    });
+  }
+
   function buildStep(options) {
     const locked = Boolean(options && options.locked);
     const blocked = !locked && Boolean(options && options.blocked);
@@ -213,6 +240,14 @@
     const configWorkspace = state && state.serverConfigWorkspace && typeof state.serverConfigWorkspace === 'object'
       ? state.serverConfigWorkspace
       : null;
+    const subscriptionStatus = normalizeSubscriptionStatus(
+      state && state.featureEntitlements && (state.featureEntitlements.subscriptionStatus
+      || state.featureEntitlements.subscription && (state.featureEntitlements.subscription.lifecycleStatus || state.featureEntitlements.subscription.status))
+      || state && state.billingOverview && (state.billingOverview.subscriptionStatus || state.billingOverview.lifecycleStatus)
+      || state && state.quota && state.quota.subscription && (state.quota.subscription.lifecycleStatus || state.quota.subscription.status)
+    );
+    const currentPackageLabel = packageLabel(state);
+    const hasPackage = currentPackageLabel && currentPackageLabel !== 'No package assigned';
     const serverBots = runtimes.filter(isServerBot);
     const deliveryAgents = runtimes.filter(isDeliveryAgent);
     const serverBotProvisioning = provisioning.filter(isServerBot);
@@ -235,17 +270,56 @@
     const serverBotAction = actionEntitlement(state, 'can_create_server_bot');
     const editConfigAction = actionEntitlement(state, 'can_edit_config');
     const serverStatusSection = sectionEntitlement(state, 'server');
-    const readyForDailyWork = hasActiveServer && serverBotOnline && deliveryOnline && hasConfig;
+    const firstConfigChangeDone = hasSuccessfulConfigChange(state);
+    const restartVerified = hasVerifiedRestart(state);
+    const packageReady = hasPackage && ['active', 'trial'].includes(subscriptionStatus);
+    const readyForDailyWork = packageReady && hasActiveServer && serverBotOnline && deliveryOnline && hasConfig && restartVerified;
 
     return [
+      buildStep({
+        key: 'choose-package',
+        title: 'Choose package',
+        detail: 'Confirm the tenant package before creating runtimes so feature locks and limits are predictable.',
+        done: packageReady,
+        blocked: false,
+        locked: false,
+        reason: packageReady
+          ? 'The tenant already has an active package and can continue with setup.'
+          : hasPackage
+            ? 'A package is assigned, but billing still needs attention before full setup can continue.'
+            : 'Open billing first and assign the package that should control runtime, config, and commerce access.',
+        href: '/tenant/billing',
+        actionLabel: packageReady ? 'Review billing' : 'Open billing',
+      }),
+      buildStep({
+        key: 'connect-server',
+        title: 'Create or connect server',
+        detail: 'Pick the server this tenant will control before installing the runtime machines.',
+        done: hasActiveServer,
+        blocked: !packageReady,
+        locked: Boolean(serverStatusSection && serverStatusSection.locked),
+        reason: serverStatusSection && serverStatusSection.locked
+          ? serverStatusSection.reason
+          : !packageReady
+            ? 'Choose or restore the package first so the server workspace unlocks the right controls.'
+            : hasActiveServer
+              ? 'A server target is already connected for this tenant.'
+              : 'Open the server workspace and connect the SCUM server this tenant should manage.',
+        href: '/tenant/server',
+        actionLabel: hasActiveServer ? 'Review server' : 'Open server workspace',
+        upgradeAction: serverStatusSection && serverStatusSection.upgradeCta,
+      }),
       buildStep({
         key: 'create-server-bot',
         title: 'Create Server Bot',
         detail: 'Issue the setup token for the machine that can read SCUM.log and edit server config.',
         done: hasServerBot,
+        blocked: !hasActiveServer,
         locked: Boolean(serverBotAction && serverBotAction.locked),
         reason: serverBotAction && serverBotAction.locked
           ? serverBotAction.reason
+          : !hasActiveServer
+            ? 'Connect the tenant server first so the Server Bot has a runtime target.'
           : hasServerBot
             ? 'A Server Bot record or setup token already exists for this tenant.'
             : 'Create the first Server Bot so the server-side machine can connect.',
@@ -327,9 +401,31 @@
         upgradeAction: editConfigAction && editConfigAction.upgradeCta,
       }),
       buildStep({
+        key: 'verify-first-restart',
+        title: 'Run the first config and restart verification',
+        detail: 'Save a real config change once, then confirm the restart plan finished and post-restart health checks came back clean.',
+        done: firstConfigChangeDone && restartVerified,
+        blocked: !hasConfig || !serverBotOnline,
+        locked: Boolean(serverStatusSection && serverStatusSection.locked),
+        reason: serverStatusSection && serverStatusSection.locked
+          ? serverStatusSection.reason
+          : !hasConfig
+            ? 'Open Server Settings first and save a real config change so the platform has a known-good config workflow.'
+            : !serverBotOnline
+              ? 'Bring the Server Bot online first so config apply and restart verification are dependable.'
+              : !firstConfigChangeDone
+                ? 'Save or apply config once before calling the restart workflow done.'
+                : restartVerified
+                  ? 'The first restart and health verification path has already completed successfully.'
+                  : 'Run the first restart from Restart Control and wait for the verification result.',
+        href: firstConfigChangeDone ? '/tenant/restart-control' : '/tenant/server/config',
+        actionLabel: firstConfigChangeDone ? (restartVerified ? 'Review restart history' : 'Open Restart Control') : 'Open Server Settings',
+        upgradeAction: serverStatusSection && serverStatusSection.upgradeCta,
+      }),
+      buildStep({
         key: 'start-using',
         title: 'Start using the system',
-        detail: 'Move into daily operations once the core runtime setup and server settings are ready.',
+        detail: 'Move into daily operations once billing, runtimes, live config, and the first restart verification are all complete.',
         done: readyForDailyWork,
         blocked: !readyForDailyWork,
         locked: Boolean(serverStatusSection && serverStatusSection.locked),
@@ -337,17 +433,47 @@
           ? serverStatusSection.reason
           : readyForDailyWork
             ? 'Core setup is complete. You can move into daily operations now.'
-            : !hasActiveServer
-              ? 'Connect or create a server before daily operations can start.'
-              : !serverBotOnline
-                ? 'Bring the Server Bot online so sync, config, and restart actions are dependable.'
-                : !deliveryOnline
-                  ? 'Bring the Delivery Agent online before relying on live item delivery.'
-                  : 'Review Server Settings first so the tenant starts from confirmed live values.',
+            : !packageReady
+              ? 'Finish the package and billing setup first.'
+              : !hasActiveServer
+                ? 'Connect or create a server before daily operations can start.'
+                : !serverBotOnline
+                  ? 'Bring the Server Bot online so sync, config, and restart actions are dependable.'
+                  : !deliveryOnline
+                    ? 'Bring the Delivery Agent online before relying on live item delivery.'
+                    : !hasConfig
+                      ? 'Review Server Settings first so the tenant starts from confirmed live values.'
+                      : 'Run the first restart verification first so the daily workflow starts from a known-good baseline.',
         href: '/tenant',
         actionLabel: readyForDailyWork ? 'Open daily overview' : 'Finish setup first',
         upgradeAction: serverStatusSection && serverStatusSection.upgradeCta,
       }),
+    ];
+  }
+
+  function buildWizardGroups(checklist) {
+    const rows = Array.isArray(checklist) ? checklist : [];
+    function pick(keys) {
+      return keys.map(function (key) {
+        return rows.find(function (row) { return row.key === key; }) || null;
+      }).filter(Boolean);
+    }
+    return [
+      {
+        title: 'Commercial and server setup',
+        detail: 'Lock the package and server target first so every later step lands in the correct tenant scope.',
+        steps: pick(['choose-package', 'connect-server']),
+      },
+      {
+        title: 'Runtime activation',
+        detail: 'Bring the server-side and delivery machines online before relying on live jobs or in-game delivery.',
+        steps: pick(['create-server-bot', 'connect-server-bot', 'create-delivery-agent', 'connect-delivery-agent']),
+      },
+      {
+        title: 'First live verification',
+        detail: 'Use the real config and restart workspaces once so the tenant starts from a known-good baseline.',
+        steps: pick(['review-server-settings', 'verify-first-restart', 'start-using']),
+      },
     ];
   }
 
@@ -423,6 +549,11 @@
       || state && state.quota && state.quota.subscription && (state.quota.subscription.lifecycleStatus || state.quota.subscription.status)
     );
     const currentPackageLabel = packageLabel(state);
+    const serverBotOnline = checklist.some(function (row) { return row.key === 'connect-server-bot' && row.done; });
+    const serverBotCreated = checklist.some(function (row) { return row.key === 'create-server-bot' && row.done; });
+    const deliveryAgentOnline = checklist.some(function (row) { return row.key === 'connect-delivery-agent' && row.done; });
+    const deliveryAgentCreated = checklist.some(function (row) { return row.key === 'create-delivery-agent' && row.done; });
+    const restartVerified = checklist.some(function (row) { return row.key === 'verify-first-restart' && row.done; });
 
     return {
       shell: {
@@ -451,8 +582,9 @@
         { label: 'Checklist', value: formatNumber(completed) + '/' + formatNumber(checklist.length), detail: 'Setup steps completed inside this tenant', tone: completed === checklist.length ? 'success' : 'info' },
         { label: 'Package', value: currentPackageLabel, detail: 'Current package and feature access for this tenant', tone: subscriptionTone(subscriptionStatus) },
         { label: 'Server', value: activeServer ? firstNonEmpty([activeServer.name, activeServer.slug, activeServer.id], 'Connected') : 'Missing', detail: activeServer ? 'Current tenant server target' : 'Create or connect a server first', tone: activeServer ? 'success' : 'warning' },
-        { label: 'Server Bot', value: checklist[1] && checklist[1].done ? 'Online' : (checklist[0] && checklist[0].done ? 'Pending' : 'Missing'), detail: 'Needed for config apply, sync, and restart jobs', tone: checklist[1] && checklist[1].done ? 'success' : ((checklist[0] && checklist[0].done) ? 'warning' : 'danger') },
-        { label: 'Delivery Agent', value: checklist[3] && checklist[3].done ? 'Online' : (checklist[2] && checklist[2].done ? 'Pending' : 'Missing'), detail: 'Needed for live in-game item handoff', tone: checklist[3] && checklist[3].done ? 'success' : ((checklist[2] && checklist[2].done) ? 'warning' : 'danger') },
+        { label: 'Server Bot', value: serverBotOnline ? 'Online' : (serverBotCreated ? 'Pending' : 'Missing'), detail: 'Needed for config apply, sync, and restart jobs', tone: serverBotOnline ? 'success' : (serverBotCreated ? 'warning' : 'danger') },
+        { label: 'Delivery Agent', value: deliveryAgentOnline ? 'Online' : (deliveryAgentCreated ? 'Pending' : 'Missing'), detail: 'Needed for live in-game item handoff', tone: deliveryAgentOnline ? 'success' : (deliveryAgentCreated ? 'warning' : 'danger') },
+        { label: 'First restart verify', value: restartVerified ? 'Verified' : 'Pending', detail: 'Confirms the first live config/apply/restart path already worked once', tone: restartVerified ? 'success' : 'warning' },
       ],
       progress: {
         completed: completed,
@@ -460,6 +592,7 @@
         percent: readiness.percent,
       },
       readiness: readiness,
+      wizardGroups: buildWizardGroups(checklist),
       checklist: checklist,
     };
   }
@@ -512,11 +645,24 @@
         }).join('')
         : '<article class="tdv4-list-item tdv4-tone-success"><div class="tdv4-list-main"><strong>No blocking setup issues right now</strong><p>The tenant can move forward without package or runtime blockers at the moment.</p></div></article>') +
       '</div>',
+      '<div class="tdv4-section-kicker">Wizard</div>',
+      '<h2 class="tdv4-section-title">One-screen setup path</h2>',
+      '<div class="tdv4-list">' + (Array.isArray(safe.wizardGroups) ? safe.wizardGroups.map(function (group) {
+        return [
+          '<article class="tdv4-list-item tdv4-tone-info">',
+          '<div class="tdv4-list-main"><strong>' + escapeHtml(group.title) + '</strong><p>' + escapeHtml(group.detail) + '</p><div class="tdv4-chip-row">' + (Array.isArray(group.steps) ? group.steps.map(function (step) {
+            return renderBadge(step.title, step.done ? 'success' : (step.locked ? 'danger' : (step.blocked ? 'warning' : 'info')));
+          }).join('') : '') + '</div></div>',
+          '</article>',
+        ].join('');
+      }).join('') : '') + '</div>',
       '<div class="tdv4-section-kicker">Details / history</div>',
       '<h2 class="tdv4-section-title">What happens after setup</h2>',
       '<div class="tdv4-list">',
+      '<article class="tdv4-list-item tdv4-tone-info"><div class="tdv4-list-main"><strong>Package and server first</strong><p>Billing and server targeting should be correct before the runtime machines are created, otherwise the setup tokens will point at the wrong tenant or wrong server.</p></div></article>',
       '<article class="tdv4-list-item tdv4-tone-info"><div class="tdv4-list-main"><strong>Server Bot first</strong><p>Config save, apply, backup, and restart actions depend on the Server Bot being online.</p></div></article>',
       '<article class="tdv4-list-item tdv4-tone-info"><div class="tdv4-list-main"><strong>Delivery Agent second</strong><p>Orders can exist before it, but reliable in-game delivery starts only after the Delivery Agent connects.</p></div></article>',
+      '<article class="tdv4-list-item tdv4-tone-info"><div class="tdv4-list-main"><strong>Run one real restart before daily work</strong><p>Use the real config and restart pages once so the tenant begins from a verified baseline instead of a placeholder-only setup.</p></div></article>',
       '<article class="tdv4-list-item tdv4-tone-info"><div class="tdv4-list-main"><strong>Then move into daily operations</strong><p>After setup, the Server, Orders, Players, and Events pages become the daily workspace.</p></div></article>',
       '</div>',
       '</section>',

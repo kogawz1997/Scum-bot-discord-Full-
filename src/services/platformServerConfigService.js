@@ -737,6 +737,13 @@ function createPlatformServerConfigService(deps = {}) {
     getServerConfigDelegatesOrThrow(db);
   }
 
+  async function withServerConfigTransaction(db, work) {
+    if (db && typeof db.$transaction === 'function') {
+      return db.$transaction(async (tx) => work(tx));
+    }
+    return work(db);
+  }
+
   async function readSnapshotRow(db, serverId) {
     await ensurePlatformServerConfigTables(db);
     const { snapshot } = getServerConfigDelegatesOrThrow(db);
@@ -1341,7 +1348,7 @@ function createPlatformServerConfigService(deps = {}) {
     if (!tenantId || !serverId) return { ok: false, reason: 'server-config-claim-invalid' };
     return withTenantConfigDb(tenantId, async (db) => {
       await ensurePlatformServerConfigTables(db);
-      const nextJob = await db.$transaction(async (tx) => {
+      const nextJob = await withServerConfigTransaction(db, async (tx) => {
         const { job: jobDelegate } = getServerConfigDelegatesOrThrow(tx);
         const queuedJob = await jobDelegate.findFirst({
           where: {
@@ -1397,7 +1404,7 @@ function createPlatformServerConfigService(deps = {}) {
 
     return withTenantConfigDb(tenantId, async (db) => {
       await ensurePlatformServerConfigTables(db);
-      const completion = await db.$transaction(async (tx) => {
+      const completion = await withServerConfigTransaction(db, async (tx) => {
         const {
           job: jobDelegate,
           backup: backupDelegate,

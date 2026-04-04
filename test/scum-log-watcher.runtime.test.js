@@ -4,7 +4,13 @@ const fsp = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 
-const watcherModulePath = path.join(__dirname, '..', 'scum-log-watcher.js');
+const watcherModulePath = path.join(
+  __dirname,
+  '..',
+  'src',
+  'services',
+  'scumLogWatcherRuntime.js',
+);
 const watcherRuntimeModulePath = path.join(
   __dirname,
   '..',

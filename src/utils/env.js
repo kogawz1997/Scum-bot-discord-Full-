@@ -537,11 +537,8 @@ function getDeliveryAgentRuntimeErrors(env = process.env) {
     }
   }
 
-  if (backend === 'process' && isTruthy(env.SCUM_CONSOLE_AGENT_AUTOSTART)) {
-    const serverExe = String(env.SCUM_CONSOLE_AGENT_SERVER_EXE || '').trim();
-    if (!serverExe) {
-      errors.push('SCUM_CONSOLE_AGENT_SERVER_EXE is required when SCUM_CONSOLE_AGENT_BACKEND=process and SCUM_CONSOLE_AGENT_AUTOSTART=true.');
-    }
+  if (backend && backend !== 'exec') {
+    errors.push('SCUM_CONSOLE_AGENT_BACKEND only supports exec for the delivery agent runtime.');
   }
 
   if (!isProduction(env)) return errors;

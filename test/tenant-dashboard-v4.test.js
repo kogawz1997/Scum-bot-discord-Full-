@@ -35,6 +35,9 @@ test('tenant dashboard v4 model maps legacy tenant state into operator-first con
   assert.equal(model.readiness.nextRequiredStep.title, 'ติดตั้ง Server Bot');
   assert.equal(model.quickActions.length, 4);
   assert.equal(model.taskGroups.length, 3);
+  assert.ok(model.incidentCenter);
+  assert.equal(model.incidentCenter.totalOpen, model.issues.length);
+  assert.ok(model.incidentCenter.summaryCards.some((item) => item.title === 'Open incidents'));
   assert.ok(model.issues.some((item) => item.title.includes('ล้มเหลว')));
   assert.ok(model.contextBlocks.some((item) => item.label === 'สถานะแพ็กเกจ'));
   assert.ok(model.railCards.length >= 3);
@@ -50,6 +53,9 @@ test('tenant dashboard v4 html includes shell, decision panel, and issue center'
   assert.match(html, /tdv4-topbar/);
   assert.match(html, /tdv4-priority-panel/);
   assert.match(html, /dashboard-issues/);
+  assert.match(html, /data-incident-center/);
+  assert.match(html, /Incident \/ Alert Center/);
+  assert.match(html, /data-incident-summary/);
   assert.match(html, /tdv4-details-panel/);
   assert.match(html, /System readiness/);
   assert.match(html, /ตอนนี้พร้อมแค่ไหน และต้องทำอะไรต่อ/);
@@ -116,4 +122,44 @@ test('tenant dashboard v4 humanizes admin security notifications', () => {
   assert.ok(model.issues.some((item) => item.detail.includes('รหัสผ่านหรือข้อมูลเข้าสู่ระบบไม่ถูกต้อง')));
   assert.ok(model.activity.some((item) => item.detail.includes('IP 127.0.0.1')));
   assert.ok(model.activity.every((item) => !item.detail.includes('reason=invalid-credentials')));
+});
+
+test('tenant dashboard v4 incident center maps alert kinds to actionable CTAs', () => {
+  const model = createTenantDashboardV4Model({
+    me: { tenantId: 'tenant-runtime-ops', role: 'tenant_admin' },
+    tenantConfig: { name: 'Runtime Ops' },
+    overview: { serverStatus: 'warning' },
+    queueItems: [{ id: 'queue-1' }, { id: 'queue-2' }, { id: 'queue-3' }, { id: 'queue-4' }, { id: 'queue-5' }, { id: 'queue-6' }],
+    deadLetters: [{ id: 'dead-1' }],
+    notifications: [
+      {
+        severity: 'danger',
+        kind: 'runtime-offline',
+        detail: JSON.stringify({
+          kind: 'runtime-offline',
+          runtimeRole: 'sync_only',
+          runtimeLabel: 'Server Bot',
+        }),
+        createdAt: '2026-03-27T10:00:00+07:00',
+      },
+      {
+        severity: 'warning',
+        kind: 'delivery-reconcile-anomaly',
+        detail: JSON.stringify({
+          kind: 'delivery-reconcile-anomaly',
+          count: 3,
+        }),
+        createdAt: '2026-03-27T10:05:00+07:00',
+      },
+    ],
+  });
+
+  assert.ok(model.incidentCenter.items.some((item) => item.href === '#server-status' || item.href === '#server-bots'));
+  assert.ok(model.incidentCenter.items.some((item) => item.href === '#delivery'));
+  assert.ok(model.incidentCenter.categorySummary.some((item) => item.key === 'delivery' || item.key === 'runtime'));
+
+  const html = buildTenantDashboardV4Html(model);
+  assert.match(html, /Open server status|Open Server Bot/);
+  assert.match(html, /Open delivery/);
+  assert.match(html, /data-incident-timeline/);
 });

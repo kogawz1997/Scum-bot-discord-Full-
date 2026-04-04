@@ -15,7 +15,7 @@ const {
 test('normalizeRole collapses runtime aliases', () => {
   assert.equal(normalizeRole('watcher'), 'server-bot');
   assert.equal(normalizeRole('console-agent'), 'delivery-agent');
-  assert.equal(normalizeRole('HYBRID'), 'hybrid');
+  assert.equal(normalizeRole('HYBRID'), 'unknown');
 });
 
 test('buildRuntimeInventory summarizes runtime status and filters', () => {

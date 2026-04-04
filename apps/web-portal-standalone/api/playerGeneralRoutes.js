@@ -71,6 +71,7 @@ function createPlayerGeneralRoutes(deps) {
     isDiscordId,
     listServerRegistry,
     getPlatformUserIdentitySummary,
+    issueEmailVerificationToken,
     createRaidRequest,
     listRaidRequests,
     listRaidWindows,
@@ -978,6 +979,85 @@ function createPlayerGeneralRoutes(deps) {
           platformUserId: identity?.user?.id || session.platformUserId || null,
           platformProfileId: identity?.profile?.id || session.platformProfileId || null,
           identitySummary: normalizedIdentitySummary,
+        },
+      });
+      return true;
+    }
+
+    if (pathname === '/player/api/profile/email-verification/request' && method === 'POST') {
+      const body = await readJsonBody(req);
+      const email = safeNormalizeText(body?.email || session.primaryEmail);
+      if (!email) {
+        sendJson(res, 400, {
+          ok: false,
+          error: 'email-required',
+        });
+        return true;
+      }
+      const identity = await readOptionalPlayerData(
+        'player-identity-summary',
+        () => (
+          typeof getPlatformUserIdentitySummary === 'function'
+            ? getPlatformUserIdentitySummary({
+              userId: session.platformUserId || null,
+              email: email || session.primaryEmail || null,
+              discordUserId: session.discordId,
+              tenantId: tenantOptions.tenantId || null,
+              fallbackEmail: email || session.primaryEmail || null,
+              fallbackDiscordUserId: session.discordId || null,
+            })
+            : null
+        ),
+        null,
+      );
+      const emailAccount = identity?.identitySummary?.linkedAccounts?.email || null;
+      if (emailAccount?.linked === false) {
+        sendJson(res, 400, {
+          ok: false,
+          error: 'email-not-linked',
+        });
+        return true;
+      }
+      if (emailAccount?.verified === true) {
+        sendJson(res, 200, {
+          ok: true,
+          data: {
+            requested: false,
+            alreadyVerified: true,
+            message: 'Email is already verified.',
+          },
+        });
+        return true;
+      }
+      if (typeof issueEmailVerificationToken !== 'function') {
+        sendJson(res, 500, {
+          ok: false,
+          error: 'email-verification-not-configured',
+        });
+        return true;
+      }
+      const result = await issueEmailVerificationToken({
+        email,
+        userId: identity?.user?.id || session.platformUserId || null,
+        metadata: {
+          source: 'player-profile-email-verification',
+          tenantId: tenantOptions.tenantId || null,
+          platformProfileId: session.platformProfileId || null,
+          discordUserId: session.discordId || null,
+        },
+      });
+      if (!result?.ok) {
+        sendJson(res, 400, {
+          ok: false,
+          error: result?.reason || 'email-verification-request-failed',
+        });
+        return true;
+      }
+      sendJson(res, 200, {
+        ok: true,
+        data: {
+          requested: true,
+          message: 'Verification email queued.',
         },
       });
       return true;

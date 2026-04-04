@@ -266,6 +266,19 @@ test('player control v4 profile page shows linked account readiness and membersh
   assert.match(profileModel.mainHtml, /ผู้เล่น \(ใช้งานอยู่\)/);
 });
 
+test('player control v4 profile page shows actionable identity attention when email is not verified', () => {
+  const state = buildSampleState();
+  state.profile.identitySummary.verificationState = 'pending';
+  state.profile.identitySummary.linkedAccounts.email.verified = false;
+
+  const profileModel = createPlayerControlV4Model(state, 'profile');
+
+  assert.match(profileModel.mainHtml, /data-player-identity-attention/);
+  assert.match(profileModel.mainHtml, /Verify email before recovery or support/);
+  assert.match(profileModel.mainHtml, /data-player-email-verification-request/);
+  assert.match(profileModel.mainHtml, /Send verification email/);
+});
+
 test('player control v4 donations page exposes supporter summary, readiness, and history', () => {
   const state = buildSampleState();
   state.featureAccess.sections.donations.enabled = true;

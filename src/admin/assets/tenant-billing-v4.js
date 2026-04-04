@@ -187,6 +187,110 @@
       });
   }
 
+  function isRetryableInvoiceStatus(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    return ['open', 'past_due', 'failed'].includes(normalized);
+  }
+
+  function isFailedAttemptStatus(value) {
+    return String(value || '').trim().toLowerCase() === 'failed';
+  }
+
+  function buildBillingOpsCenter(args) {
+    const currentSubscription = args && args.currentSubscription || null;
+    const subscriptionState = args && args.subscriptionState || 'unknown';
+    const invoices = Array.isArray(args && args.invoices) ? args.invoices : [];
+    const attempts = Array.isArray(args && args.attempts) ? args.attempts : [];
+    const billingOverview = args && args.billingOverview && typeof args.billingOverview === 'object' ? args.billingOverview : {};
+    const renewalAt = firstNonEmpty([args && args.renewalAt], '');
+    const currentPlan = args && args.currentPlan || null;
+    const openInvoices = invoices.filter(function (row) { return isRetryableInvoiceStatus(row && row.status); });
+    const failedAttempts = attempts.filter(function (row) { return isFailedAttemptStatus(row && row.status); });
+    const paidInvoices = invoices.filter(function (row) { return String(row && row.status || '').trim().toLowerCase() === 'paid'; });
+    const collectedCents = billingOverview.summary && Number(billingOverview.summary.collectedCents || 0) || 0;
+    const openInvoiceCount = Number(billingOverview.summary && billingOverview.summary.openInvoiceCount || openInvoices.length || 0);
+    const retryEligible = Boolean(currentSubscription && currentPlan && (openInvoices.length > 0 || failedAttempts.length > 0 || subscriptionState === 'suspended'));
+    const latestInvoice = invoices[0] || null;
+    const latestAttempt = attempts[0] || null;
+    const timeline = [
+      {
+        tone: subscriptionStateTone(subscriptionState),
+        title: 'Subscription lifecycle',
+        detail: getSubscriptionStateLabel(subscriptionState),
+        meta: renewalAt ? `Current period ends ${formatDateTime(renewalAt, 'No renewal date yet')}` : 'No renewal date has been recorded yet',
+      },
+      latestInvoice
+        ? {
+          tone: isRetryableInvoiceStatus(latestInvoice.status) ? 'warning' : 'success',
+          title: 'Latest invoice',
+          detail: firstNonEmpty([latestInvoice.id], 'Invoice'),
+          meta: `${firstNonEmpty([latestInvoice.status], 'unknown')} · ${formatMoney(latestInvoice.amountCents, latestInvoice.currency)}`,
+        }
+        : null,
+      latestAttempt
+        ? {
+          tone: isFailedAttemptStatus(latestAttempt.status) ? 'warning' : 'info',
+          title: 'Latest payment attempt',
+          detail: firstNonEmpty([latestAttempt.provider, latestAttempt.id], 'Payment attempt'),
+          meta: firstNonEmpty([
+            latestAttempt.errorDetail,
+            latestAttempt.errorCode,
+            `${firstNonEmpty([latestAttempt.status], 'unknown')} · ${formatMoney(latestAttempt.amountCents, latestAttempt.currency)}`,
+          ], 'No payment-attempt detail recorded yet'),
+        }
+        : null,
+      openInvoices.length > 0
+        ? {
+          tone: 'warning',
+          title: 'Outstanding invoices',
+          detail: `${formatNumber(openInvoices.length, '0')} invoice(s) still need payment attention`,
+          meta: 'Use retry payment before package access degrades further.',
+        }
+        : null,
+      paidInvoices.length > 0
+        ? {
+          tone: 'success',
+          title: 'Collected invoices',
+          detail: `${formatNumber(paidInvoices.length, '0')} invoice(s) already paid`,
+          meta: formatMoney(collectedCents, currentSubscription && currentSubscription.currency || 'THB'),
+        }
+        : null,
+    ].filter(Boolean);
+
+    return {
+      retryEligible: retryEligible,
+      retryPlanId: retryEligible ? currentPlan.id : '',
+      subscriptionId: currentSubscription && currentSubscription.id || '',
+      summaryCards: [
+        {
+          label: 'Open invoices',
+          value: formatNumber(openInvoiceCount, '0'),
+          detail: openInvoiceCount > 0 ? 'Invoices still waiting on payment or recovery.' : 'No open invoices need attention right now.',
+          tone: openInvoiceCount > 0 ? 'warning' : 'success',
+        },
+        {
+          label: 'Failed retries',
+          value: formatNumber(failedAttempts.length, '0'),
+          detail: failedAttempts.length > 0 ? 'Recent payment attempts failed and should be retried.' : 'No failed payment attempts are visible.',
+          tone: failedAttempts.length > 0 ? 'warning' : 'success',
+        },
+        {
+          label: 'Lifecycle state',
+          value: getSubscriptionStateLabel(subscriptionState),
+          detail: renewalAt ? `Current period ends ${formatDateTime(renewalAt, 'No renewal date yet')}` : 'No renewal date has been recorded yet.',
+          tone: subscriptionStateTone(subscriptionState),
+        },
+        {
+          label: 'Collected total',
+          value: formatMoney(collectedCents, currentSubscription && currentSubscription.currency || 'THB'),
+          detail: 'Paid invoices recorded in the platform billing history.',
+          tone: 'success',
+        },
+      ],
+      timeline: timeline,
+    };
+  }
+
   function createTenantBillingV4Model(source) {
     const state = source && typeof source === 'object' ? source : {};
     const subscriptions = Array.isArray(state.subscriptions) ? state.subscriptions : [];
@@ -227,6 +331,16 @@
       currentSubscription && currentSubscription.renewsAt,
     ], '');
     const nextUpgradePlan = planRows.find(function (plan) { return !plan.current; }) || null;
+    const currentPlan = planRows.find(function (plan) { return plan.current; }) || null;
+    const billingOpsCenter = buildBillingOpsCenter({
+      currentSubscription,
+      subscriptionState,
+      invoices,
+      attempts,
+      billingOverview,
+      renewalAt,
+      currentPlan,
+    });
 
     return {
       shell: {
@@ -307,6 +421,7 @@
       quotaRows: quotaRows.slice(0, 12),
       planRows: planRows.slice(0, 6),
       subscriptionState: subscriptionState,
+      billingOpsCenter,
     };
   }
 
@@ -381,13 +496,56 @@
       '</div>',
       '</section>',
       '<section class="tdv4-kpi-strip">' + safe.summaryStrip.map(renderSummaryCard).join('') + '</section>',
+      '<section class="tdv4-panel" data-tenant-billing-ops>',
+      '<div class="tdv4-panel-head">',
+      '<div class="tdv4-stack">',
+      '<div class="tdv4-section-kicker">Billing / Subscription Ops Center</div>',
+      '<h2 class="tdv4-section-title">Keep the package active and payment recovery moving</h2>',
+      '<p class="tdv4-section-copy">Track overdue pressure, payment retries, and lifecycle milestones from one workspace before package access degrades.</p>',
+      '</div>',
+      '<div class="tdv4-action-list">',
+      safe.billingOpsCenter && safe.billingOpsCenter.retryEligible
+        ? '<button class="tdv4-button tdv4-button-primary" type="button" data-tenant-billing-checkout data-tenant-billing-retry="true" data-plan-id="' + escapeHtml(safe.billingOpsCenter.retryPlanId) + '" data-subscription-id="' + escapeHtml(safe.billingOpsCenter.subscriptionId) + '">Retry payment</button>'
+        : '',
+      '<button class="tdv4-button tdv4-button-secondary" type="button" data-tenant-billing-refresh>Refresh billing state</button>',
+      '<a class="tdv4-button tdv4-button-secondary" href="#billing-plan-options">Review package options</a>',
+      '</div>',
+      '</div>',
+      '<div class="tdv4-kpi-strip">' + (safe.billingOpsCenter ? safe.billingOpsCenter.summaryCards.map(renderSummaryCard).join('') : '') + '</div>',
       '<section class="tdv4-dual-grid">',
-      '<section class="tdv4-panel">',
+      '<section id="billing-ops-timeline" class="tdv4-panel">',
+      '<div class="tdv4-section-kicker">Lifecycle timeline</div>',
+      '<h3 class="tdv4-section-title">Recent billing milestones</h3>',
+      renderSimpleList(
+        safe.billingOpsCenter && Array.isArray(safe.billingOpsCenter.timeline) ? safe.billingOpsCenter.timeline : [],
+        'No billing milestones yet',
+        'The billing timeline will show lifecycle and recovery signals here as soon as the tenant starts billing.',
+        function (row) {
+          return '<article class="tdv4-list-item tdv4-tone-' + escapeHtml(row.tone || 'muted') + '"><div class="tdv4-list-main"><strong>' + escapeHtml(row.title) + '</strong><p>' + escapeHtml(row.detail) + '</p></div><div class="tdv4-list-meta">' + escapeHtml(row.meta || '') + '</div></article>';
+        }
+      ),
+      '</section>',
+      '<section id="billing-recovery-context" class="tdv4-panel">',
+      '<div class="tdv4-section-kicker">Recovery context</div>',
+      '<h3 class="tdv4-section-title">What to do next</h3>',
+      renderSimpleList(
+        safe.lockedActions.slice(0, 3),
+        'No package blockers',
+        'No feature locks are blocking daily operations right now.',
+        function (row) {
+          return '<article class="tdv4-list-item tdv4-tone-warning"><div class="tdv4-list-main"><strong>' + escapeHtml(row.label) + '</strong><p>' + escapeHtml(row.reason) + '</p></div></article>';
+        }
+      ),
+      '</section>',
+      '</section>',
+      '</section>',
+      '<section class="tdv4-dual-grid">',
+      '<section id="billing-current-state" class="tdv4-panel">',
       '<div class="tdv4-section-kicker">สถานะปัจจุบัน</div>',
       '<h2 class="tdv4-section-title">การสมัครใช้ที่กำลังมีผล</h2>',
       renderSubscriptionList(safe),
       '</section>',
-      '<section class="tdv4-panel">',
+      '<section id="billing-plan-options" class="tdv4-panel">',
       '<div class="tdv4-section-kicker">สิ่งที่ควรทำต่อ</div>',
       '<h2 class="tdv4-section-title">ตัวเลือกอัปเกรดแพ็กเกจ</h2>',
       '<p class="tdv4-section-copy">ใช้ส่วนนี้เมื่อฟีเจอร์ที่ถูกล็อกเริ่มกระทบงานประจำวัน หรือเมื่อเพดานการใช้งานใกล้เต็ม</p>',

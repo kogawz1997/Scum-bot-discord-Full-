@@ -75,6 +75,7 @@ The current workstation is no longer in the broad local-runtime cleanup state, a
   - [../scripts/install-delivery-agent.ps1](../scripts/install-delivery-agent.ps1)
   - [../scripts/runtime-env-check.js](../scripts/runtime-env-check.js)
   - [RUNTIME_OPERATOR_CHECKLIST.md](./RUNTIME_OPERATOR_CHECKLIST.md)
+
 ### 5. Finish billing / subscription lifecycle to commercial depth
 
 - Status: `partial`
@@ -118,7 +119,7 @@ The current workstation is no longer in the broad local-runtime cleanup state, a
 - Main files:
   - [../src/prisma.js](../src/prisma.js)
   - [../src/data/repositories/controlPlaneRegistryRepository.js](../src/data/repositories/controlPlaneRegistryRepository.js)
-  - [../src/store/_persist.js](../src/store/_persist.js)
+  - [../src/store/\_persist.js](../src/store/_persist.js)
   - [../src/services/platformTenantConfigService.js](../src/services/platformTenantConfigService.js)
   - [../src/services/platformServerConfigService.js](../src/services/platformServerConfigService.js)
 

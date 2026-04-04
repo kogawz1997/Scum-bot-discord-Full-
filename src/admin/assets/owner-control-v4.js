@@ -1874,7 +1874,7 @@
     ].join('');
   }
 
-  function renderPackagesWorkspace(packageUsageRows, featureCatalog) {
+  function renderPackagesWorkspaceLegacy(packageUsageRows, featureCatalog) {
     const packageCards = packageUsageRows.map((pkg) => [
       '<article class="odvc4-package-card">',
       `<span class="odv4-table-label">${escapeHtml(pkg.id)}</span>`,
@@ -2273,7 +2273,7 @@
     ].join('');
   }
 
-  function renderSubscriptionsWorkspaceV2(expiringRows, invoiceSummary, tenantRows, packageCatalog, planOptions) {
+  function renderSubscriptionsWorkspaceLegacyV2(expiringRows, invoiceSummary, tenantRows, packageCatalog, planOptions) {
     const rows = Array.isArray(tenantRows) ? tenantRows : [];
     const packageLabelLookup = buildOwnerPackageLabelLookup(packageCatalog);
     const actionableRows = rows

@@ -19,7 +19,8 @@ test('tenant delivery agents v4 model keeps runtime management context', () => {
         status: 'online',
         version: '1.4.2',
         lastSeenAt: '2026-03-27T10:00:00.000Z',
-        meta: { agentId: 'agent-delivery-1', agentRole: 'execute', agentScope: 'execute_only', serverId: 'server-alpha' },
+        channel: 'beta',
+        meta: { agentId: 'agent-delivery-1', agentRole: 'execute', agentScope: 'execute_only', serverId: 'server-alpha', minimumVersion: '1.5.0' },
       },
       {
         runtimeKey: 'watcher-1',
@@ -88,10 +89,16 @@ test('tenant delivery agents v4 model keeps runtime management context', () => {
   assert.equal(model.rows[0].apiKeyId, 'apikey-1');
   assert.equal(model.rows[0].machine, 'machine-a');
   assert.equal(model.rows[0].version, '1.4.2');
+  assert.equal(model.rows[0].channel, 'beta');
+  assert.equal(model.rows[0].versionWatchTone, 'danger');
+  assert.equal(model.rows[0].versionWatchLabel, 'Upgrade to 1.5.0');
+  assert.equal(model.rows[0].bindingTone, 'success');
   assert.equal(model.tokens.length, 1);
   assert.equal(model.tokens[0].tokenId, 'token-1');
   assert.equal(model.history.length, 1);
   assert.equal(model.history[0].sessionId, 'session-1');
+  assert.equal(model.fleetWatch.items[0].value, '1');
+  assert.equal(model.fleetWatch.items[1].value, '0');
 });
 
 test('tenant delivery agents v4 model falls back to session details and latest error', () => {
@@ -218,6 +225,8 @@ test('tenant delivery agents v4 html exposes provisioning and management hooks',
   }));
 
   assert.match(html, /บอตส่งของ/);
+  assert.match(html, /data-runtime-fleet-watch="delivery-agents"/);
+  assert.match(html, /Fleet watch/);
   assert.match(html, /data-runtime-server-id="delivery-agents"/);
   assert.match(html, /data-runtime-display-name="delivery-agents"/);
   assert.match(html, /data-runtime-runtime-key="delivery-agents"/);

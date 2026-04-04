@@ -610,13 +610,10 @@ function addRconChecks() {
       }
       validateCommandTemplate(template);
     }
-    if (backend === 'process' && isTruthy(process.env.SCUM_CONSOLE_AGENT_AUTOSTART, false)) {
-      const serverExe = String(process.env.SCUM_CONSOLE_AGENT_SERVER_EXE || '').trim();
-      if (!serverExe) {
-        throw new Error(
-          'SCUM_CONSOLE_AGENT_SERVER_EXE is required when backend=process and autostart is enabled',
-        );
-      }
+    if (backend !== 'exec') {
+      throw new Error(
+        'SCUM_CONSOLE_AGENT_BACKEND must be exec because the delivery agent no longer embeds server control',
+      );
     }
     return;
   }

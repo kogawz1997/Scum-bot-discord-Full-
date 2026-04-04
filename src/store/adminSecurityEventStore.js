@@ -109,35 +109,19 @@ function getPersistenceMode() {
   if (typeof isDbPersistenceEnabled === 'function' && isDbPersistenceEnabled()) {
     return 'db';
   }
-  return 'auto';
-}
-
-function shouldFallbackToFile(error) {
-  const code = String(error?.code || '').trim().toUpperCase();
-  if (['P2021', 'P2022', 'P1017'].includes(code)) return true;
-  const message = String(error?.message || '').toLowerCase();
-  return message.includes('no such table')
-    || message.includes('does not exist')
-    || message.includes('unknown table')
-    || message.includes('error validating datasource')
-    || message.includes('url must start with the protocol')
-    || message.includes('platformadminsecurityevent');
+  return 'db';
 }
 
 async function runWithPreferredPersistence(dbWork, fileWork) {
   const mode = getPersistenceMode();
   const delegate = getSecurityEventDelegate();
-  if (mode === 'file' || !delegate) {
+  if (mode === 'file') {
     return fileWork();
   }
-  try {
-    return await dbWork(delegate);
-  } catch (error) {
-    if (mode === 'db' || !shouldFallbackToFile(error)) {
-      throw error;
-    }
-    return fileWork();
+  if (!delegate) {
+    throw new Error('admin-security-event-db-delegate-unavailable');
   }
+  return dbWork(delegate);
 }
 
 function queueWrite(work, label) {
@@ -221,13 +205,7 @@ function initAdminSecurityEventStore() {
     initPromise = runWithPreferredPersistence(
       (delegate) => hydrateFromDatabase(delegate),
       () => hydrateFromDisk(),
-    ).catch(async (error) => {
-      if (getPersistenceMode() === 'db' || !shouldFallbackToFile(error)) {
-        throw error;
-      }
-      console.error('[adminSecurityEventStore] failed to hydrate from prisma:', error.message);
-      await hydrateFromDisk();
-    });
+    );
   }
   return initPromise;
 }

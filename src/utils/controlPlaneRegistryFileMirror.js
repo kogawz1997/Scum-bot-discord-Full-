@@ -19,11 +19,7 @@ const CONTROL_PLANE_REGISTRY_HIGH_CHURN_FILE_MIRROR_SLICES = Object.freeze([
   'syncEvents',
 ]);
 
-const CONTROL_PLANE_REGISTRY_DEFAULT_DB_FILE_MIRROR_SLICES = Object.freeze(
-  CONTROL_PLANE_REGISTRY_SLICE_KEYS.filter(
-    (sliceKey) => !CONTROL_PLANE_REGISTRY_HIGH_CHURN_FILE_MIRROR_SLICES.includes(sliceKey),
-  ),
-);
+const CONTROL_PLANE_REGISTRY_DEFAULT_DB_FILE_MIRROR_SLICES = Object.freeze([]);
 
 const SLICE_KEY_LOOKUP = new Map(
   CONTROL_PLANE_REGISTRY_SLICE_KEYS.map((sliceKey) => [sliceKey.toLowerCase(), sliceKey]),

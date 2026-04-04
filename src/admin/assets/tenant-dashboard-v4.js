@@ -478,6 +478,58 @@
       && legacyState.serverConfigWorkspace.categories.length > 0;
   }
 
+  function buildIssueRecord(values) {
+    const item = values && typeof values === 'object' ? values : {};
+    return {
+      tone: item.tone || 'warning',
+      category: item.category || 'general',
+      title: firstNonEmpty([item.title], 'Issue'),
+      detail: firstNonEmpty([item.detail], 'Review the latest platform signal before continuing.'),
+      meta: firstNonEmpty([item.meta], ''),
+      href: firstNonEmpty([item.href], '#incidents'),
+      actionLabel: firstNonEmpty([item.actionLabel], 'Open issue'),
+    };
+  }
+
+  function resolveNotificationAction(item, payload, localized) {
+    const kind = String(item?.kind || item?.type || payload?.kind || '').trim().toLowerCase();
+    const runtimeLabel = firstNonEmpty([payload?.runtimeLabel, payload?.runtimeKey, payload?.runtimeRole], '').toLowerCase();
+    const readableTitle = firstNonEmpty([localized?.title, item?.title], '').toLowerCase();
+    const readableDetail = firstNonEmpty([localized?.detail, item?.detail, item?.message], '').toLowerCase();
+
+    if (kind.includes('delivery') || kind === 'dead-letter-threshold' || kind === 'consecutive-failures') {
+      return { category: 'delivery', href: '#delivery', actionLabel: 'Open delivery' };
+    }
+    if (kind.includes('quota') || kind.includes('subscription') || /invoice|payment|billing/.test(readableDetail)) {
+      return { category: 'commercial', href: '#plan', actionLabel: 'Review package' };
+    }
+    if (kind.includes('runtime') || kind.includes('agent-version') || kind.includes('agent-runtime')) {
+      if (/sync|server|watcher|bot/.test(runtimeLabel)) {
+        return { category: 'runtime', href: '#server-bots', actionLabel: 'Open Server Bot' };
+      }
+      if (/execute|delivery|console/.test(runtimeLabel)) {
+        return { category: 'delivery', href: '#delivery-agents', actionLabel: 'Open Delivery Agent' };
+      }
+      return { category: 'runtime', href: '#server-status', actionLabel: 'Open server status' };
+    }
+    if (kind.includes('config') || /config/.test(readableTitle) || /config/.test(readableDetail)) {
+      return { category: 'config', href: '#server-config', actionLabel: 'Open config' };
+    }
+    if (kind.includes('restart') || /restart/.test(readableTitle) || /restart/.test(readableDetail)) {
+      return { category: 'runtime', href: '#restart-control', actionLabel: 'Open restart control' };
+    }
+    if (kind.includes('webhook') || /webhook/.test(readableTitle) || /webhook/.test(readableDetail)) {
+      return { category: 'automation', href: '#audit', actionLabel: 'Open audit' };
+    }
+    if (/admin security|admin login/.test(readableTitle) || /security/.test(readableDetail)) {
+      return { category: 'security', href: '#audit', actionLabel: 'Open audit' };
+    }
+    if (/sync/.test(readableTitle) || /sync/.test(readableDetail)) {
+      return { category: 'sync', href: '#server-status', actionLabel: 'Open server status' };
+    }
+    return { category: 'general', href: '#incidents', actionLabel: 'Review issue' };
+  }
+
   function buildIssues(legacyState) {
     const issues = [];
     const deadLetters = listCount(legacyState?.deadLetters);
@@ -493,6 +545,9 @@
 
     if (serverStatus !== 'online') {
       issues.push({
+        category: 'runtime',
+        href: '#server-status',
+        actionLabel: 'Open server status',
         tone: 'danger',
         title: 'สถานะเซิร์ฟเวอร์ยังไม่พร้อม',
         detail: 'เปิดหน้าสถานะเซิร์ฟเวอร์ก่อน เพื่อตรวจว่าปัญหาอยู่ที่ไหน',
@@ -501,6 +556,9 @@
     }
     if (deadLetters > 0) {
       issues.push({
+        category: 'delivery',
+        href: '#delivery',
+        actionLabel: 'Open delivery',
         tone: 'danger',
         title: 'มีงานล้มเหลวค้างอยู่',
         detail: 'ตรวจสาเหตุก่อนสั่งลองใหม่หรือคืนสถานะให้ผู้เล่น',
@@ -509,6 +567,9 @@
     }
     if (queueDepth > 5) {
       issues.push({
+        category: 'delivery',
+        href: '#delivery',
+        actionLabel: 'Open delivery',
         tone: 'warning',
         title: 'คิวส่งของเริ่มสะสม',
         detail: 'ตรวจภาระงานของ Delivery Agent และงานที่รอนานผิดปกติ',
@@ -517,6 +578,9 @@
     }
     if (anomalyCount > 0 || abuseCount > 0) {
       issues.push({
+        category: abuseCount > 0 ? 'security' : 'delivery',
+        href: abuseCount > 0 ? '#audit' : '#delivery',
+        actionLabel: abuseCount > 0 ? 'Open audit' : 'Open delivery',
         tone: anomalyCount > 0 ? 'warning' : 'danger',
         title: 'พบสัญญาณผิดปกติจากงานตรวจสอบ',
         detail: 'เปิด Audit หรือ Diagnostics เพื่อตรวจรายละเอียดก่อนทำงานต่อ',
@@ -526,7 +590,11 @@
 
     notifications.forEach((item) => {
       const localized = localizeNotificationItem(item);
+      const action = resolveNotificationAction(item, parseNotificationPayload(item), localized);
       issues.push({
+        category: action.category,
+        href: action.href,
+        actionLabel: action.actionLabel,
         tone: toneForStatus(item?.severity || item?.tone || 'degraded'),
         title: localized.title,
         detail: localized.detail,
@@ -535,6 +603,81 @@
     });
 
     return issues.slice(0, 5);
+  }
+
+  function buildIncidentCenter(legacyState, issues) {
+    const rows = Array.isArray(issues) ? issues : [];
+    const notifications = Array.isArray(legacyState?.notifications) ? legacyState.notifications.slice(0, 4) : [];
+    const criticalCount = rows.filter((item) => item.tone === 'danger').length;
+    const warningCount = rows.filter((item) => item.tone === 'warning').length;
+    const infoCount = rows.filter((item) => item.tone !== 'danger' && item.tone !== 'warning').length;
+    const categoryMap = new Map();
+
+    rows.forEach((item) => {
+      const key = firstNonEmpty([item.category], 'general');
+      categoryMap.set(key, (categoryMap.get(key) || 0) + 1);
+    });
+
+    const categorySummary = Array.from(categoryMap.entries())
+      .sort((left, right) => right[1] - left[1])
+      .slice(0, 4)
+      .map(([key, count]) => ({
+        key,
+        label: key,
+        value: formatNumber(count),
+      }));
+
+    const notificationTimeline = notifications.map((item) => {
+      const localized = localizeNotificationItem(item);
+      const action = resolveNotificationAction(item, parseNotificationPayload(item), localized);
+      return {
+        tone: toneForStatus(item?.severity || item?.tone || 'degraded'),
+        title: localized.title,
+        detail: localized.detail,
+        meta: formatDateTime(item?.createdAt),
+        href: action.href,
+        actionLabel: action.actionLabel,
+      };
+    });
+
+    return {
+      totalOpen: rows.length,
+      criticalCount,
+      warningCount,
+      infoCount,
+      primaryAction: rows[0]
+        ? { label: rows[0].actionLabel || 'Open issue', href: rows[0].href || '#incidents' }
+        : { label: 'Open server status', href: '#server-status' },
+      secondaryActions: [
+        { label: 'Open activity feed', href: '#activity-feed' },
+        { label: 'Open audit', href: '#audit' },
+      ],
+      summaryCards: [
+        {
+          title: 'Open incidents',
+          value: formatNumber(rows.length, '0'),
+          detail: rows.length > 0 ? 'Signals that should be reviewed before daily work continues.' : 'No open incidents are visible right now.',
+        },
+        {
+          title: 'Critical now',
+          value: formatNumber(criticalCount, '0'),
+          detail: criticalCount > 0 ? 'These usually block delivery, sync, or runtime health.' : 'No critical blockers are active right now.',
+        },
+        {
+          title: 'Delivery pressure',
+          value: formatNumber(listCount(legacyState?.deadLetters) + listCount(legacyState?.queueItems), '0'),
+          detail: `${formatNumber(listCount(legacyState?.deadLetters), '0')} dead-letter · ${formatNumber(listCount(legacyState?.queueItems), '0')} queued`,
+        },
+        {
+          title: 'Latest sync pulse',
+          value: formatRelative(extractLastSync(legacyState)),
+          detail: 'Uses sync, reconcile, or the latest notification timestamp as the best available pulse.',
+        },
+      ],
+      categorySummary,
+      items: rows,
+      timeline: notificationTimeline,
+    };
   }
 
   function buildContextBlocks(legacyState) {
@@ -889,6 +1032,7 @@
     );
     const lastSyncAt = extractLastSync(state);
     const issues = buildIssues(state);
+    const incidentCenter = buildIncidentCenter(state, issues);
     const setupFlow = buildSetupFlowV2(state, serverStatus, executeStatus, syncStatus, issues);
     const setupReady = Array.isArray(setupFlow?.steps) && setupFlow.steps.every((step) => step.ready);
     const readinessPercent = setupFlow?.steps?.length
@@ -1039,6 +1183,7 @@
       quickActions,
       taskGroups: DEFAULT_TASK_GROUPS,
       issues,
+      incidentCenter,
       contextBlocks: buildContextBlocks(state),
       highlights: buildHighlights(state),
       railCards: buildRailCards(state, issues),
@@ -1127,6 +1272,9 @@
       '<div class="tdv4-list-main">',
       `<strong>${escapeHtml(issue.title)}</strong>`,
       `<p>${escapeHtml(issue.detail)}</p>`,
+      issue.href
+        ? `<div class="tdv4-action-list"><a class="tdv4-button tdv4-button-secondary" href="${escapeHtml(issue.href)}">${escapeHtml(issue.actionLabel || 'Open issue')}</a></div>`
+        : '',
       '</div>',
       `<div class="tdv4-list-meta">${escapeHtml(issue.meta)}</div>`,
       '</article>',
@@ -1169,6 +1317,9 @@
       '<div class="tdv4-list-main">',
       `<strong>${escapeHtml(item.title)}</strong>`,
       `<p>${escapeHtml(item.detail)}</p>`,
+      item.href
+        ? `<div class="tdv4-action-list"><a class="tdv4-button tdv4-button-secondary" href="${escapeHtml(item.href)}">${escapeHtml(item.actionLabel || 'Open')}</a></div>`
+        : '',
       '</div>',
       `<div class="tdv4-list-meta">${escapeHtml(item.meta)}</div>`,
       '</article>',
@@ -1180,6 +1331,57 @@
       return '<div class="tdv4-empty-state"><strong>ยังไม่มีเรื่องเร่งด่วนที่ต้องเปิดดูก่อน</strong><p>ตอนนี้ยังไม่พบปัญหาที่กระทบงานประจำวัน ลองเปิดคำสั่งซื้อหรือสถานะเซิร์ฟเวอร์ต่อได้เลย</p><a class="tdv4-button tdv4-button-secondary" href="#orders">ดูคำสั่งซื้อ</a></div>';
     }
     return items.map(renderIssue).join('');
+  }
+
+  function renderIncidentCenter(center) {
+    if (!center) return '';
+    return [
+      '<section id="incidents" class="tdv4-panel" data-incident-center>',
+      '<div class="tdv4-panel-head">',
+      '<div class="tdv4-stack">',
+      '<span class="tdv4-section-kicker">Incident / Alert Center</span>',
+      '<h2 class="tdv4-section-title">Operational incidents and alerts</h2>',
+      '<p class="tdv4-section-copy">See the signals that affect runtime health, sync, delivery, config, and recent notifications in one place.</p>',
+      '<div class="tdv4-chip-row" data-incident-summary>',
+      renderBadge(`Open ${String(center.totalOpen || 0)}`, center.totalOpen > 0 ? 'warning' : 'success'),
+      renderBadge(`Critical ${String(center.criticalCount || 0)}`, center.criticalCount > 0 ? 'danger' : 'muted'),
+      renderBadge(`Warning ${String(center.warningCount || 0)}`, center.warningCount > 0 ? 'warning' : 'muted'),
+      renderBadge(`Info ${String(center.infoCount || 0)}`, center.infoCount > 0 ? 'info' : 'muted'),
+      '</div>',
+      '</div>',
+      '<div class="tdv4-action-list">',
+      `<a class="tdv4-button tdv4-button-primary" href="${escapeHtml(center.primaryAction && center.primaryAction.href || '#incidents')}">${escapeHtml(center.primaryAction && center.primaryAction.label || 'Open incident center')}</a>`,
+      ...((Array.isArray(center.secondaryActions) ? center.secondaryActions : []).map((action) => `<a class="tdv4-button tdv4-button-secondary" href="${escapeHtml(action.href || '#')}">${escapeHtml(action.label || '')}</a>`)),
+      '</div>',
+      '</div>',
+      '<div class="tdv4-highlight-grid">',
+      ...((Array.isArray(center.summaryCards) ? center.summaryCards : []).map(renderHighlight)),
+      '</div>',
+      '<div class="tdv4-dual-grid">',
+      '<div class="tdv4-stack">',
+      '<section class="tdv4-panel">',
+      '<div class="tdv4-section-kicker">Categories</div>',
+      '<h3 class="tdv4-section-title">Where pressure is showing up</h3>',
+      '<div class="tdv4-chip-row">',
+      ...((Array.isArray(center.categorySummary) ? center.categorySummary : []).map((item) => renderBadge(`${item.label} ${item.value}`, 'info'))),
+      '</div>',
+      '<div id="dashboard-issues" class="tdv4-list">',
+      renderIssueList(center.items),
+      '</div>',
+      '</section>',
+      '</div>',
+      '<div class="tdv4-stack">',
+      '<section class="tdv4-panel">',
+      '<div class="tdv4-section-kicker">Latest alerts</div>',
+      '<h3 class="tdv4-section-title">Recent notification timeline</h3>',
+      '<div class="tdv4-list" data-incident-timeline>',
+      renderActivityList(center.timeline),
+      '</div>',
+      '</section>',
+      '</div>',
+      '</div>',
+      '</section>',
+    ].join('');
   }
 
   function renderActivityList(items) {
@@ -1325,9 +1527,10 @@
       ...(Array.isArray(safeModel.taskGroups) ? safeModel.taskGroups.map(renderTaskGroup) : []),
       '</div>',
       '</section>',
+      renderIncidentCenter(safeModel.incidentCenter),
       '<section class="tdv4-dual-grid">',
       '<div class="tdv4-stack">',
-      '<section id="dashboard-issues" class="tdv4-panel">',
+      '<section id="dashboard-watchlist" class="tdv4-panel">',
       '<div class="tdv4-section-kicker">กล่องเหตุที่ต้องจัดการก่อน</div>',
       '<h2 class="tdv4-section-title">ปัญหาที่กระทบงานประจำวัน</h2>',
       '<p class="tdv4-section-copy">เริ่มจากตรงนี้เมื่อมีเรื่องเร่งด่วน</p>',
@@ -1345,7 +1548,7 @@
       '</section>',
       '</div>',
       '<div class="tdv4-stack">',
-      '<section class="tdv4-panel">',
+      '<section id="activity-feed" class="tdv4-panel">',
       '<div class="tdv4-section-kicker">กิจกรรมล่าสุด</div>',
       '<h2 class="tdv4-section-title">ลำดับเหตุการณ์ที่เกี่ยวข้องกับ tenant นี้</h2>',
       '<p class="tdv4-section-copy">ดูการเปลี่ยนแปลงล่าสุดของ tenant นี้ได้จากจุดนี้</p>',

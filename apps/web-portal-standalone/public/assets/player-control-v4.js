@@ -859,6 +859,54 @@
         ],
       },
     ];
+    const identityAttention = [];
+    if (emailNeedsVerification && primaryEmail) {
+      identityAttention.push({
+        tone: 'warning',
+        title: 'Verify email before recovery or support',
+        detail: 'Send a verification email now so recovery, ownership checks, and support follow-ups can trust this profile.',
+        actions: [
+          renderPlayerActionControl({
+            label: 'Send verification email',
+            primary: true,
+            data: {
+              'data-player-email-verification-request': true,
+              'data-player-email-value': primaryEmail,
+            },
+          }, 'Send verification email', null, { primary: true }),
+        ],
+      });
+    }
+    if (!steamLinked) {
+      identityAttention.push({
+        tone: 'warning',
+        title: 'Link Steam before expecting in-game delivery',
+        detail: 'Orders can be created already, but item delivery and player matching stay weaker until Steam is linked from this profile.',
+        actions: [
+          renderPlayerActionControl({ label: 'Open support', href: buildCanonicalPlayerPath('support') }, 'Open support', buildCanonicalPlayerPath('support')),
+        ],
+      });
+    }
+    if (!activeMembership) {
+      identityAttention.push({
+        tone: 'warning',
+        title: 'No active membership was detected',
+        detail: 'This profile can still browse, but live player privileges and support context stay limited until an active membership is attached.',
+        actions: [
+          renderPlayerActionControl({ label: 'Open home', href: buildCanonicalPlayerPath('home') }, 'Open home', buildCanonicalPlayerPath('home')),
+        ],
+      });
+    }
+    if (steamLinked && !inGameAccount.linked) {
+      identityAttention.push({
+        tone: 'info',
+        title: 'In-game profile has not been matched yet',
+        detail: 'Steam is linked already, but the latest in-game profile match has not shown up in this summary yet.',
+        actions: [
+          renderPlayerActionControl({ label: 'Open events', href: buildCanonicalPlayerPath('events') }, 'Open events', buildCanonicalPlayerPath('events')),
+        ],
+      });
+    }
 
     return {
       header: {
@@ -1446,6 +1494,9 @@
         ], 'ยังไม่มีรายละเอียดโปรไฟล์'),
         '</article>',
         '<article class="plv4-panel"><div class="plv4-panel-head"><div class="plv4-stack"><span class="plv4-section-kicker">การเชื่อมต่อ</span><h2 class="plv4-section-title">การเชื่อม Steam และความพร้อม</h2><p class="plv4-section-copy">ให้เงื่อนไขเรื่อง Steam ยังมองเห็นได้ เพื่อให้การซื้อและการส่งของคาดเดาได้ง่าย</p></div></div>',
+        identityAttention.length
+          ? `<div class="plv4-card-grid" data-player-identity-attention>${identityAttention.map((item) => `<article class="plv4-panel plv4-tone-${escapeHtml(item.tone || 'info')}"><div class="plv4-panel-head"><div class="plv4-stack"><span class="plv4-section-kicker">Identity watch</span><h3 class="plv4-section-title">${escapeHtml(item.title)}</h3><p class="plv4-section-copy">${escapeHtml(item.detail)}</p></div></div><div class="plv4-action-row">${Array.isArray(item.actions) ? item.actions.join('') : ''}</div></article>`).join('')}</div>`
+          : '',
         steamLinked
           ? [
             renderKeyValueList([
@@ -1571,6 +1622,8 @@
     const steamAccount = linkedAccounts.steam || {};
     const inGameAccount = linkedAccounts.inGame || {};
     const membershipValue = formatMembershipValue(activeMembership);
+    const primaryEmail = firstNonEmpty([profile.primaryEmail, facts.state?.me?.primaryEmail], '');
+    const emailNeedsVerification = Boolean(emailAccount.linked) && !emailAccount.verified;
     const linkedAccountRows = [
       { label: 'สถานะการยืนยันตัวตน', value: localizeVerificationState(verificationState) },
       { label: 'สิทธิ์ที่ใช้งานอยู่', value: membershipValue },
@@ -1595,6 +1648,53 @@
           : 'ยังไม่เชื่อม',
       },
     ];
+    const identityAttention = [];
+    if (emailNeedsVerification && primaryEmail) {
+      identityAttention.push({
+        tone: 'warning',
+        title: 'Verify email before recovery or support',
+        detail: 'This email is linked already, but it still needs verification before recovery and higher-trust support flows should rely on it.',
+        actions: [
+          renderPlayerActionControl({
+            label: 'Send verification email',
+            primary: true,
+            data: {
+              'data-player-email-verification-request': true,
+              'data-player-email-value': primaryEmail,
+            },
+          }, 'Send verification email', null, { primary: true }),
+        ],
+      });
+    }
+    if (!steamLinked) {
+      identityAttention.push({
+        tone: 'warning',
+        title: 'Link Steam before expecting in-game delivery',
+        detail: 'Orders can be placed already, but delivery into the game world remains weaker until Steam is linked from this profile.',
+        actions: [
+          renderPlayerActionControl({ label: 'Open support', href: buildCanonicalPlayerPath('support') }, 'Open support', buildCanonicalPlayerPath('support')),
+        ],
+      });
+    } else if (!inGameAccount.linked) {
+      identityAttention.push({
+        tone: 'info',
+        title: 'In-game profile match is still pending',
+        detail: 'Steam is linked already, but the latest in-game profile match has not appeared in this profile summary yet.',
+        actions: [
+          renderPlayerActionControl({ label: 'Open events', href: buildCanonicalPlayerPath('events') }, 'Open events', buildCanonicalPlayerPath('events')),
+        ],
+      });
+    }
+    if (!activeMembership) {
+      identityAttention.push({
+        tone: 'info',
+        title: 'No active membership was found',
+        detail: 'The account is linked, but no active tenant membership is visible in this view yet.',
+        actions: [
+          renderPlayerActionControl({ label: 'Open support', href: buildCanonicalPlayerPath('support') }, 'Open support', buildCanonicalPlayerPath('support')),
+        ],
+      });
+    }
 
     return {
       header: {
@@ -1641,6 +1741,9 @@
         '</article>',
         '<article class="plv4-panel"><div class="plv4-panel-head"><div class="plv4-stack"><span class="plv4-section-kicker">ตัวตนที่เชื่อมไว้</span><h2 class="plv4-section-title">บัญชีที่เชื่อมและความพร้อม</h2><p class="plv4-section-copy">ดูผู้ให้บริการที่เชื่อมไว้ สิทธิ์ที่ใช้งาน และความพร้อมสำหรับรับของในเกมโดยไม่ต้องเปิดหน้าแอดมิน</p></div></div>',
         `<div data-player-identity-summary>${renderKeyValueList(linkedAccountRows, 'ยังไม่มีข้อมูลความพร้อมของบัญชีที่เชื่อมไว้')}</div>`,
+        identityAttention.length
+          ? `<div class="plv4-card-grid" data-player-identity-attention>${identityAttention.map((item) => `<article class="plv4-panel plv4-tone-${escapeHtml(item.tone || 'info')}"><div class="plv4-panel-head"><div class="plv4-stack"><span class="plv4-section-kicker">Identity watch</span><h3 class="plv4-section-title">${escapeHtml(item.title)}</h3><p class="plv4-section-copy">${escapeHtml(item.detail)}</p></div></div><div class="plv4-action-row">${Array.isArray(item.actions) ? item.actions.join('') : ''}</div></article>`).join('')}</div>`
+          : '',
         steamLinked
           ? [
             renderKeyValueList([

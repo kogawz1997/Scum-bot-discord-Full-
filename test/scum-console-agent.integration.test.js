@@ -1,7 +1,5 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 
 const { startScumConsoleAgent } = require('../src/services/scumConsoleAgent');
@@ -65,19 +63,13 @@ test('scum console agent: exec backend executes command template', async () => {
   }
 });
 
-test('scum console agent: process backend autostarts child and writes command to stdin', async () => {
+test('scum console agent: unsupported backend is surfaced by preflight and health', async () => {
   const runtime = startScumConsoleAgent({
     env: {
       SCUM_CONSOLE_AGENT_HOST: '127.0.0.1',
       SCUM_CONSOLE_AGENT_PORT: '3314',
       SCUM_CONSOLE_AGENT_TOKEN: 'process-agent-token-123456',
       SCUM_CONSOLE_AGENT_BACKEND: 'process',
-      SCUM_CONSOLE_AGENT_AUTOSTART: 'true',
-      SCUM_CONSOLE_AGENT_SERVER_EXE: process.execPath,
-      SCUM_CONSOLE_AGENT_SERVER_ARGS_JSON: JSON.stringify([
-        path.join(process.cwd(), 'scripts', 'fake-console-child.js'),
-      ]),
-      SCUM_CONSOLE_AGENT_PROCESS_RESPONSE_WAIT_MS: '400',
     },
   });
 
@@ -88,35 +80,9 @@ test('scum console agent: process backend autostarts child and writes command to
         Authorization: 'Bearer process-agent-token-123456',
       },
     });
-    assert.equal(preflight.res.status, 200);
-    assert.equal(preflight.payload.ok, true);
-    assert.equal(preflight.payload.result?.backend, 'process');
-
-    const execPromise = fetchJson('http://127.0.0.1:3314/execute', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: 'Bearer process-agent-token-123456',
-      },
-      body: JSON.stringify({
-        command: '#SpawnItem 76561198000000001 Weapon_M1911 1',
-      }),
-    });
-    await new Promise((resolve) => setTimeout(resolve, 50));
-
-    const healthDuring = await fetchJson('http://127.0.0.1:3314/healthz', {
-      headers: {
-        Authorization: 'Bearer process-agent-token-123456',
-      },
-    });
-    assert.equal(healthDuring.res.status, 200);
-    assert.equal(Number(healthDuring.payload.queueDepth || 0) >= 1, true);
-
-    const execRes = await execPromise;
-    assert.equal(execRes.res.status, 200);
-    assert.equal(execRes.payload.ok, true);
-    assert.equal(execRes.payload.result.backend, 'process');
-    assert.match(execRes.payload.result.stdout, /ACK:#SpawnItem/);
+    assert.equal(preflight.res.status, 500);
+    assert.equal(preflight.payload.ok, false);
+    assert.equal(preflight.payload.errorCode, 'AGENT_BACKEND_UNSUPPORTED');
 
     const health = await fetchJson('http://127.0.0.1:3314/healthz', {
       headers: {
@@ -124,9 +90,8 @@ test('scum console agent: process backend autostarts child and writes command to
       },
     });
     assert.equal(health.res.status, 200);
-    assert.equal(health.payload.managedServer.running, true);
-    assert.ok(health.payload.managedServer.pid);
-    assert.equal(Number(health.payload.queueDepth || 0), 0);
+    assert.equal(health.payload.ready, false);
+    assert.equal(health.payload.statusCode, 'AGENT_BACKEND_UNSUPPORTED');
   } finally {
     await runtime.close();
   }
@@ -228,71 +193,41 @@ test('scum console agent: successful preflight clears stale health error state',
   }
 });
 
-test('scum console agent: process backend schedules restart after unexpected child exit', async () => {
-  const markerPath = path.join(
-    os.tmpdir(),
-    `fake-console-child-crash-once-${process.pid}-${Date.now()}.txt`,
-  );
+test('scum console agent: server control routes are not exposed on the delivery agent', async () => {
   const runtime = startScumConsoleAgent({
     env: {
       SCUM_CONSOLE_AGENT_HOST: '127.0.0.1',
       SCUM_CONSOLE_AGENT_PORT: '3317',
-      SCUM_CONSOLE_AGENT_TOKEN: 'process-agent-token-restart',
-      SCUM_CONSOLE_AGENT_BACKEND: 'process',
-      SCUM_CONSOLE_AGENT_AUTOSTART: 'true',
-      SCUM_CONSOLE_AGENT_SERVER_EXE: process.execPath,
-      SCUM_CONSOLE_AGENT_SERVER_ARGS_JSON: JSON.stringify([
-        path.join(process.cwd(), 'test', 'fixtures', 'fake-console-child-crash-once.js'),
-        markerPath,
-      ]),
-      SCUM_CONSOLE_AGENT_PROCESS_RESPONSE_WAIT_MS: '120',
+      SCUM_CONSOLE_AGENT_TOKEN: 'exec-agent-no-server-control',
+      SCUM_CONSOLE_AGENT_BACKEND: 'exec',
+      SCUM_CONSOLE_AGENT_EXEC_TEMPLATE: `node "${path.join(
+        process.cwd(),
+        'scripts',
+        'agent-echo.js',
+      )}" "{command}"`,
     },
   });
 
   try {
     await runtime.ready;
-    let degraded = null;
-    const deadline = Date.now() + 2500;
-    while (Date.now() < deadline) {
-      degraded = await fetchJson('http://127.0.0.1:3317/healthz', {
-        headers: {
-          Authorization: 'Bearer process-agent-token-restart',
-        },
-      });
-      if (degraded.payload?.statusCode === 'AGENT_MANAGED_SERVER_RESTARTING') {
-        break;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-
-    assert.equal(degraded?.res.status, 200);
-    assert.equal(degraded?.payload.statusCode, 'AGENT_MANAGED_SERVER_RESTARTING');
-    assert.equal(degraded?.payload.classification?.category, 'managed-process');
-    assert.equal(degraded?.payload.recovery?.action, 'wait-for-restart');
-    assert.equal(degraded?.payload.managedServer?.restart?.pending, true);
-
-    const preflight = await fetchJson('http://127.0.0.1:3317/preflight', {
+    const startRes = await fetchJson('http://127.0.0.1:3317/server/start', {
+      method: 'POST',
       headers: {
-        Authorization: 'Bearer process-agent-token-restart',
+        Authorization: 'Bearer exec-agent-no-server-control',
       },
     });
-    assert.equal(preflight.res.status, 200);
-    assert.equal(preflight.payload.ok, true);
-    assert.equal(preflight.payload.result?.backend, 'process');
+    assert.equal(startRes.res.status, 404);
+    assert.equal(startRes.payload.ok, false);
 
-    const healthy = await fetchJson('http://127.0.0.1:3317/healthz', {
+    const stopRes = await fetchJson('http://127.0.0.1:3317/server/stop', {
+      method: 'POST',
       headers: {
-        Authorization: 'Bearer process-agent-token-restart',
+        Authorization: 'Bearer exec-agent-no-server-control',
       },
     });
-    assert.equal(healthy.res.status, 200);
-    assert.equal(healthy.payload.ready, true);
-    assert.equal(Number(healthy.payload.managedServer?.restart?.restartCount || 0) >= 1, true);
-    assert.equal(healthy.payload.managedServer?.restart?.pending, false);
+    assert.equal(stopRes.res.status, 404);
+    assert.equal(stopRes.payload.ok, false);
   } finally {
-    if (fs.existsSync(markerPath)) {
-      fs.unlinkSync(markerPath);
-    }
     await runtime.close();
   }
 });

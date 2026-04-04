@@ -13,10 +13,6 @@ param(
   [int]$Port = 3213,
   [string]$BaseUrl,
   [string]$ExecTemplate,
-  [string]$ServerExe,
-  [string]$ServerWorkdir,
-  [string]$ServerArgsJson = '[]',
-  [switch]$AutoStartServer,
   [string]$EnvFilePath = '.runtime\delivery-agent.env',
   [string]$LoaderPath = '.runtime\load-delivery-agent-env.ps1',
   [switch]$Production,
@@ -64,7 +60,7 @@ function Start-DetachedPowerShell([string]$CommandText) {
 }
 
 if ($Help) {
-  Write-Host 'Usage: powershell -File scripts/install-delivery-agent.ps1 -ConsoleAgentToken <token> [-ControlPlaneUrl <url> -SetupToken <token>] [-Backend exec|process] [options]' -ForegroundColor Yellow
+  Write-Host 'Usage: powershell -File scripts/install-delivery-agent.ps1 -ConsoleAgentToken <token> [-ControlPlaneUrl <url> -SetupToken <token>] [-Backend exec] [options]' -ForegroundColor Yellow
   Write-Host 'Writes a machine-local env file and a reusable PowerShell loader for Delivery Agent.' -ForegroundColor Yellow
   return
 }
@@ -83,8 +79,8 @@ if ($Backend -eq 'exec' -and [string]::IsNullOrWhiteSpace($ExecTemplate)) {
   Write-Step 'No exec template provided, using the default SCUM command bridge'
   $ExecTemplate = $defaultTemplate
 }
-if ($Backend -eq 'process' -and $AutoStartServer -and [string]::IsNullOrWhiteSpace($ServerExe)) {
-  throw 'ServerExe is required when Backend=process and AutoStartServer is enabled'
+if ($Backend -ne 'exec') {
+  throw 'Delivery Agent supports Backend=exec only'
 }
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
@@ -138,18 +134,6 @@ if (-not [string]::IsNullOrWhiteSpace($ServerId)) {
 
 if (-not [string]::IsNullOrWhiteSpace($ExecTemplate)) {
   $pairs['SCUM_CONSOLE_AGENT_EXEC_TEMPLATE'] = $ExecTemplate
-}
-if (-not [string]::IsNullOrWhiteSpace($ServerExe)) {
-  $pairs['SCUM_CONSOLE_AGENT_SERVER_EXE'] = $ServerExe
-}
-if (-not [string]::IsNullOrWhiteSpace($ServerWorkdir)) {
-  $pairs['SCUM_CONSOLE_AGENT_SERVER_WORKDIR'] = $ServerWorkdir
-}
-if (-not [string]::IsNullOrWhiteSpace($ServerArgsJson)) {
-  $pairs['SCUM_CONSOLE_AGENT_SERVER_ARGS_JSON'] = $ServerArgsJson
-}
-if ($AutoStartServer) {
-  $pairs['SCUM_CONSOLE_AGENT_AUTOSTART'] = 'true'
 }
 
 $resolvedDisplayName = if ([string]::IsNullOrWhiteSpace($DisplayName)) {

@@ -111,7 +111,7 @@ function evaluateTopology() {
   } else if (!botServiceEnabled && workerEnabled) {
     topology = 'split-runtime';
   } else if (botServiceEnabled && workerEnabled) {
-    topology = 'hybrid-overlap';
+    topology = 'runtime-overlap';
   } else {
     topology = 'missing-workers';
   }

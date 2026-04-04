@@ -1,10 +1,8 @@
 const SYNC_ROLE = 'sync';
 const EXECUTE_ROLE = 'execute';
-const HYBRID_ROLE = 'hybrid';
 
 const SYNC_ONLY_SCOPE = 'sync_only';
 const EXECUTE_ONLY_SCOPE = 'execute_only';
-const SYNC_EXECUTE_SCOPE = 'sync_execute';
 
 const SYNC_SIGNALS = Object.freeze([
   'sync',
@@ -68,7 +66,6 @@ function normalizeAgentRole(value) {
   if (!text) return null;
   if ([SYNC_ROLE, 'read', 'reader', 'watch', 'watcher', 'monitor'].includes(text)) return SYNC_ROLE;
   if ([EXECUTE_ROLE, 'write', 'writer', 'command', 'delivery', 'rcon'].includes(text)) return EXECUTE_ROLE;
-  if ([HYBRID_ROLE, 'sync-execute', 'sync_execute', 'execute-sync', 'execute_sync', 'both'].includes(text)) return HYBRID_ROLE;
   return null;
 }
 
@@ -77,21 +74,18 @@ function normalizeAgentScope(value) {
   if (!text) return null;
   if ([SYNC_ONLY_SCOPE, 'sync-only', 'synconly', 'read-only', 'readonly'].includes(text)) return SYNC_ONLY_SCOPE;
   if ([EXECUTE_ONLY_SCOPE, 'execute-only', 'executeonly', 'write-only', 'writeonly'].includes(text)) return EXECUTE_ONLY_SCOPE;
-  if ([SYNC_EXECUTE_SCOPE, 'sync-execute', 'sync_execute', 'hybrid', 'both'].includes(text)) return SYNC_EXECUTE_SCOPE;
   return null;
 }
 
 function deriveRoleFromScope(scope) {
   if (scope === SYNC_ONLY_SCOPE) return SYNC_ROLE;
   if (scope === EXECUTE_ONLY_SCOPE) return EXECUTE_ROLE;
-  if (scope === SYNC_EXECUTE_SCOPE) return HYBRID_ROLE;
   return null;
 }
 
 function deriveScopeFromRole(role) {
   if (role === SYNC_ROLE) return SYNC_ONLY_SCOPE;
   if (role === EXECUTE_ROLE) return EXECUTE_ONLY_SCOPE;
-  if (role === HYBRID_ROLE) return SYNC_EXECUTE_SCOPE;
   return null;
 }
 
@@ -103,10 +97,6 @@ function buildSignalText(input = {}, meta = {}, capabilities = []) {
   const values = [
     input.runtimeKey,
     input.channel,
-    meta.agentRole,
-    meta.agentScope,
-    meta.role,
-    meta.scope,
     meta.kind,
     meta.mode,
     meta.type,
@@ -134,9 +124,8 @@ function normalizeAgentRuntimeProfile(input = {}) {
     const signalText = buildSignalText(input, meta, capabilities);
     const hasSync = hasAnySignal(signalText, SYNC_SIGNALS);
     const hasExecute = hasAnySignal(signalText, EXECUTE_SIGNALS);
-    if (hasSync && hasExecute) inferredRole = HYBRID_ROLE;
-    else if (hasSync) inferredRole = SYNC_ROLE;
-    else if (hasExecute) inferredRole = EXECUTE_ROLE;
+    if (hasSync) inferredRole = SYNC_ROLE;
+    if (hasExecute && !hasSync) inferredRole = EXECUTE_ROLE;
   }
 
   const scope = explicitScope || deriveScopeFromRole(inferredRole);
@@ -172,8 +161,6 @@ function mergeAgentRuntimeProfile(meta, profile) {
 module.exports = {
   EXECUTE_ONLY_SCOPE,
   EXECUTE_ROLE,
-  HYBRID_ROLE,
-  SYNC_EXECUTE_SCOPE,
   SYNC_ONLY_SCOPE,
   SYNC_ROLE,
   mergeAgentRuntimeProfile,

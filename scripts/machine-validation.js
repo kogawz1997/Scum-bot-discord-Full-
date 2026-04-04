@@ -778,13 +778,8 @@ function addConsoleAgentConfigCheck(target, context) {
     }
   }
 
-  if (backend === 'process' && envFlag('SCUM_CONSOLE_AGENT_AUTOSTART', false, env)) {
-    const serverExe = String(env.SCUM_CONSOLE_AGENT_SERVER_EXE || '').trim();
-    if (!serverExe) {
-      issues.push('SCUM_CONSOLE_AGENT_SERVER_EXE is required when autostart is enabled');
-    } else if (!fs.existsSync(serverExe)) {
-      warnings.push(`SCUM_CONSOLE_AGENT_SERVER_EXE does not exist yet: ${serverExe}`);
-    }
+  if (backend !== 'exec') {
+    issues.push('SCUM_CONSOLE_AGENT_BACKEND must stay on exec because delivery-agent is execute-only.');
   }
 
   if (process.platform !== 'win32') {

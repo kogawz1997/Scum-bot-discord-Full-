@@ -27,15 +27,14 @@ test('normalizeAgentRegistrationInput derives role and scope defaults safely', (
   assert.equal(executeAgent.role, 'execute');
   assert.equal(executeAgent.scope, 'execute_only');
 
-  const explicitHybridScope = normalizeAgentRegistrationInput({
+  const strictServerBot = normalizeAgentRegistrationInput({
     tenantId: 'tenant-a',
     serverId: 'server-a',
-    runtimeKey: 'hybrid-a',
-    role: 'hybrid',
-    scope: 'sync_execute',
+    runtimeKey: 'sync-bot',
+    runtimeKind: 'server-bots',
   });
-  assert.equal(explicitHybridScope.role, 'hybrid');
-  assert.equal(explicitHybridScope.scope, 'sync_execute');
+  assert.equal(strictServerBot.role, 'sync');
+  assert.equal(strictServerBot.scope, 'sync_only');
 
   const explicitExecuteScope = normalizeAgentRegistrationInput({
     tenantId: 'tenant-a',
@@ -60,9 +59,9 @@ test('deriveScopesForAgent separates read/sync and execute scopes', () => {
   assert.ok(executeScopes.includes('agent:execute'));
   assert.ok(!executeScopes.includes('agent:sync'));
 
-  const hybridScopes = deriveScopesForAgent('hybrid', 'sync_execute');
-  assert.ok(hybridScopes.includes('agent:sync'));
-  assert.ok(hybridScopes.includes('agent:execute'));
+  const invalidScopes = deriveScopesForAgent('hybrid', 'sync_execute');
+  assert.ok(!invalidScopes.includes('agent:sync'));
+  assert.ok(!invalidScopes.includes('agent:execute'));
 });
 
 test('resolveStrictAgentRoleScope enforces dedicated runtime boundaries for new provisioning flows', () => {

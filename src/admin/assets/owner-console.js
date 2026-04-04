@@ -455,7 +455,7 @@
 
   function normalizeOwnerAgentRole(role) {
     const value = String(role || '').trim().toLowerCase();
-    if (value === 'sync' || value === 'execute' || value === 'hybrid') return value;
+    if (value === 'sync' || value === 'execute') return value;
     return 'unknown';
   }
 
@@ -488,7 +488,6 @@
       roles: {
         sync: 0,
         execute: 0,
-        hybrid: 0,
         unknown: 0,
       },
       latestSeenAt: null,
@@ -1800,7 +1799,7 @@
           t('owner.observability.agentsOfflineTag', 'offline {value}', { value: formatMetricValue(agentSummary.statuses.offline, 'integer') }),
           t('owner.observability.agentsRolesTag', 'sync {sync} / execute {execute}', {
             sync: formatMetricValue(agentSummary.roles.sync, 'integer'),
-            execute: formatMetricValue(agentSummary.roles.execute + agentSummary.roles.hybrid, 'integer'),
+            execute: formatMetricValue(agentSummary.roles.execute, 'integer'),
           }),
         ],
       },

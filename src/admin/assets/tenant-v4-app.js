@@ -3304,7 +3304,7 @@
       const scope = String(meta.agentScope || meta.scope || row.scope || '').trim().toLowerCase();
       const serverId = String(meta.serverId || row.serverId || row.tenantServerId || '').trim();
       if (activeServerId && serverId && serverId !== activeServerId) return false;
-      return role === 'sync' || role === 'hybrid' || ['sync_only', 'sync_execute', 'sync-execute'].includes(scope);
+      return role === 'sync' || ['sync_only', 'sync-only'].includes(scope);
     });
   }
 
@@ -4739,14 +4739,16 @@
   }
 
   function wireBillingPage(renderState) {
-    const refreshButton = document.querySelector('[data-tenant-billing-refresh]');
-    refreshButton?.addEventListener('click', async () => {
-      setActionButtonBusy(refreshButton, true, 'Refreshing...');
-      try {
-        await refreshState({ silent: false });
-      } finally {
-        setActionButtonBusy(refreshButton, false);
-      }
+    const refreshButtons = Array.from(document.querySelectorAll('[data-tenant-billing-refresh]'));
+    refreshButtons.forEach((refreshButton) => {
+      refreshButton.addEventListener('click', async () => {
+        setActionButtonBusy(refreshButton, true, 'Refreshing...');
+        try {
+          await refreshState({ silent: false });
+        } finally {
+          setActionButtonBusy(refreshButton, false);
+        }
+      });
     });
 
     const checkoutButtons = Array.from(document.querySelectorAll('[data-tenant-billing-checkout][data-plan-id]'));

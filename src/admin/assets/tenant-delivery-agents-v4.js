@@ -79,6 +79,75 @@
     return 'muted';
   }
 
+  function compareVersions(left, right) {
+    const leftParts = String(left || '').trim().split(/[.-]/g).map((value) => Number.parseInt(value, 10) || 0);
+    const rightParts = String(right || '').trim().split(/[.-]/g).map((value) => Number.parseInt(value, 10) || 0);
+    const maxLen = Math.max(leftParts.length, rightParts.length);
+    for (let index = 0; index < maxLen; index += 1) {
+      const leftValue = leftParts[index] || 0;
+      const rightValue = rightParts[index] || 0;
+      if (leftValue > rightValue) return 1;
+      if (leftValue < rightValue) return -1;
+    }
+    return 0;
+  }
+
+  function buildVersionWatch(version, minimumVersion) {
+    const currentVersion = trimText(version, 80);
+    const minimum = trimText(minimumVersion, 80);
+    if (!minimum) {
+      return {
+        tone: currentVersion ? 'success' : 'warning',
+        label: currentVersion ? 'Version reported' : 'Waiting for version',
+      };
+    }
+    if (!currentVersion) {
+      return {
+        tone: 'warning',
+        label: `Need at least ${minimum}`,
+      };
+    }
+    return compareVersions(currentVersion, minimum) >= 0
+      ? { tone: 'success', label: `Meets ${minimum}` }
+      : { tone: 'danger', label: `Upgrade to ${minimum}` };
+  }
+
+  function buildFleetWatch(rows) {
+    const items = Array.isArray(rows) ? rows : [];
+    const mismatchCount = items.filter((row) => row.versionWatchTone === 'danger').length;
+    const unboundCount = items.filter((row) => row.bindingTone !== 'success').length;
+    const offlineCount = items.filter((row) => statusTone(row.status) !== 'success').length;
+    const channels = Array.from(new Set(items.map((row) => trimText(row.channel, 40)).filter(Boolean)));
+    return {
+      items: [
+        {
+          label: 'Version mismatches',
+          value: formatNumber(mismatchCount),
+          detail: mismatchCount ? 'Some Delivery Agents are below the minimum version target.' : 'All connected Delivery Agents meet the visible version floor.',
+          tone: mismatchCount ? 'danger' : 'success',
+        },
+        {
+          label: 'Binding gaps',
+          value: formatNumber(unboundCount),
+          detail: unboundCount ? 'At least one Delivery Agent still needs a machine binding.' : 'Every listed Delivery Agent has an active machine binding.',
+          tone: unboundCount ? 'warning' : 'success',
+        },
+        {
+          label: 'Channels in use',
+          value: channels.length ? channels.join(', ') : 'none',
+          detail: channels.length ? 'Review channel drift before the next client-side rollout.' : 'No runtime channel has reported back yet.',
+          tone: channels.length > 1 ? 'warning' : 'info',
+        },
+        {
+          label: 'Offline or stale',
+          value: formatNumber(offlineCount),
+          detail: offlineCount ? 'Investigate stale or offline delivery machines before relying on live delivery jobs.' : 'All listed Delivery Agents are reporting healthy runtime status.',
+          tone: offlineCount ? 'warning' : 'success',
+        },
+      ],
+    };
+  }
+
   function normalizeCapabilities(value) {
     const raw = Array.isArray(value)
       ? value
@@ -274,13 +343,22 @@
       const device = devices.find((entry) => matchesRuntimeEntry(entry, row) && String(entry?.status || '').trim() !== 'revoked') || null;
       const credential = credentials.find((entry) => matchesRuntimeEntry(entry, row) && String(entry?.status || '').trim() !== 'revoked') || null;
       const session = findLatestRuntimeSession(sessions, row);
+      const minimumVersion = firstNonEmpty([row?.meta?.minimumVersion, row?.minimumVersion, session?.metadata?.minimumVersion], '');
+      const version = firstNonEmpty([row?.version, row?.meta?.version, session?.version, '-']);
+      const versionWatch = buildVersionWatch(version === '-' ? '' : version, minimumVersion);
       return {
         name: firstNonEmpty([row?.meta?.agentLabel, row?.displayName, row?.name, row?.runtimeKey, 'บอตส่งของ']),
         server: firstNonEmpty([row?.meta?.serverId, row?.serverId, row?.tenantServerId, 'ยังไม่ผูกเซิร์ฟเวอร์']),
         machine: firstNonEmpty([device?.hostname, session?.hostname, session?.metadata?.hostname, row?.hostname, row?.meta?.hostname, row?.meta?.machineFingerprint, 'รอชื่อเครื่อง']),
         status: firstNonEmpty([row?.status, 'unknown']),
         lastSeenAt: formatDateTime(row?.lastSeenAt || session?.heartbeatAt),
-        version: firstNonEmpty([row?.version, row?.meta?.version, session?.version, '-']),
+        version: version,
+        minimumVersion: minimumVersion || '-',
+        channel: firstNonEmpty([row?.channel, row?.meta?.channel, session?.channel, 'stable']),
+        versionWatchLabel: versionWatch.label,
+        versionWatchTone: versionWatch.tone,
+        bindingLabel: device ? 'Machine bound' : 'Waiting for machine bind',
+        bindingTone: device ? 'success' : 'warning',
         issue: firstNonEmpty([row?.meta?.lastError, row?.reason, row?.meta?.warning, session?.lastError, session?.metadata?.lastError, 'พร้อมสำหรับงานส่งของและประกาศในเกม']),
         deviceId: trimText(device?.id, 160),
         apiKeyId: trimText(credential?.apiKeyId || credential?.id, 160),
@@ -324,6 +402,7 @@
               '#delivery-agents-provision',
             )
           : createEmptyState;
+    const fleetWatch = buildFleetWatch(rows);
 
     return {
       shell: {
@@ -370,6 +449,7 @@
       servers: Array.isArray(state.servers) ? state.servers : [],
       selectedServerId,
       rows,
+      fleetWatch,
       history,
       tokens,
       result,
@@ -431,6 +511,7 @@
       `<a class="tdv4-button tdv4-button-primary" href="${escapeHtml(pageheadActionHref)}">${escapeHtml(pageheadActionLabel)}</a>`,
       '</div></section>',
       `<section class="tdv4-kpi-strip tdv4-runtime-summary-strip">${safe.summary.map((item) => `<article class="tdv4-kpi tdv4-tone-${escapeHtml(item.tone)}"><div class="tdv4-kpi-label">${escapeHtml(item.label)}</div><div class="tdv4-kpi-value">${escapeHtml(item.value)}</div><div class="tdv4-kpi-detail">${escapeHtml(item.detail)}</div></article>`).join('')}</section>`,
+      `<section class="tdv4-list-grid" data-runtime-fleet-watch="delivery-agents">${(Array.isArray(safe.fleetWatch?.items) ? safe.fleetWatch.items : []).map((item) => `<article class="tdv4-panel tdv4-tone-${escapeHtml(item.tone || 'info')}"><div class="tdv4-section-kicker">Fleet watch</div><h2 class="tdv4-section-title">${escapeHtml(item.label)}</h2><p class="tdv4-section-copy">${escapeHtml(item.value)}</p><p class="tdv4-kpi-detail">${escapeHtml(item.detail)}</p></article>`).join('')}</section>`,
       '<section class="tdv4-dual-grid tdv4-runtime-main-grid">',
       '<article class="tdv4-panel" id="delivery-agents-provision">',
       '<div class="tdv4-section-kicker">งานหลัก</div>',

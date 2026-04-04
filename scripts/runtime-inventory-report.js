@@ -36,6 +36,7 @@ function normalizeRole(value) {
   if (text === 'delivery-agent' || text === 'console-agent' || text === 'execute-node') {
     return 'delivery-agent';
   }
+  if (text === 'hybrid') return 'unknown';
   return text;
 }
 
@@ -372,7 +373,7 @@ function parseArgs(argv) {
       console.log('Options:');
       console.log('  --tenant-id <id>   Filter by tenant');
       console.log('  --server-id <id>   Filter by server');
-      console.log('  --role <name>      delivery-agent | server-bot | hybrid');
+      console.log('  --role <name>      delivery-agent | server-bot');
       console.log('  --output <path>    Write JSON report to a custom path');
       console.log('  --json             Print JSON to stdout instead of text');
       process.exit(0);

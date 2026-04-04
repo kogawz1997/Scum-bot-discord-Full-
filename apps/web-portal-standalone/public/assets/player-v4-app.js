@@ -676,6 +676,22 @@
           ? t('player.toast.weeklyClaimed', 'Weekly reward claimed.')
           : t('player.toast.dailyClaimed', 'Daily reward claimed.')));
       });
+      return;
+    }
+
+    if (button.hasAttribute('data-player-email-verification-request')) {
+      const email = String(button.getAttribute('data-player-email-value') || state.payload?.profile?.primaryEmail || state.payload?.me?.primaryEmail || '').trim();
+      if (!email) {
+        setStatus(t('player.status.emailMissing', 'No email is linked to this player profile yet.'), 'warning');
+        return;
+      }
+      await runPlayerAction(button, t('player.app.action.sendingVerification', 'Sending verification email...'), async () => {
+        const result = await apiRequest('/player/api/profile/email-verification/request', {
+          method: 'POST',
+          body: { email },
+        }, null);
+        await completePlayerAction(result?.message || t('player.toast.verificationQueued', 'Verification email queued.'));
+      });
     }
   }
 
@@ -769,7 +785,7 @@
     });
     document.addEventListener('click', (event) => {
       const button = event.target instanceof Element
-        ? event.target.closest('[data-player-cart-add],[data-player-cart-remove],[data-player-cart-clear],[data-player-cart-checkout],[data-player-reward-claim]')
+        ? event.target.closest('[data-player-cart-add],[data-player-cart-remove],[data-player-cart-clear],[data-player-cart-checkout],[data-player-reward-claim],[data-player-email-verification-request]')
         : null;
       if (!button) return;
       event.preventDefault();

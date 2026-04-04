@@ -17,6 +17,7 @@
 งานรอบนี้ปิดก้อน repo-local หลัก 4 ด้าน และเก็บ hardening เพิ่มอีก 1 ก้อน:
 
 1. `Core Data + Identity`
+
    - preview identity state ใช้ centralized platform identity summary มากขึ้น
    - linked account summary สะท้อน email, Discord, Steam, และ player-match ได้สอดคล้องกว่าเดิม
    - ไฟล์หลัก:
@@ -24,6 +25,7 @@
      - [C:\new\src\services\publicPreviewService.js](/C:/new/src/services/publicPreviewService.js)
 
 2. `Commercial + Runtime Productization`
+
    - billing webhook replay handling มี idempotent protection ระดับ repo
    - product-facing runtime wording ย้ายไปใช้ `Delivery Agent`
    - compatibility runtime key `console-agent` ยังอยู่เพื่อไม่หักของเดิม
@@ -34,6 +36,7 @@
      - [C:\new\deploy\pm2.ecosystem.config.cjs](/C:/new/deploy/pm2.ecosystem.config.cjs)
 
 3. `Surface Polish`
+
    - owner commercial/support views, tenant runtime wording, และ player wording ถูกเก็บให้สอดคล้องกับ product model ปัจจุบัน
    - ไฟล์หลัก:
      - [C:\new\src\admin\assets\owner-control-v4.js](/C:/new/src/admin/assets/owner-control-v4.js)
@@ -42,6 +45,7 @@
      - [C:\new\apps\web-portal-standalone\public\assets\portal-i18n.js](/C:/new/apps/web-portal-standalone/public/assets/portal-i18n.js)
 
 4. `Security + Readiness Sweep`
+
    - cross-tenant mismatch ถูกบันทึกเป็น security signal ชัดเจน
    - readiness regression ผ่านทั้ง repo
    - ไฟล์หลัก:

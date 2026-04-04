@@ -2,8 +2,8 @@
 
 const crypto = require('node:crypto');
 
-const AGENT_ROLES = Object.freeze(['sync', 'execute', 'hybrid']);
-const AGENT_SCOPES = Object.freeze(['sync_only', 'execute_only', 'sync_execute']);
+const AGENT_ROLES = Object.freeze(['sync', 'execute']);
+const AGENT_SCOPES = Object.freeze(['sync_only', 'execute_only']);
 const STRICT_AGENT_ROLES = Object.freeze(['sync', 'execute']);
 const STRICT_AGENT_SCOPES = Object.freeze(['sync_only', 'execute_only']);
 const AGENT_STATUSES = Object.freeze(['pending', 'active', 'offline', 'revoked']);
@@ -28,15 +28,26 @@ function normalizeEnum(value, allowed, fallback) {
   return fallback;
 }
 
-function normalizeRole(value, fallback = 'hybrid') {
-  return normalizeEnum(value, AGENT_ROLES, fallback);
+function normalizeRole(value, fallback = '') {
+  const text = trimText(value, 120).toLowerCase();
+  if (['sync', 'read', 'reader', 'watch', 'watcher', 'monitor'].includes(text)) {
+    return 'sync';
+  }
+  if (['execute', 'write', 'writer', 'command', 'delivery', 'rcon', 'console-agent'].includes(text)) {
+    return 'execute';
+  }
+  return fallback;
 }
 
-function normalizeScope(value, fallback = 'sync_execute') {
-  const normalized = normalizeEnum(value, AGENT_SCOPES, fallback);
-  if (normalized === 'sync_only') return 'sync_only';
-  if (normalized === 'execute_only') return 'execute_only';
-  return 'sync_execute';
+function normalizeScope(value, fallback = '') {
+  const text = trimText(value, 120).toLowerCase();
+  if (['sync_only', 'sync-only', 'synconly', 'read-only', 'readonly'].includes(text)) {
+    return 'sync_only';
+  }
+  if (['execute_only', 'execute-only', 'executeonly', 'write-only', 'writeonly'].includes(text)) {
+    return 'execute_only';
+  }
+  return fallback;
 }
 
 function normalizeRuntimeKind(value) {
@@ -99,16 +110,6 @@ function resolveStrictAgentRoleScope(input = {}, options = {}) {
     };
   }
 
-  if (options.allowLegacyHybrid === true && (role === 'hybrid' || scope === 'sync_execute')) {
-    return {
-      ok: true,
-      runtimeKind: '',
-      role: 'hybrid',
-      scope: 'sync_execute',
-      legacy: true,
-    };
-  }
-
   return {
     ok: false,
     reason: 'strict-agent-role-scope-required',
@@ -155,13 +156,20 @@ function normalizeStringArray(value, maxItems = 16, maxLen = 160) {
 
 function normalizeAgentRegistrationInput(input = {}) {
   const meta = parseObject(input.meta) || {};
-  const requestedRole = normalizeRole(
-    input.role
-      || meta.role
-      || meta.agentRole
-      || 'hybrid',
-    'hybrid',
-  );
+  const strictProfile = resolveStrictAgentRoleScope({
+    ...input,
+    meta,
+    metadata: meta,
+  });
+  const requestedRole = strictProfile.ok
+    ? strictProfile.role
+    : normalizeRole(
+      input.role
+        || meta.role
+        || meta.agentRole
+        || '',
+      '',
+    );
   const requestedScopeSource = input.scope
     || meta.scope
     || meta.agentScope
@@ -169,11 +177,29 @@ function normalizeAgentRegistrationInput(input = {}) {
       ? 'sync_only'
       : requestedRole === 'execute'
         ? 'execute_only'
-        : 'sync_execute');
+        : '');
   const requestedScope = normalizeScope(
     requestedScopeSource,
-    'sync_execute',
+    requestedRole === 'sync'
+      ? 'sync_only'
+      : requestedRole === 'execute'
+        ? 'execute_only'
+        : '',
   );
+  const requestedRuntimeKind = strictProfile.ok
+    ? strictProfile.runtimeKind
+    : normalizeRuntimeKind(
+      input.runtimeKind
+        || input.kind
+        || meta.kind
+        || meta.runtimeKind,
+    ) || (
+      requestedRole === 'sync'
+        ? 'server-bots'
+        : requestedRole === 'execute'
+          ? 'delivery-agents'
+          : ''
+    );
   return {
     id: trimText(input.id, 120) || createId('agent'),
     tenantId: trimText(input.tenantId, 120),
@@ -190,7 +216,12 @@ function normalizeAgentRegistrationInput(input = {}) {
     status: normalizeStatus(input.status, AGENT_STATUSES, 'active'),
     baseUrl: trimText(input.baseUrl || meta.baseUrl, 400) || null,
     hostname: trimText(input.hostname || meta.hostname, 160) || null,
-    metadata: meta,
+    metadata: requestedRuntimeKind
+      ? {
+        ...meta,
+        runtimeKind: trimText(meta.runtimeKind || meta.kind, 80) || requestedRuntimeKind,
+      }
+      : meta,
   };
 }
 
@@ -253,15 +284,22 @@ function normalizeServerDiscordLinkInput(input = {}) {
 }
 
 function deriveScopesForAgent(role, scope) {
-  const normalizedRole = normalizeRole(role, 'hybrid');
-  const normalizedScope = normalizeScope(scope, 'sync_execute');
+  const normalizedRole = normalizeRole(role, '');
+  const normalizedScope = normalizeScope(
+    scope,
+    normalizedRole === 'sync'
+      ? 'sync_only'
+      : normalizedRole === 'execute'
+        ? 'execute_only'
+        : '',
+  );
   const scopes = new Set(['tenant:read', 'server:read', 'agent:register', 'agent:session', 'agent:write']);
-  if (normalizedRole === 'sync' || normalizedScope === 'sync_only' || normalizedScope === 'sync_execute') {
+  if (normalizedRole === 'sync' || normalizedScope === 'sync_only') {
     scopes.add('agent:sync');
     scopes.add('analytics:read');
     scopes.add('config:read');
   }
-  if (normalizedRole === 'execute' || normalizedScope === 'execute_only' || normalizedScope === 'sync_execute') {
+  if (normalizedRole === 'execute' || normalizedScope === 'execute_only') {
     scopes.add('agent:execute');
   }
   return Array.from(scopes);

@@ -3729,7 +3729,7 @@ function buildDeliveryOperatorContract(settings, runtime = {}) {
         interactiveWindowsSessionRequired: true,
         scumClientWindowRequired: true,
         adminChannelRequired: true,
-        managedProcessBackend: runtime.agent?.backend === 'process',
+        managedProcessBackend: false,
         failoverMode: trimText(runtime.failover?.mode, 80) || null,
       },
       readyEvidence: [

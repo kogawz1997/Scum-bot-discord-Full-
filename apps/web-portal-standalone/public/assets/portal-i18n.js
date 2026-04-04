@@ -2171,6 +2171,14 @@
     emitLocaleChange();
   }
 
+  Object.assign(DICTIONARY.en, {
+    'player.app.status.loadFailed': 'Load failed'
+  });
+
+  Object.assign(DICTIONARY.th, {
+    'player.app.status.loadFailed': 'โหลดไม่สำเร็จ'
+  });
+
   function initSelector(selectId) {
     const select = document.getElementById(selectId);
     if (!select) return;

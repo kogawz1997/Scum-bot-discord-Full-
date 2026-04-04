@@ -37,7 +37,7 @@ test('normalizeAgentRuntimeProfile infers execute agents from console and delive
   assert.equal(profile.guildId, 'guild-b');
 });
 
-test('normalizeAgentRuntimeProfile keeps explicit hybrid scope when provided', () => {
+test('normalizeAgentRuntimeProfile drops legacy hybrid scope from inferred runtime profile', () => {
   const profile = normalizeAgentRuntimeProfile({
     runtimeKey: 'agent-node',
     channel: 'mixed',
@@ -49,8 +49,8 @@ test('normalizeAgentRuntimeProfile keeps explicit hybrid scope when provided', (
     },
   });
 
-  assert.equal(profile.agentRole, 'hybrid');
-  assert.equal(profile.agentScope, 'sync_execute');
+  assert.equal(profile.agentRole, null);
+  assert.equal(profile.agentScope, null);
   assert.equal(profile.agentId, 'agent-77');
   assert.equal(profile.agentLabel, 'Primary bridge');
 });

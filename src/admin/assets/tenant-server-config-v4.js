@@ -240,7 +240,7 @@
     const meta = row?.meta && typeof row.meta === 'object' ? row.meta : {};
     const role = trimText(meta.agentRole || meta.role || row.role, 80).toLowerCase();
     const scope = trimText(meta.agentScope || meta.scope || row.scope, 80).toLowerCase();
-    if (['sync', 'hybrid'].includes(role) || ['sync_only', 'sync-only', 'synconly', 'sync_execute', 'sync-execute'].includes(scope)) {
+    if (role === 'sync' || ['sync_only', 'sync-only', 'synconly'].includes(scope)) {
       return true;
     }
     const text = [

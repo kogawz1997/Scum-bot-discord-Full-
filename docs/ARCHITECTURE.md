@@ -24,14 +24,14 @@ Do not describe SQLite as the active production runtime for this repository unle
 
 ## Runtime Components
 
-| Runtime       | Entry file                                                      | Main responsibility                                                          | Notes                                                           |
-| ------------- | --------------------------------------------------------------- | ---------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| Discord bot   | `src/bot.js`                                                    | Discord gateway, command routing, admin web bootstrap, SCUM webhook receiver | Still a large bootstrap entrypoint                              |
-| Worker        | `src/worker.js`                                                 | Delivery queue worker, rent bike runtime, background jobs                    | Split from bot runtime                                          |
-| Watcher       | `src/services/scumLogWatcherRuntime.js`                         | Tail `SCUM.log`, parse events, send them to webhook                          | Can report `disabled` or `degraded` without exiting immediately |
+| Runtime        | Entry file                                                                                                       | Main responsibility                                                                      | Notes                                                                            |
+| -------------- | ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Discord bot    | `src/bot.js`                                                                                                     | Discord gateway, command routing, admin web bootstrap, SCUM webhook receiver             | Still a large bootstrap entrypoint                                               |
+| Worker         | `src/worker.js`                                                                                                  | Delivery queue worker, rent bike runtime, background jobs                                | Split from bot runtime                                                           |
+| Watcher        | `src/services/scumLogWatcherRuntime.js`                                                                          | Tail `SCUM.log`, parse events, send them to webhook                                      | Can report `disabled` or `degraded` without exiting immediately                  |
 | Delivery Agent | `apps/agent/server.js`, `src/delivery-agent.js`, `src/scum-console-agent.js`, `src/services/scumConsoleAgent.js` | In-game delivery/announce execution runtime on the machine that has the SCUM client open | Runtime key and legacy compatibility naming still use `console-agent` internally |
-| Admin web     | `src/adminWebServer.js`                                         | Admin API, auth, RBAC, backup/restore, observability, control panel          | Mounted from bot runtime                                        |
-| Player portal | `apps/web-portal-standalone/server.js`                          | Player login, wallet, purchase history, redeem, profile, Steam link          | Deployable as a separate runtime                                |
+| Admin web      | `src/adminWebServer.js`                                                                                          | Admin API, auth, RBAC, backup/restore, observability, control panel                      | Mounted from bot runtime                                                         |
+| Player portal  | `apps/web-portal-standalone/server.js`                                                                           | Player login, wallet, purchase history, redeem, profile, Steam link                      | Deployable as a separate runtime                                                 |
 
 ## Runtime Topology
 

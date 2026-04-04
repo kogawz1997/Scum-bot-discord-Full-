@@ -163,8 +163,8 @@ test('control plane registry mirrors core server, agent, session, and sync slice
     guildId: 'guild-a',
     agentId: 'agent-a',
     runtimeKey: 'runtime-a',
-    role: 'hybrid',
-    scope: 'sync_execute',
+    role: 'execute',
+    scope: 'execute_only',
     version: '1.2.3',
   }).ok, true);
 

@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { parseLine } = require('../scum-log-watcher');
+const { parseLine } = require('../src/services/scumLogWatcherRuntime');
 
 test('parseLine handles join and leave events', () => {
   assert.deepEqual(

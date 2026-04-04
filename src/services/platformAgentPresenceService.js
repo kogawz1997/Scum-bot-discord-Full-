@@ -38,11 +38,31 @@ function ensureParentDirectory(filePath) {
   fs.mkdirSync(folder, { recursive: true });
 }
 
-function buildStateFilePath(runtimeKey, env = process.env) {
+function envFlag(value, fallback = false) {
+  if (value == null || String(value).trim() === '') return fallback;
+  const text = String(value).trim().toLowerCase();
+  return ['1', 'true', 'yes', 'on'].includes(text);
+}
+
+function resolveStatePersistence(runtimeKey, env = process.env) {
   const explicit = trimText(env.PLATFORM_AGENT_STATE_FILE || env.SCUM_PLATFORM_AGENT_STATE_FILE, 600);
-  if (explicit) return explicit;
+  if (explicit) {
+    return {
+      mode: 'encrypted-file',
+      filePath: explicit,
+    };
+  }
+  if (!envFlag(env.PLATFORM_AGENT_STATE_PERSIST || env.SCUM_PLATFORM_AGENT_STATE_PERSIST, false)) {
+    return {
+      mode: 'none',
+      filePath: null,
+    };
+  }
   const safeRuntimeKey = trimText(runtimeKey, 120).replace(/[^a-z0-9._-]+/gi, '-').toLowerCase() || 'platform-agent';
-  return getFilePath(`platform-agent-${safeRuntimeKey}.json`);
+  return {
+    mode: 'encrypted-file',
+    filePath: getFilePath(`platform-agent-${safeRuntimeKey}.json`),
+  };
 }
 
 function buildBearerToken(env, state, runtimeKeyOverride = null) {
@@ -83,9 +103,10 @@ function createPlatformAgentPresenceService(options = {}) {
   const setupToken = trimText(env.PLATFORM_AGENT_SETUP_TOKEN || env.SCUM_PLATFORM_SETUP_TOKEN, 800);
   const stateSecretConfigured = Boolean(resolveAgentStateSecret(env));
   const heartbeatIntervalMs = asInt(env.PLATFORM_AGENT_HEARTBEAT_INTERVAL_MS, 30000, 5000);
-  const stateFilePath = buildStateFilePath(runtimeKey, env);
+  const statePersistence = resolveStatePersistence(runtimeKey, env);
+  const stateFilePath = statePersistence.filePath;
   let heartbeatTimer = null;
-  let state = readJsonFile(stateFilePath);
+  let state = stateFilePath ? readJsonFile(stateFilePath) : {};
   let transientToken = '';
   let stateNeedsPersist = false;
 
@@ -101,12 +122,15 @@ function createPlatformAgentPresenceService(options = {}) {
         ? (encryptAgentStateToken(legacyRawKey, env, runtimeKey) || state.encryptedRawKey || null)
         : null,
       rawKey: null,
-      tokenPersistence: stateSecretConfigured ? 'encrypted' : 'memory-only',
+      tokenPersistence: stateSecretConfigured && stateFilePath ? 'encrypted' : 'memory-only',
     };
     stateNeedsPersist = true;
   }
 
   function persistState() {
+    if (!stateFilePath) {
+      return;
+    }
     ensureParentDirectory(stateFilePath);
     const snapshot = {
       ...state,
@@ -210,7 +234,7 @@ function createPlatformAgentPresenceService(options = {}) {
         : null,
       rawKey: null,
       tokenPersistence: activatedRawKey
-        ? (stateSecretConfigured ? 'encrypted' : 'memory-only')
+        ? (stateSecretConfigured && stateFilePath ? 'encrypted' : 'memory-only')
         : null,
     };
     persistState();

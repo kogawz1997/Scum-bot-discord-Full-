@@ -65,10 +65,8 @@
       'common.refreshConsole': 'Refresh Console',
       'common.agentRoleSync': 'Sync agent',
       'common.agentRoleExecute': 'Execute agent',
-      'common.agentRoleHybrid': 'Hybrid agent',
       'common.agentScopeSyncOnly': 'Read path only',
       'common.agentScopeExecuteOnly': 'Write path only',
-      'common.agentScopeHybrid': 'Read + write path',
       'common.runMonitoring': 'Run Monitoring',
       'common.clearAlerts': 'Clear Alerts',
       'common.acknowledgeAlerts': 'Acknowledge Alerts',
@@ -400,10 +398,8 @@
       'common.refreshConsole': 'รีเฟรชคอนโซล',
       'common.agentRoleSync': 'เอเจนต์ซิงก์',
       'common.agentRoleExecute': 'เอเจนต์สั่งงาน',
-      'common.agentRoleHybrid': 'เอเจนต์ไฮบริด',
       'common.agentScopeSyncOnly': 'เส้นทางอ่านเท่านั้น',
       'common.agentScopeExecuteOnly': 'เส้นทางเขียน/สั่งงานเท่านั้น',
-      'common.agentScopeHybrid': 'เส้นทางอ่าน + เขียน',
       'common.runMonitoring': 'รันมอนิเตอร์',
       'common.clearAlerts': 'ล้างการแจ้งเตือน',
       'common.acknowledgeAlerts': 'รับทราบการแจ้งเตือน',
@@ -5650,6 +5646,42 @@
     ['ko', '한국어'],
     ['zh-CN', '简体中文'],
     ['es', 'Español']);
+
+  Object.assign(DICTIONARY.en, {
+    'tenant.app.status.ready': 'Ready',
+    'tenant.app.tag.preview': 'Preview',
+    'tenant.app.tag.upgrade': 'Upgrade required',
+    'tenant.notice.unknownTitle': 'We could not match that page',
+    'tenant.notice.unknownDetail': 'The requested tenant page does not exist, so the workspace opened the daily overview instead.',
+    'tenant.notice.lockedTitle': 'This page is visible but some actions are locked',
+    'tenant.notice.previewDetail': 'Preview tenants can open this page, but live actions stay disabled until setup is complete.',
+    'tenant.notice.lockedDetail': 'The page stays visible so you can understand the feature, but some actions require a package upgrade.',
+    'tenant.app.status.loading': 'Loading tenant workspace...',
+    'tenant.app.card.loadingTitle': 'Preparing tenant data',
+    'tenant.app.card.loadingDetail': 'Loading server status, orders, players, and support tools for this tenant.',
+    'tenant.app.card.loadFailedTitle': 'Could not load tenant workspace',
+    'tenant.app.status.loadFailed': 'Load failed',
+    'tenant.app.card.emptyTitle': 'No tenant data yet',
+    'tenant.app.card.emptyDetail': 'Wait for the latest tenant data to load.'
+  });
+
+  Object.assign(DICTIONARY.th, {
+    'tenant.app.status.ready': 'พร้อมใช้งาน',
+    'tenant.app.tag.preview': 'ดูตัวอย่าง',
+    'tenant.app.tag.upgrade': 'ต้องอัปเกรด',
+    'tenant.notice.unknownTitle': 'ไม่พบหน้าที่ต้องการ',
+    'tenant.notice.unknownDetail': 'ไม่พบหน้าของผู้เช่าที่ร้องขอ ระบบจึงเปิดหน้าภาพรวมงานประจำวันแทน',
+    'tenant.notice.lockedTitle': 'หน้านี้มองเห็นได้ แต่บางการทำงานยังถูกล็อก',
+    'tenant.notice.previewDetail': 'ผู้เช่าแบบพรีวิวเปิดหน้านี้ได้ แต่การทำงานจริงจะยังถูกปิดไว้จนกว่าจะตั้งค่าเสร็จ',
+    'tenant.notice.lockedDetail': 'หน้านี้ยังเปิดให้ดูได้เพื่อทำความเข้าใจฟีเจอร์ แต่บางการทำงานต้องอัปเกรดแพ็กเกจก่อน',
+    'tenant.app.status.loading': 'กำลังโหลดพื้นที่ทำงานของผู้เช่า...',
+    'tenant.app.card.loadingTitle': 'กำลังเตรียมข้อมูลผู้เช่า',
+    'tenant.app.card.loadingDetail': 'กำลังโหลดสถานะเซิร์ฟเวอร์ คำสั่งซื้อ ผู้เล่น และเครื่องมือซัพพอร์ตสำหรับผู้เช่ารายนี้',
+    'tenant.app.card.loadFailedTitle': 'โหลดพื้นที่ทำงานของผู้เช่าไม่สำเร็จ',
+    'tenant.app.status.loadFailed': 'โหลดไม่สำเร็จ',
+    'tenant.app.card.emptyTitle': 'ยังไม่มีข้อมูลผู้เช่า',
+    'tenant.app.card.emptyDetail': 'กรุณารอให้ข้อมูลล่าสุดของผู้เช่าถูกโหลดก่อน'
+  });
 
   function initSelector(selectId) {
     const select = document.getElementById(selectId);

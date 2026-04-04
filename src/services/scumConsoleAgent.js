@@ -2,8 +2,6 @@
 
 const crypto = require('node:crypto');
 const http = require('node:http');
-const { spawn } = require('node:child_process');
-const path = require('node:path');
 const { executeCommandTemplate, validateCommandTemplate } = require('../utils/commandTemplate');
 const { createPlatformAgentPresenceService } = require('./platformAgentPresenceService');
 
@@ -24,26 +22,12 @@ function trimText(value, maxLen = 1200) {
   return `${text.slice(0, maxLen)}...`;
 }
 
-function parseJsonArray(value) {
-  const text = String(value || '').trim();
-  if (!text) return [];
-  try {
-    const parsed = JSON.parse(text);
-    return Array.isArray(parsed) ? parsed.map((entry) => String(entry)) : [];
-  } catch {
-    return [];
-  }
-}
-
 function createAgentError(code, message, meta = null) {
   const error = new Error(message);
   error.agentCode = String(code || 'AGENT_ERROR');
   error.meta = meta && typeof meta === 'object' ? meta : null;
   return error;
 }
-
-const MANAGED_SERVER_RESTART_WINDOW_MS = 60 * 1000;
-const MANAGED_SERVER_RESTART_MAX_ATTEMPTS = 3;
 
 function collectAgentDetailText(message, meta = null) {
   const parts = [String(message || '').trim()];
@@ -65,22 +49,10 @@ function collectAgentDetailText(message, meta = null) {
   return parts.filter(Boolean).join(' | ');
 }
 
-function secureTokenMatch(actual, expected) {
-  const left = String(actual || '').trim();
-  const right = String(expected || '').trim();
-  if (!left || !right) return false;
-  const leftBuffer = Buffer.from(left);
-  const rightBuffer = Buffer.from(right);
-  if (leftBuffer.length !== rightBuffer.length) return false;
-  return crypto.timingSafeEqual(leftBuffer, rightBuffer);
-}
-
-function classifyAgentIssue(codeInput, messageInput, meta = null, options = {}) {
+function classifyAgentIssue(codeInput, messageInput, meta = null) {
   const code = String(codeInput || 'AGENT_ERROR').trim().toUpperCase() || 'AGENT_ERROR';
   const message = trimText(messageInput || 'Agent error', 300);
   const detailText = collectAgentDetailText(message, meta).toLowerCase();
-  const autoRestartEnabled = options.autoRestartEnabled === true;
-  const restartPending = options.restartPending === true;
 
   const classification = {
     code,
@@ -92,12 +64,7 @@ function classifyAgentIssue(codeInput, messageInput, meta = null, options = {}) 
     autoRecoverable: false,
   };
 
-  if (
-    /AGENT_TOKEN_MISSING|AGENT_EXEC_TEMPLATE_MISSING|AGENT_BACKEND_UNSUPPORTED|AGENT_SERVER_START_FAILED/.test(
-      code,
-    )
-    || detailText.includes('server_exe is required')
-  ) {
+  if (/AGENT_TOKEN_MISSING|AGENT_EXEC_TEMPLATE_MISSING|AGENT_BACKEND_UNSUPPORTED/.test(code)) {
     classification.category = 'config';
     classification.reason = 'config-missing';
     classification.retryable = false;
@@ -118,24 +85,6 @@ function classifyAgentIssue(codeInput, messageInput, meta = null, options = {}) 
     classification.reason = 'agent-unreachable';
     classification.retryable = true;
     classification.operatorActionRequired = false;
-  } else if (/AGENT_MANAGED_SERVER_CRASH_LOOP/.test(code)) {
-    classification.category = 'managed-process';
-    classification.reason = 'managed-server-crash-loop';
-    classification.retryable = true;
-    classification.operatorActionRequired = true;
-    classification.autoRecoverable = false;
-  } else if (/AGENT_MANAGED_SERVER_RESTARTING/.test(code) || restartPending) {
-    classification.category = 'managed-process';
-    classification.reason = 'managed-server-restarting';
-    classification.retryable = true;
-    classification.operatorActionRequired = false;
-    classification.autoRecoverable = true;
-  } else if (/AGENT_MANAGED_SERVER|AGENT_MANAGED_STDIN_UNAVAILABLE/.test(code)) {
-    classification.category = 'managed-process';
-    classification.reason = 'managed-server-stopped';
-    classification.retryable = true;
-    classification.operatorActionRequired = autoRestartEnabled !== true;
-    classification.autoRecoverable = autoRestartEnabled;
   } else if (
     detailText.includes('scum window not found')
     || detailText.includes('main window handle')
@@ -167,43 +116,29 @@ function classifyAgentIssue(codeInput, messageInput, meta = null, options = {}) 
   return classification;
 }
 
-function buildAgentRecovery(classification, options = {}) {
+function buildAgentRecovery(classification) {
   if (!classification) return null;
 
   const recovery = {
     action: 'inspect-agent',
-    hint: 'Inspect the console agent state before retrying.',
+    hint: 'Inspect the delivery agent state before retrying.',
     retryable: classification.retryable === true,
     operatorActionRequired: classification.operatorActionRequired === true,
-    autoRecoverable: classification.autoRecoverable === true,
-    restartScheduledAt: options.restartScheduledAt || null,
+    autoRecoverable: false,
   };
 
   if (classification.category === 'config') {
     recovery.action = 'fix-config';
-    recovery.hint = 'Fix the console-agent configuration and rerun preflight before retrying.';
+    recovery.hint = 'Fix the delivery-agent configuration and rerun preflight before retrying.';
   } else if (classification.category === 'auth') {
     recovery.action = 'fix-auth';
-    recovery.hint = 'Align the console-agent token/auth settings and rerun preflight.';
+    recovery.hint = 'Align the delivery-agent token/auth settings and rerun preflight.';
   } else if (classification.category === 'timeout') {
     recovery.action = 'retry-after-client-check';
     recovery.hint = 'Check SCUM client responsiveness and command timeout settings, then retry.';
   } else if (classification.category === 'network') {
     recovery.action = 'check-agent-reachability';
-    recovery.hint = 'Check the console-agent service endpoint and local networking, then retry.';
-  } else if (classification.reason === 'managed-server-restarting') {
-    recovery.action = 'wait-for-restart';
-    recovery.hint = options.restartScheduledAt
-      ? `Wait for the managed server restart scheduled at ${options.restartScheduledAt}, then rerun preflight.`
-      : 'Wait for the managed server restart to complete, then rerun preflight.';
-  } else if (classification.reason === 'managed-server-crash-loop') {
-    recovery.action = 'investigate-managed-server-crash';
-    recovery.hint = 'Investigate repeated managed-server exits before attempting another delivery.';
-  } else if (classification.category === 'managed-process') {
-    recovery.action = classification.autoRecoverable ? 'wait-for-restart' : 'restart-managed-server';
-    recovery.hint = classification.autoRecoverable
-      ? 'Wait for the managed server to recover, then rerun preflight.'
-      : 'Restart the managed server and rerun preflight.';
+    recovery.hint = 'Check the delivery-agent endpoint and local networking, then retry.';
   } else if (classification.category === 'client-window') {
     recovery.action = 'restore-scum-window';
     recovery.hint = 'Restore the SCUM client window/title binding and rerun preflight.';
@@ -243,6 +178,16 @@ function summarizeExecFailure(error, fallbackCode = 'AGENT_EXEC_FAILED') {
   );
 }
 
+function secureTokenMatch(actual, expected) {
+  const left = String(actual || '').trim();
+  const right = String(expected || '').trim();
+  if (!left || !right) return false;
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  if (leftBuffer.length !== rightBuffer.length) return false;
+  return crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
 function normalizeHost(value, fallback = '127.0.0.1') {
   const text = String(value || '').trim();
   return text || fallback;
@@ -252,6 +197,10 @@ function normalizeBaseUrl(value, host, port) {
   const text = String(value || '').trim();
   if (text) return text.replace(/\/+$/, '');
   return `http://${host}:${port}`;
+}
+
+function isWindowScriptTemplate(template) {
+  return /send-scum-admin-command\.ps1/i.test(String(template || ''));
 }
 
 function getAgentSettings(env = process.env) {
@@ -268,15 +217,6 @@ function getAgentSettings(env = process.env) {
     false,
   );
 
-  const serverExe = String(env.SCUM_CONSOLE_AGENT_SERVER_EXE || '').trim();
-  const serverArgs = parseJsonArray(env.SCUM_CONSOLE_AGENT_SERVER_ARGS_JSON);
-  const serverWorkdir = String(env.SCUM_CONSOLE_AGENT_SERVER_WORKDIR || '').trim();
-  const autoStartServer = envFlag(env.SCUM_CONSOLE_AGENT_AUTOSTART, false);
-  const processResponseWaitMs = Math.max(
-    50,
-    Math.trunc(asNumber(env.SCUM_CONSOLE_AGENT_PROCESS_RESPONSE_WAIT_MS, 200)),
-  );
-
   return {
     host,
     port,
@@ -286,11 +226,6 @@ function getAgentSettings(env = process.env) {
     execTemplate: String(env.SCUM_CONSOLE_AGENT_EXEC_TEMPLATE || '').trim(),
     commandTimeoutMs,
     allowNonHashCommands,
-    serverExe,
-    serverArgs,
-    serverWorkdir,
-    autoStartServer,
-    processResponseWaitMs,
   };
 }
 
@@ -331,35 +266,6 @@ function parseRequestBody(req) {
   });
 }
 
-function wait(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function createOutputBuffer(maxEntries = 80) {
-  const buffer = [];
-  return {
-    push(chunk) {
-      const text = String(chunk || '');
-      const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-      for (const line of lines) {
-        buffer.push(line);
-      }
-      if (buffer.length > maxEntries) {
-        buffer.splice(0, buffer.length - maxEntries);
-      }
-    },
-    list() {
-      return buffer.slice();
-    },
-    tail(limit = 8) {
-      return buffer.slice(Math.max(0, buffer.length - limit));
-    },
-    clear() {
-      buffer.length = 0;
-    },
-  };
-}
-
 function startScumConsoleAgent(options = {}) {
   const env = options.env || process.env;
   const settings = getAgentSettings(env);
@@ -374,19 +280,6 @@ function startScumConsoleAgent(options = {}) {
     localBaseUrl: settings.baseUrl,
   });
 
-  let managedChild = null;
-  let managedChildExit = null;
-  let managedStartPromise = null;
-  let managedRestartTimer = null;
-  let managedRestartScheduledAt = null;
-  let managedRestartPendingReason = null;
-  let managedRestartCount = 0;
-  let managedRestartLastAt = null;
-  let managedRestartLastReason = null;
-  let managedRestartSuppressedAt = null;
-  let managedRestartSuppressedReason = null;
-  const managedRestartAttemptTimestamps = [];
-  let managedStopRequested = false;
   let shuttingDown = false;
   let lastCommandAt = null;
   let lastSuccessAt = null;
@@ -395,13 +288,11 @@ function startScumConsoleAgent(options = {}) {
   let lastErrorMeta = null;
   let lastPreflightAt = null;
   let lastPreflight = null;
-  let startedAt = new Date().toISOString();
+  const startedAt = new Date().toISOString();
   let executeCount = 0;
   let activeExecutionCount = 0;
   let queuedExecutionCount = 0;
   let executionQueue = Promise.resolve();
-  const recentStdout = createOutputBuffer(120);
-  const recentStderr = createOutputBuffer(120);
   const recentExecutions = [];
 
   function pushExecution(entry) {
@@ -418,70 +309,7 @@ function startScumConsoleAgent(options = {}) {
     return Math.max(0, queuedExecutionCount);
   }
 
-  function getManagedRestartEnabled() {
-    return settings.backend === 'process' && settings.autoStartServer;
-  }
-
-  function pruneManagedRestartAttempts(now = Date.now()) {
-    while (
-      managedRestartAttemptTimestamps.length > 0
-      && now - managedRestartAttemptTimestamps[0] > MANAGED_SERVER_RESTART_WINDOW_MS
-    ) {
-      managedRestartAttemptTimestamps.shift();
-    }
-  }
-
-  function clearManagedRestartSchedule() {
-    if (managedRestartTimer) {
-      clearTimeout(managedRestartTimer);
-      managedRestartTimer = null;
-    }
-    managedRestartScheduledAt = null;
-    managedRestartPendingReason = null;
-  }
-
-  function getManagedRestartState() {
-    return {
-      enabled: getManagedRestartEnabled(),
-      pending: Boolean(managedRestartTimer),
-      pendingAt: managedRestartScheduledAt,
-      pendingReason: managedRestartPendingReason,
-      restartCount: managedRestartCount,
-      lastRestartAt: managedRestartLastAt,
-      lastRestartReason: managedRestartLastReason,
-      suppressedAt: managedRestartSuppressedAt,
-      suppressedReason: managedRestartSuppressedReason,
-    };
-  }
-
-  function isWindowScriptTemplate(template) {
-    return /send-scum-admin-command\.ps1/i.test(String(template || ''));
-  }
-
   function getCurrentAgentIssue() {
-    const restartState = getManagedRestartState();
-    if (restartState.suppressedAt) {
-      return {
-        code: 'AGENT_MANAGED_SERVER_CRASH_LOOP',
-        message:
-          managedRestartSuppressedReason
-          || 'Managed SCUM server exited repeatedly; automatic restart is suppressed',
-        meta: {
-          restart: restartState,
-          lastExit: managedChildExit,
-        },
-      };
-    }
-    if (restartState.pending && !managedChild) {
-      return {
-        code: 'AGENT_MANAGED_SERVER_RESTARTING',
-        message: 'Managed SCUM server restart is scheduled',
-        meta: {
-          restart: restartState,
-          lastExit: managedChildExit,
-        },
-      };
-    }
     if (lastErrorCode || lastError) {
       return {
         code: lastErrorCode || 'AGENT_EXEC_FAILED',
@@ -500,23 +328,14 @@ function startScumConsoleAgent(options = {}) {
         recovery: null,
       };
     }
-
-    const restartState = getManagedRestartState();
     const classification = classifyAgentIssue(
       issue.code,
       issue.message,
       issue.meta,
-      {
-        autoRestartEnabled: restartState.enabled,
-        restartPending: restartState.pending,
-      },
     );
-
     return {
       classification,
-      recovery: buildAgentRecovery(classification, {
-        restartScheduledAt: restartState.pendingAt,
-      }),
+      recovery: buildAgentRecovery(classification),
     };
   }
 
@@ -524,17 +343,16 @@ function startScumConsoleAgent(options = {}) {
     if (!settings.token) {
       return { status: 'error', ready: false, code: 'AGENT_TOKEN_MISSING', message: 'SCUM_CONSOLE_AGENT_TOKEN is not set' };
     }
-    if (settings.backend === 'exec' && !settings.execTemplate) {
-      return { status: 'error', ready: false, code: 'AGENT_EXEC_TEMPLATE_MISSING', message: 'SCUM_CONSOLE_AGENT_EXEC_TEMPLATE is not set' };
-    }
-    if (settings.backend === 'process' && settings.autoStartServer && !managedChild) {
-      const issue = getCurrentAgentIssue();
+    if (settings.backend !== 'exec') {
       return {
-        status: 'degraded',
+        status: 'error',
         ready: false,
-        code: issue?.code || 'AGENT_MANAGED_SERVER_STOPPED',
-        message: issue?.message || 'Managed SCUM server is not running',
+        code: 'AGENT_BACKEND_UNSUPPORTED',
+        message: `Unsupported delivery-agent backend: ${settings.backend}`,
       };
+    }
+    if (!settings.execTemplate) {
+      return { status: 'error', ready: false, code: 'AGENT_EXEC_TEMPLATE_MISSING', message: 'SCUM_CONSOLE_AGENT_EXEC_TEMPLATE is not set' };
     }
     if (lastErrorCode || lastError) {
       const issue = getCurrentAgentIssue();
@@ -548,7 +366,7 @@ function startScumConsoleAgent(options = {}) {
     return { status: 'ready', ready: true, code: 'READY', message: 'Agent ready' };
   }
 
-  function buildExecInvocation(command, options = {}) {
+  function buildExecInvocation(command, optionsInput = {}) {
     if (!settings.execTemplate) {
       throw createAgentError(
         'AGENT_EXEC_TEMPLATE_MISSING',
@@ -560,166 +378,24 @@ function startScumConsoleAgent(options = {}) {
       template: settings.execTemplate,
       vars: { command },
       extraArgs:
-        options.checkOnly && isWindowScriptTemplate(settings.execTemplate)
+        optionsInput.checkOnly && isWindowScriptTemplate(settings.execTemplate)
           ? ['-CheckOnly']
           : [],
     };
   }
 
-  function getManagedServerState() {
-    return {
-      running: Boolean(managedChild && !managedChild.killed),
-      pid: managedChild?.pid || null,
-      exit: managedChildExit,
-      exe: settings.serverExe || null,
-      workdir: settings.serverWorkdir || null,
-      args: settings.serverArgs,
-      stdoutTail: recentStdout.tail(),
-      stderrTail: recentStderr.tail(),
-      restart: getManagedRestartState(),
-    };
-  }
-
-  function attachManagedChild(child) {
-    managedChild = child;
-    managedChildExit = null;
-    managedStopRequested = false;
-    managedRestartSuppressedAt = null;
-    managedRestartSuppressedReason = null;
-    recentStdout.clear();
-    recentStderr.clear();
-    child.stdout?.on('data', (chunk) => {
-      recentStdout.push(chunk);
-    });
-    child.stderr?.on('data', (chunk) => {
-      recentStderr.push(chunk);
-    });
-    child.on('exit', (code, signal) => {
-      const stopRequested = managedStopRequested;
-      managedChildExit = { code, signal, at: new Date().toISOString() };
-      managedChild = null;
-      managedStartPromise = null;
-      if (shuttingDown) return;
-      if (stopRequested) {
-        managedStopRequested = false;
-        return;
-      }
-      lastError = `Managed SCUM server exited (code=${code ?? 'null'} signal=${signal || 'none'})`;
-      lastErrorCode = 'AGENT_MANAGED_SERVER_STOPPED';
-      lastErrorMeta = {
-        code,
-        signal,
-        exit: managedChildExit,
-        restart: getManagedRestartState(),
-      };
-      if (getManagedRestartEnabled()) {
-        scheduleManagedServerRestart('managed-server-exit');
-      }
-    });
-  }
-
-  function scheduleManagedServerRestart(reason = 'managed-server-exit') {
-    if (!getManagedRestartEnabled()) return false;
-    if (shuttingDown || managedStopRequested) return false;
-    if (managedChild && !managedChild.killed) return false;
-    if (managedRestartTimer || managedStartPromise) return true;
-
-    const now = Date.now();
-    pruneManagedRestartAttempts(now);
-    if (managedRestartAttemptTimestamps.length >= MANAGED_SERVER_RESTART_MAX_ATTEMPTS) {
-      managedRestartSuppressedAt = new Date().toISOString();
-      managedRestartSuppressedReason =
-        'Managed SCUM server exited repeatedly; automatic restart is suppressed';
-      lastError = managedRestartSuppressedReason;
-      lastErrorCode = 'AGENT_MANAGED_SERVER_CRASH_LOOP';
-      lastErrorMeta = {
-        reason,
-        exit: managedChildExit,
-        restart: getManagedRestartState(),
-      };
-      clearManagedRestartSchedule();
-      return false;
-    }
-
-    const backoffMs = Math.max(250, settings.processResponseWaitMs);
-    managedRestartScheduledAt = new Date(now + backoffMs).toISOString();
-    managedRestartPendingReason = reason;
-    managedRestartTimer = setTimeout(() => {
-      managedRestartTimer = null;
-      managedRestartScheduledAt = null;
-      managedRestartPendingReason = null;
-      managedRestartAttemptTimestamps.push(Date.now());
-      managedRestartCount += 1;
-      managedRestartLastAt = new Date().toISOString();
-      managedRestartLastReason = reason;
-      void ensureManagedServerStarted().catch((error) => {
-        lastError = error.message;
-        lastErrorCode = String(error.agentCode || error.code || 'AGENT_SERVER_START_FAILED');
-        lastErrorMeta = error.meta || null;
-        if (getManagedRestartEnabled()) {
-          scheduleManagedServerRestart('managed-server-restart-failed');
-        }
-      });
-    }, backoffMs);
-    return true;
-  }
-
   function ensureCommandAllowed(command) {
     const trimmed = String(command || '').trim();
     if (!trimmed) {
-      throw new Error('command is required');
+      throw createAgentError('AGENT_COMMAND_REQUIRED', 'command is required');
     }
     if (!settings.allowNonHashCommands && !trimmed.startsWith('#')) {
-      throw new Error(
+      throw createAgentError(
+        'AGENT_COMMAND_NOT_ALLOWED',
         'agent only allows SCUM admin commands starting with # by default',
       );
     }
     return trimmed;
-  }
-
-  async function ensureManagedServerStarted() {
-    if (managedChild && !managedChild.killed) {
-      return managedChild;
-    }
-    if (managedStartPromise) {
-      return managedStartPromise;
-    }
-    if (!settings.serverExe) {
-      throw new Error('SCUM_CONSOLE_AGENT_SERVER_EXE is required for process backend');
-    }
-
-    managedStopRequested = false;
-    const startingFromPendingRestart = Boolean(managedRestartScheduledAt);
-    const pendingRestartReason = managedRestartPendingReason;
-    clearManagedRestartSchedule();
-    if (startingFromPendingRestart) {
-      managedRestartAttemptTimestamps.push(Date.now());
-      pruneManagedRestartAttempts();
-      managedRestartCount += 1;
-      managedRestartLastAt = new Date().toISOString();
-      managedRestartLastReason = pendingRestartReason || 'managed-server-restart';
-    }
-    managedStartPromise = (async () => {
-      const child = spawn(settings.serverExe, settings.serverArgs, {
-        cwd: settings.serverWorkdir || path.dirname(settings.serverExe),
-        windowsHide: true,
-        stdio: ['pipe', 'pipe', 'pipe'],
-        shell: false,
-      });
-      attachManagedChild(child);
-      await wait(settings.processResponseWaitMs);
-      return child;
-    })();
-
-    try {
-      const child = await managedStartPromise;
-      lastError = null;
-      lastErrorCode = null;
-      lastErrorMeta = null;
-      return child;
-    } finally {
-      managedStartPromise = null;
-    }
   }
 
   async function executeWithExecBackend(command) {
@@ -743,80 +419,55 @@ function startScumConsoleAgent(options = {}) {
     };
   }
 
-  async function executeWithProcessBackend(command) {
-    const child = await ensureManagedServerStarted();
-    if (!child.stdin || child.stdin.destroyed || !child.stdin.writable) {
-      throw createAgentError(
-        'AGENT_MANAGED_STDIN_UNAVAILABLE',
-        'managed server stdin is not writable',
-      );
-    }
-    child.stdin.write(`${command}\n`);
-    await wait(settings.processResponseWaitMs);
-    return {
-      backend: 'process',
-      accepted: true,
-      pid: child.pid,
-      stdout: trimText(recentStdout.tail().join('\n')),
-      stderr: trimText(recentStderr.tail().join('\n')),
-    };
-  }
-
   async function runPreflight() {
     lastPreflightAt = new Date().toISOString();
 
     if (!settings.token) {
       throw createAgentError('AGENT_TOKEN_MISSING', 'SCUM_CONSOLE_AGENT_TOKEN is not set');
     }
+    if (settings.backend !== 'exec') {
+      throw createAgentError('AGENT_BACKEND_UNSUPPORTED', `Unsupported delivery-agent backend: ${settings.backend}`);
+    }
+    if (!settings.execTemplate) {
+      throw createAgentError(
+        'AGENT_EXEC_TEMPLATE_MISSING',
+        'SCUM_CONSOLE_AGENT_EXEC_TEMPLATE is not set',
+      );
+    }
 
-    if (settings.backend === 'exec') {
-      if (!settings.execTemplate) {
-        throw createAgentError(
-          'AGENT_EXEC_TEMPLATE_MISSING',
-          'SCUM_CONSOLE_AGENT_EXEC_TEMPLATE is not set',
+    if (isWindowScriptTemplate(settings.execTemplate)) {
+      const invocation = buildExecInvocation('#Announce PREFLIGHT', {
+        checkOnly: true,
+      });
+      try {
+        const result = await executeCommandTemplate(
+          invocation.template,
+          invocation.vars,
+          {
+            extraArgs: invocation.extraArgs,
+            timeoutMs: settings.commandTimeoutMs,
+            windowsHide: true,
+            cwd: process.cwd(),
+          },
         );
-      }
-
-      if (isWindowScriptTemplate(settings.execTemplate)) {
-        const invocation = buildExecInvocation('#Announce PREFLIGHT', {
-          checkOnly: true,
-        });
-        let result;
-        try {
-          result = await executeCommandTemplate(
-            invocation.template,
-            invocation.vars,
-            {
-              extraArgs: invocation.extraArgs,
-              timeoutMs: settings.commandTimeoutMs,
-              windowsHide: true,
-              cwd: process.cwd(),
-            },
-          );
-        } catch (error) {
-          throw summarizeExecFailure(error, 'AGENT_PREFLIGHT_FAILED');
-        }
-        let parsed = null;
-        try {
-          parsed = result.stdout ? JSON.parse(result.stdout) : null;
-        } catch {}
         lastPreflight = {
           ok: true,
           backend: 'exec',
-          check: 'window',
+          check: 'window-script',
+          mode: 'window-script',
           shellCommand: result.displayCommand,
-          stdout: trimText(result.stdout),
-          stderr: trimText(result.stderr),
-          detail: parsed,
+          detail: {
+            stdout: trimText(result.stdout, 600) || null,
+            stderr: trimText(result.stderr, 600) || null,
+            shellCommand: result.displayCommand,
+          },
           classification: null,
           recovery: null,
         };
-        lastError = null;
-        lastErrorCode = null;
-        lastErrorMeta = null;
-        return lastPreflight;
+      } catch (error) {
+        throw summarizeExecFailure(error, 'AGENT_PREFLIGHT_FAILED');
       }
-
+    } else {
       lastPreflight = {
         ok: true,
         backend: 'exec',
@@ -830,43 +481,14 @@ function startScumConsoleAgent(options = {}) {
         classification: null,
         recovery: null,
       };
-      lastError = null;
-      lastErrorCode = null;
-      lastErrorMeta = null;
-      return lastPreflight;
     }
 
-    if (settings.backend === 'process') {
-      const running = Boolean(managedChild && !managedChild.killed);
-      if (!running && settings.autoStartServer) {
-        await ensureManagedServerStarted();
-      }
-      const currentRunning = Boolean(managedChild && !managedChild.killed);
-      if (!currentRunning) {
-        throw createAgentError(
-          'AGENT_MANAGED_SERVER_STOPPED',
-          'Managed SCUM server is not running',
-        );
-      }
-      lastPreflight = {
-        ok: true,
-        backend: 'process',
-        check: 'managed-server',
-        detail: getManagedServerState(),
-        classification: null,
-        recovery: null,
-      };
-      lastError = null;
-      lastErrorCode = null;
-      lastErrorMeta = null;
-      return lastPreflight;
-    }
-
-    throw createAgentError('AGENT_BACKEND_UNSUPPORTED', `Unsupported backend: ${settings.backend}`);
+    lastError = null;
+    lastErrorCode = null;
+    lastErrorMeta = null;
+    return lastPreflight;
   }
 
-  // Commands are serialized to preserve in-game ordering and to make queue depth/health
-  // reflect the real backlog seen by operators.
   async function executeCommand(command) {
     const normalizedCommand = ensureCommandAllowed(command);
     const executeOnce = async () => {
@@ -875,24 +497,18 @@ function startScumConsoleAgent(options = {}) {
       executeCount += 1;
 
       try {
-        let result;
-        if (settings.backend === 'process') {
-          result = await executeWithProcessBackend(normalizedCommand);
-        } else {
-          try {
-            result = await executeWithExecBackend(normalizedCommand);
-          } catch (error) {
-            throw summarizeExecFailure(error, 'AGENT_EXEC_FAILED');
-          }
-        }
+        const result = await executeWithExecBackend(normalizedCommand).catch((error) => {
+          throw summarizeExecFailure(error, 'AGENT_EXEC_FAILED');
+        });
 
         lastSuccessAt = new Date().toISOString();
         lastError = null;
         lastErrorCode = null;
+        lastErrorMeta = null;
 
         pushExecution({
           ok: true,
-          backend: settings.backend,
+          backend: 'exec',
           command: normalizedCommand,
           stdout: trimText(result.stdout, 250),
           stderr: trimText(result.stderr, 250),
@@ -915,45 +531,25 @@ function startScumConsoleAgent(options = {}) {
     return nextExecution;
   }
 
-  function stopManagedServer() {
-    if (!managedChild || managedChild.killed) return false;
-    managedStopRequested = true;
-    clearManagedRestartSchedule();
-    managedChild.kill();
-    return true;
-  }
-
-  if (settings.backend === 'process' && settings.autoStartServer) {
-    void ensureManagedServerStarted().catch((error) => {
-      lastError = error.message;
-      lastErrorCode = String(error.agentCode || error.code || 'AGENT_SERVER_START_FAILED');
-      lastErrorMeta = error.meta || null;
-      console.error(`[${name}] failed to autostart managed server:`, error.message);
-    });
-  }
-
   const server = http.createServer(async (req, res) => {
     const reply = createJsonResponder(res);
-    const url = new URL(req.url || '/', `http://${settings.host}:${settings.port}`);
-    const requestToken = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim()
-      || String(req.headers['x-agent-token'] || '').trim();
-    const authorized = secureTokenMatch(requestToken, settings.token);
+    const url = new URL(req.url || '/', settings.baseUrl);
+    const token = req.headers.authorization?.replace(/^Bearer\s+/i, '') || req.headers['x-agent-token'] || '';
+    const authorized = secureTokenMatch(token, settings.token);
 
-    if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/healthz')) {
-      if (!authorized) {
-        return reply(401, { ok: false, error: 'unauthorized' });
-      }
+    if (req.method === 'GET' && url.pathname === '/healthz') {
       const status = getAgentStatus();
       const diagnostic = buildCurrentAgentDiagnostic();
       return reply(200, {
         ok: true,
-        service: name,
+        name,
+        host: settings.host,
+        port: settings.port,
         backend: settings.backend,
-        status: status.status,
         ready: status.ready,
+        status: status.status,
         statusCode: status.code,
         statusMessage: status.message,
-        now: new Date().toISOString(),
         startedAt,
         lastCommandAt,
         lastSuccessAt,
@@ -968,7 +564,7 @@ function startScumConsoleAgent(options = {}) {
         recentExecutions: recentExecutions.slice(-10),
         executeCount,
         queueDepth: getQueueDepth(),
-        managedServer: getManagedServerState(),
+        managedServer: null,
       });
     }
 
@@ -998,14 +594,8 @@ function startScumConsoleAgent(options = {}) {
           lastErrorCode,
           error.message,
           error.meta || null,
-          {
-            autoRestartEnabled: getManagedRestartEnabled(),
-            restartPending: Boolean(getManagedRestartState().pending),
-          },
         );
-        const recovery = buildAgentRecovery(classification, {
-          restartScheduledAt: getManagedRestartState().pendingAt,
-        });
+        const recovery = buildAgentRecovery(classification);
         lastPreflight = {
           ok: false,
           backend: settings.backend,
@@ -1054,14 +644,8 @@ function startScumConsoleAgent(options = {}) {
           lastErrorCode,
           error.message,
           error.meta || null,
-          {
-            autoRestartEnabled: getManagedRestartEnabled(),
-            restartPending: Boolean(getManagedRestartState().pending),
-          },
         );
-        const recovery = buildAgentRecovery(classification, {
-          restartScheduledAt: getManagedRestartState().pendingAt,
-        });
+        const recovery = buildAgentRecovery(classification);
         pushExecution({
           ok: false,
           backend: settings.backend,
@@ -1078,51 +662,6 @@ function startScumConsoleAgent(options = {}) {
           recovery,
         });
       }
-    }
-
-    if (url.pathname === '/server/start') {
-      try {
-        if (settings.backend !== 'process') {
-          throw new Error('server start is only supported for process backend');
-        }
-        managedStopRequested = false;
-        managedRestartSuppressedAt = null;
-        managedRestartSuppressedReason = null;
-        const child = await ensureManagedServerStarted();
-        return reply(200, {
-          ok: true,
-          started: true,
-          pid: child.pid,
-        });
-      } catch (error) {
-        lastError = error.message;
-        lastErrorCode = String(error.agentCode || error.code || 'AGENT_SERVER_START_FAILED');
-        lastErrorMeta = error.meta || null;
-        const classification = classifyAgentIssue(
-          lastErrorCode,
-          error.message,
-          error.meta || null,
-          {
-            autoRestartEnabled: getManagedRestartEnabled(),
-            restartPending: Boolean(getManagedRestartState().pending),
-          },
-        );
-        const recovery = buildAgentRecovery(classification, {
-          restartScheduledAt: getManagedRestartState().pendingAt,
-        });
-        return reply(500, {
-          ok: false,
-          error: error.message,
-          errorCode: lastErrorCode,
-          classification,
-          recovery,
-        });
-      }
-    }
-
-    if (url.pathname === '/server/stop') {
-      const stopped = stopManagedServer();
-      return reply(200, { ok: true, stopped });
     }
 
     return reply(404, { ok: false, error: 'not-found' });
@@ -1143,6 +682,11 @@ function startScumConsoleAgent(options = {}) {
         getDiagnostics: () => ({
           backend: settings.backend,
           baseUrl: settings.baseUrl,
+          queueDepth: getQueueDepth(),
+          activeExecutionCount,
+          lastCommandAt,
+          lastSuccessAt,
+          statusCode: getAgentStatus().code,
         }),
       }).catch(() => null);
       resolve();
@@ -1150,18 +694,18 @@ function startScumConsoleAgent(options = {}) {
   });
 
   return {
-    settings,
     server,
+    settings,
     ready,
     async close() {
       shuttingDown = true;
-      clearManagedRestartSchedule();
-      managedStopRequested = true;
-      if (managedChild && !managedChild.killed) {
-        managedChild.kill();
+      if (shuttingDown) {
+        await platformPresence.close().catch(() => null);
       }
-      await platformPresence.close().catch(() => null);
       await new Promise((resolve) => server.close(resolve));
+    },
+    getStatus() {
+      return getAgentStatus();
     },
   };
 }

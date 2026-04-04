@@ -98,6 +98,7 @@ const {
 const {
   ensurePlatformPlayerIdentity,
   getPlatformUserIdentitySummary,
+  issueEmailVerificationToken,
 } = require('../../../src/services/platformIdentityService');
 const {
   createRaidRequest,
@@ -649,6 +650,7 @@ function createPortalBootstrapRuntime({
       claimWeekly,
       getTenantFeatureAccess,
       getPlatformUserIdentitySummary,
+      issueEmailVerificationToken,
       createRaidRequest,
       listRaidRequests,
       listRaidWindows,

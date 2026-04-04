@@ -48,10 +48,12 @@ Language:
 ## ประเด็นที่ควรจับตา
 
 1. `repo closed` ไม่ได้แปลว่า `live environment proved`
+
    - หลายก้อนใน matrix ปิดในเชิง repo แล้ว
    - แต่ยังต้องมี live operator evidence และ rollout จริง
 
 2. `tenant isolation` ใน matrix นี้อิง baseline ปัจจุบัน
+
    - ถ้ายก bar ไปถึงทุก environment หรือทุก tier อาจกลายเป็น hardening track ใหม่ได้
 
 3. `commercial readiness` ยังไม่ใช่คำว่า “ขายได้เต็มรูป” โดยอัตโนมัติ

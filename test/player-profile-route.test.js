@@ -203,3 +203,73 @@ test('player profile route prefers centralized identity summary when service pro
   assert.equal(res.payload.data.identitySummary.linkedAccounts.steam.verified, true);
   assert.equal(res.payload.data.identitySummary.activeMembership.status, 'active');
 });
+
+test('player profile email verification request queues a token for an unverified linked email', async () => {
+  let issuedPayload = null;
+  const route = createPlayerGeneralRoutes({
+    sendJson: createSendJson(),
+    readJsonBody: async () => ({ email: 'mira@example.com' }),
+    normalizeText(value) {
+      return String(value || '').trim();
+    },
+    getPlayerAccount: async () => ({
+      username: 'mira',
+      displayName: 'MiraTH',
+      isActive: true,
+    }),
+    resolveSessionSteamLink: async () => ({
+      linked: true,
+      steamId: '76561199012345678',
+      inGameName: 'MiraTH',
+    }),
+    getPlatformUserIdentitySummary: async () => ({
+      ok: true,
+      user: {
+        id: 'platform-user-1',
+        primaryEmail: 'mira@example.com',
+      },
+      profile: {
+        id: 'platform-profile-1',
+      },
+      identitySummary: {
+        linkedAccounts: {
+          email: {
+            linked: true,
+            verified: false,
+            value: 'mira@example.com',
+          },
+        },
+      },
+    }),
+    issueEmailVerificationToken: async (input) => {
+      issuedPayload = input;
+      return { ok: true, token: { id: 'vfy-1' } };
+    },
+  });
+
+  const res = createResponse();
+  const handled = await route({
+    req: {},
+    res,
+    urlObj: createUrl('/player/api/profile/email-verification/request'),
+    pathname: '/player/api/profile/email-verification/request',
+    method: 'POST',
+    session: {
+      discordId: '123456789012345678',
+      user: 'MiraTH',
+      role: 'player',
+      primaryEmail: 'mira@example.com',
+      platformUserId: 'platform-user-1',
+      platformProfileId: 'platform-profile-1',
+      tenantId: 'tenant-prod-001',
+    },
+  });
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.ok, true);
+  assert.equal(res.payload.data.requested, true);
+  assert.equal(issuedPayload.email, 'mira@example.com');
+  assert.equal(issuedPayload.userId, 'platform-user-1');
+  assert.equal(issuedPayload.metadata.source, 'player-profile-email-verification');
+});

@@ -72,6 +72,75 @@
     return 'muted';
   }
 
+  function compareVersions(left, right) {
+    const leftParts = String(left || '').trim().split(/[.-]/g).map((value) => Number.parseInt(value, 10) || 0);
+    const rightParts = String(right || '').trim().split(/[.-]/g).map((value) => Number.parseInt(value, 10) || 0);
+    const maxLen = Math.max(leftParts.length, rightParts.length);
+    for (let index = 0; index < maxLen; index += 1) {
+      const leftValue = leftParts[index] || 0;
+      const rightValue = rightParts[index] || 0;
+      if (leftValue > rightValue) return 1;
+      if (leftValue < rightValue) return -1;
+    }
+    return 0;
+  }
+
+  function buildVersionWatch(version, minimumVersion) {
+    const currentVersion = trimText(version, 80);
+    const minimum = trimText(minimumVersion, 80);
+    if (!minimum) {
+      return {
+        tone: currentVersion ? 'success' : 'warning',
+        label: currentVersion ? 'Version reported' : 'Waiting for version',
+      };
+    }
+    if (!currentVersion) {
+      return {
+        tone: 'warning',
+        label: `Need at least ${minimum}`,
+      };
+    }
+    return compareVersions(currentVersion, minimum) >= 0
+      ? { tone: 'success', label: `Meets ${minimum}` }
+      : { tone: 'danger', label: `Upgrade to ${minimum}` };
+  }
+
+  function buildFleetWatch(rows) {
+    const items = Array.isArray(rows) ? rows : [];
+    const mismatchCount = items.filter((row) => row.versionWatchTone === 'danger').length;
+    const unboundCount = items.filter((row) => row.bindingTone !== 'success').length;
+    const offlineCount = items.filter((row) => statusTone(row.status) !== 'success').length;
+    const channels = Array.from(new Set(items.map((row) => trimText(row.channel, 40)).filter(Boolean)));
+    return {
+      items: [
+        {
+          label: 'Version mismatches',
+          value: formatNumber(mismatchCount),
+          detail: mismatchCount ? 'Some Server Bots are below the minimum version target.' : 'All connected Server Bots meet the visible version floor.',
+          tone: mismatchCount ? 'danger' : 'success',
+        },
+        {
+          label: 'Binding gaps',
+          value: formatNumber(unboundCount),
+          detail: unboundCount ? 'At least one Server Bot still needs a machine binding.' : 'Every listed Server Bot has an active machine binding.',
+          tone: unboundCount ? 'warning' : 'success',
+        },
+        {
+          label: 'Channels in use',
+          value: channels.length ? channels.join(', ') : 'none',
+          detail: channels.length ? 'Review channel drift before the next restart or rollout window.' : 'No runtime channel has reported back yet.',
+          tone: channels.length > 1 ? 'warning' : 'info',
+        },
+        {
+          label: 'Offline or stale',
+          value: formatNumber(offlineCount),
+          detail: offlineCount ? 'Investigate stale or offline bots before relying on config and restart automation.' : 'All listed Server Bots are reporting healthy runtime status.',
+          tone: offlineCount ? 'warning' : 'success',
+        },
+      ],
+    };
+  }
+
   function normalizeCapabilities(value) {
     const raw = Array.isArray(value)
       ? value
@@ -85,7 +154,7 @@
     const meta = row?.meta && typeof row.meta === 'object' ? row.meta : {};
     const role = trimText(meta.agentRole || meta.role || row.role, 80).toLowerCase();
     const scope = trimText(meta.agentScope || meta.scope || row.scope, 80).toLowerCase();
-    if (['sync', 'hybrid'].includes(role) || ['sync_only', 'sync-only', 'synconly', 'sync_execute', 'sync-execute'].includes(scope)) {
+    if (role === 'sync' || ['sync_only', 'sync-only', 'synconly'].includes(scope)) {
       return true;
     }
     const text = [
@@ -314,13 +383,23 @@
       const credential = credentials.find((entry) => matchesRuntimeEntry(entry, row) && String(entry?.status || '').trim() !== 'revoked') || null;
       const session = findLatestRuntimeSession(sessions, row);
       const capabilities = normalizeCapabilities(row?.meta?.capabilities || row?.meta?.features);
+      const minimumVersion = firstNonEmpty([row?.meta?.minimumVersion, row?.minimumVersion, session?.metadata?.minimumVersion], '');
+      const version = firstNonEmpty([row?.version, row?.meta?.version, session?.version, '-']);
+      const versionWatch = buildVersionWatch(version === '-' ? '' : version, minimumVersion);
+      const machine = firstNonEmpty([device?.hostname, session?.hostname, session?.metadata?.hostname, row?.hostname, row?.meta?.hostname, row?.meta?.machineFingerprint, 'Unknown host']);
       return {
         name: firstNonEmpty([row?.meta?.agentLabel, row?.displayName, row?.name, row?.runtimeKey, 'Server Bot']),
         server: firstNonEmpty([row?.meta?.serverId, row?.serverId, row?.tenantServerId, 'Unassigned']),
-        machine: firstNonEmpty([device?.hostname, session?.hostname, session?.metadata?.hostname, row?.hostname, row?.meta?.hostname, row?.meta?.machineFingerprint, 'Unknown host']),
+        machine: machine,
         status: firstNonEmpty([row?.status, 'unknown']),
         lastSeenAt: formatDateTime(row?.lastSeenAt || session?.heartbeatAt),
-        version: firstNonEmpty([row?.version, row?.meta?.version, session?.version, '-']),
+        version: version,
+        minimumVersion: minimumVersion || '-',
+        channel: firstNonEmpty([row?.channel, row?.meta?.channel, session?.channel, 'stable']),
+        versionWatchLabel: versionWatch.label,
+        versionWatchTone: versionWatch.tone,
+        bindingLabel: device ? `Bound to ${machine}` : 'Waiting for machine bind',
+        bindingTone: device ? 'success' : 'warning',
         capabilityLabel: [
           capabilities.some((entry) => entry.includes('sync')) ? 'sync ready' : 'sync pending',
           capabilities.some((entry) => entry.includes('config')) ? 'config ready' : 'config pending',
@@ -376,8 +455,9 @@
               'ออก setup token แล้วติดตั้งบอตบนเครื่องที่ดูแล SCUM.log ไฟล์ตั้งค่า การสำรอง และการรีสตาร์ต',
               'สร้างบอตเซิร์ฟเวอร์',
               '#server-bots-provision',
-            )
+        )
           : createEmptyState;
+    const fleetWatch = buildFleetWatch(rows);
 
     return {
       shell: {
@@ -441,6 +521,7 @@
       servers: Array.isArray(state.servers) ? state.servers : [],
       selectedServerId,
       rows,
+      fleetWatch,
       history,
       tokens,
       discordLinks,
@@ -506,6 +587,7 @@
       `<a class="tdv4-button tdv4-button-primary" href="${escapeHtml(pageheadActionHref)}">${escapeHtml(pageheadActionLabel)}</a>`,
       '</div></section>',
       `<section class="tdv4-kpi-strip tdv4-runtime-summary-strip">${safe.summary.map((item) => `<article class="tdv4-kpi tdv4-tone-${escapeHtml(item.tone)}"><div class="tdv4-kpi-label">${escapeHtml(item.label)}</div><div class="tdv4-kpi-value">${escapeHtml(item.value)}</div><div class="tdv4-kpi-detail">${escapeHtml(item.detail)}</div></article>`).join('')}</section>`,
+      `<section class="tdv4-list-grid" data-runtime-fleet-watch="server-bots">${(Array.isArray(safe.fleetWatch?.items) ? safe.fleetWatch.items : []).map((item) => `<article class="tdv4-panel tdv4-tone-${escapeHtml(item.tone || 'info')}"><div class="tdv4-section-kicker">Fleet watch</div><h2 class="tdv4-section-title">${escapeHtml(item.label)}</h2><p class="tdv4-section-copy">${escapeHtml(item.value)}</p><p class="tdv4-kpi-detail">${escapeHtml(item.detail)}</p></article>`).join('')}</section>`,
       '<section class="tdv4-dual-grid tdv4-runtime-main-grid">',
       '<article class="tdv4-panel" id="server-bots-provision">',
       '<div class="tdv4-section-kicker">งานหลัก</div>',

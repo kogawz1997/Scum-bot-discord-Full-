@@ -49,6 +49,10 @@ test('tenant billing v4 model summarizes current subscription and upgrade option
   assert.equal(model.quotaRows.length, 1);
   assert.equal(model.planRows.length, 2);
   assert.equal(model.actions.primary.planId, 'platform-growth');
+  assert.ok(model.billingOpsCenter);
+  assert.equal(model.billingOpsCenter.retryEligible, true);
+  assert.ok(model.billingOpsCenter.summaryCards.some((item) => item.label === 'Open invoices'));
+  assert.ok(model.billingOpsCenter.timeline.some((item) => item.title === 'Latest payment attempt'));
 });
 
 test('tenant billing v4 html includes checkout actions and billing history', () => {
@@ -63,6 +67,8 @@ test('tenant billing v4 html includes checkout actions and billing history', () 
   assert.match(html, /แพ็กเกจและการชำระเงิน/);
   assert.match(html, /data-tenant-billing-refresh/);
   assert.match(html, /data-tenant-billing-checkout/);
+  assert.match(html, /data-tenant-billing-ops/);
+  assert.match(html, /Billing \/ Subscription Ops Center/);
   assert.match(html, /ประวัติการเรียกเก็บเงิน/);
 });
 
@@ -80,4 +86,30 @@ test('tenant billing v4 html exposes enabled features and package limits', () =>
   assert.match(html, /ขีดจำกัดของแพ็กเกจ/);
   assert.match(html, /Delivery Agent/);
   assert.match(html, /ใช้แล้ว 1/);
+});
+
+test('tenant billing v4 html exposes retry payment when invoices or attempts need recovery', () => {
+  const html = buildTenantBillingV4Html(createTenantBillingV4Model({
+    overview: {
+      plans: [
+        { id: 'platform-starter', name: 'Starter', amountCents: 490000, currency: 'THB', billingCycle: 'monthly', features: ['starter'] },
+      ],
+    },
+    subscriptions: [{
+      id: 'sub-ops-1',
+      planId: 'platform-starter',
+      lifecycleStatus: 'suspended',
+      status: 'suspended',
+      amountCents: 490000,
+      currency: 'THB',
+      billingCycle: 'monthly',
+      currentPeriodEnd: '2026-05-01T00:00:00.000Z',
+    }],
+    billingInvoices: [{ id: 'inv-ops-1', status: 'past_due', amountCents: 490000, currency: 'THB' }],
+    billingPaymentAttempts: [{ id: 'att-ops-1', provider: 'stripe', status: 'failed', amountCents: 490000, currency: 'THB', errorCode: 'card_declined' }],
+  }));
+
+  assert.match(html, /Retry payment/);
+  assert.match(html, /data-tenant-billing-retry="true"/);
+  assert.match(html, /Recent billing milestones/);
 });
