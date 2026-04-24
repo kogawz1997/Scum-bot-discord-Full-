@@ -3,6 +3,7 @@ import { Users, ArrowLeft, Plus } from "lucide-react";
 import { PageLayout } from "../components/layout/page-layout";
 import { GlassCard } from "../components/ui/glass-card";
 import { Input } from "../components/ui/input";
+import { Select } from "../components/ui/select";
 import { Button } from "../components/ui/button";
 import { Field } from "../components/ui/field";
 
@@ -17,25 +18,24 @@ function LabeledInput({ label, id, ...props }) {
   );
 }
 
-function SelectField({ label, id, value, onChange, children }) {
+function SelectField({ label, id, value, onChange, options, placeholder }) {
   return (
     <div>
       <label htmlFor={id} className="mb-2 block text-[10px] uppercase tracking-[0.16em] text-zinc-400">
         {label}
       </label>
-      <select
+      <Select
         id={id}
         value={value}
-        onChange={onChange}
-        className="owner-input flex h-11 w-full rounded-xl border border-white/10 bg-white/[0.035] px-4 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/40 focus:border-cyan-400/30 transition-colors"
-      >
-        {children}
-      </select>
+        onValueChange={onChange}
+        options={options}
+        placeholder={placeholder}
+      />
     </div>
   );
 }
 
-export function CreateTenantPage({ data, source, live, recordId, onRun, errors }) {
+export function CreateTenantPage({ data, onRun }) {
   const packages = data?.packages || [];
 
   const [form, setForm] = useState({
@@ -51,15 +51,19 @@ export function CreateTenantPage({ data, source, live, recordId, onRun, errors }
   const [submitError, setSubmitError] = useState(null);
 
   function handleChange(field) {
-    return (e) => setForm((prev) => ({ ...prev, [field]: e.target.value }));
+    return (nextValueOrEvent) => {
+      const nextValue =
+        typeof nextValueOrEvent === "string" ? nextValueOrEvent : nextValueOrEvent?.target?.value;
+      setForm((prev) => ({ ...prev, [field]: nextValue ?? "" }));
+    };
   }
 
   function autoSlug(name) {
     return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   }
 
-  function handleNameChange(e) {
-    const name = e.target.value;
+  function handleNameChange(event) {
+    const name = event.target.value;
     setForm((prev) => ({
       ...prev,
       name,
@@ -67,11 +71,20 @@ export function CreateTenantPage({ data, source, live, recordId, onRun, errors }
     }));
   }
 
-  async function handleSubmit(e) {
-    e.preventDefault();
+  async function handleSubmit(event) {
+    event.preventDefault();
     setSubmitError(null);
-    if (!form.name.trim()) { setSubmitError("Tenant name is required."); return; }
-    if (!form.slug.trim()) { setSubmitError("Slug is required."); return; }
+
+    if (!form.name.trim()) {
+      setSubmitError("Tenant name is required.");
+      return;
+    }
+
+    if (!form.slug.trim()) {
+      setSubmitError("Slug is required.");
+      return;
+    }
+
     setSubmitting(true);
     try {
       await onRun("createTenant", {
@@ -83,8 +96,8 @@ export function CreateTenantPage({ data, source, live, recordId, onRun, errors }
         discordOwnerId: form.discordOwnerId.trim() || undefined,
         notes: form.notes.trim() || undefined,
       });
-    } catch (err) {
-      setSubmitError(err?.message || "Failed to create tenant.");
+    } catch (error) {
+      setSubmitError(error?.message || "Failed to create tenant.");
     } finally {
       setSubmitting(false);
     }
@@ -97,7 +110,7 @@ export function CreateTenantPage({ data, source, live, recordId, onRun, errors }
   );
 
   return (
-    <PageLayout title="Create Tenant" subtitle="Onboard a new community" icon={Users} rightActions={actions}>
+    <PageLayout title="Tenant Onboarding" subtitle="Onboard a new community" icon={Users} rightActions={actions} showActions>
       <form onSubmit={handleSubmit} className="space-y-4">
         <GlassCard title="Tenant Identity" description="Basic profile information for the new community.">
           <div className="grid gap-4 md:grid-cols-2">
@@ -117,21 +130,33 @@ export function CreateTenantPage({ data, source, live, recordId, onRun, errors }
               onChange={handleChange("slug")}
               required
             />
-            <SelectField label="Tier" id="tenant-tier" value={form.tier} onChange={handleChange("tier")}>
-              <option value="standard">Standard</option>
-              <option value="pro">Pro</option>
-              <option value="enterprise">Enterprise</option>
-            </SelectField>
-            {packages.length > 0 && (
-              <SelectField label="Initial Package" id="tenant-package" value={form.packageId} onChange={handleChange("packageId")}>
-                <option value="">— No package —</option>
-                {packages.map((pkg) => (
-                  <option key={pkg.sku || pkg.id} value={pkg.sku || pkg.id}>
-                    {pkg.name || pkg.sku || pkg.id}
-                  </option>
-                ))}
-              </SelectField>
-            )}
+            <SelectField
+              label="Tier"
+              id="tenant-tier"
+              value={form.tier}
+              onChange={handleChange("tier")}
+              options={[
+                { value: "standard", label: "Standard" },
+                { value: "pro", label: "Pro" },
+                { value: "enterprise", label: "Enterprise" },
+              ]}
+            />
+            {packages.length > 0 ? (
+              <SelectField
+                label="Initial Package"
+                id="tenant-package"
+                value={form.packageId}
+                onChange={handleChange("packageId")}
+                options={[
+                  { value: "", label: "No package" },
+                  ...packages.map((pkg) => ({
+                    value: pkg.sku || pkg.id,
+                    label: pkg.name || pkg.sku || pkg.id,
+                  })),
+                ]}
+                placeholder="Select package"
+              />
+            ) : null}
           </div>
         </GlassCard>
 
@@ -170,23 +195,22 @@ export function CreateTenantPage({ data, source, live, recordId, onRun, errors }
           </div>
         </GlassCard>
 
-        {/* Preview */}
         <GlassCard title="Preview" description="Review before creating.">
           <div className="grid gap-4 md:grid-cols-3">
-            <Field label="Name" value={form.name || "—"} />
-            <Field label="Slug" value={form.slug || "—"} />
+            <Field label="Name" value={form.name || "-"} />
+            <Field label="Slug" value={form.slug || "-"} />
             <Field label="Tier" value={form.tier} />
-            {form.packageId && <Field label="Package" value={form.packageId} />}
-            {form.discordGuildId && <Field label="Guild ID" value={form.discordGuildId} />}
-            {form.discordOwnerId && <Field label="Owner ID" value={form.discordOwnerId} />}
+            {form.packageId ? <Field label="Package" value={form.packageId} /> : null}
+            {form.discordGuildId ? <Field label="Guild ID" value={form.discordGuildId} /> : null}
+            {form.discordOwnerId ? <Field label="Owner ID" value={form.discordOwnerId} /> : null}
           </div>
         </GlassCard>
 
-        {submitError && (
+        {submitError ? (
           <div className="rounded-xl border border-red-500/20 bg-red-500/[0.07] px-4 py-3 text-sm text-red-300">
             {submitError}
           </div>
-        )}
+        ) : null}
 
         <div className="flex gap-3">
           <Button type="submit" primary disabled={submitting || !form.name.trim() || !form.slug.trim()}>

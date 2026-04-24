@@ -1,3 +1,5 @@
+import { OWNER_DASHBOARD_PATH, OWNER_LOGIN_PATH } from "./owner-routes.js";
+
 async function parseAuthResponse(response) {
   const contentType = response.headers.get("content-type") || "";
   const payload = contentType.includes("application/json") ? await response.json() : null;
@@ -27,7 +29,14 @@ function isSafeInternalPath(value) {
   if (!value || typeof value !== "string") return false;
   if (!value.startsWith("/")) return false;
   if (value.startsWith("//")) return false;
-  if (value === "/login" || value.startsWith("/login?")) return false;
+  if (
+    value === "/login"
+    || value.startsWith("/login?")
+    || value === OWNER_LOGIN_PATH
+    || value.startsWith(`${OWNER_LOGIN_PATH}?`)
+  ) {
+    return false;
+  }
   return true;
 }
 
@@ -44,13 +53,13 @@ export async function getOwnerSession(options = {}) {
   return parseAuthResponse(response);
 }
 
-export function buildOwnerLoginRedirect(pathname = "/overview", search = "") {
-  const requested = `${pathname || "/overview"}${search || ""}`;
-  if (!isSafeInternalPath(requested)) return "/login";
-  return `/login?next=${encodeURIComponent(requested)}`;
+export function buildOwnerLoginRedirect(pathname = OWNER_DASHBOARD_PATH, search = "") {
+  const requested = `${pathname || OWNER_DASHBOARD_PATH}${search || ""}`;
+  if (!isSafeInternalPath(requested)) return OWNER_LOGIN_PATH;
+  return `${OWNER_LOGIN_PATH}?next=${encodeURIComponent(requested)}`;
 }
 
-export function resolvePostLoginPath(search = "", fallback = "/overview") {
+export function resolvePostLoginPath(search = "", fallback = OWNER_DASHBOARD_PATH) {
   const params = new URLSearchParams(String(search || "").replace(/^\?/, ""));
   const next = params.get("next");
   return isSafeInternalPath(next) ? next : fallback;

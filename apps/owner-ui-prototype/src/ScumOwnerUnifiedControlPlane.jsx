@@ -39,6 +39,9 @@ import {
   BarChart3,
   Wrench,
   Key,
+  UserCircle2,
+  LogOut,
+  ChevronDown,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -57,6 +60,8 @@ import {
   buildOwnerPagePath,
   resolveOwnerRouteFromPath,
 } from "./lib/owner-routes.js";
+import { getOwnerSession, logoutOwner } from "./lib/owner-auth.js";
+import { generateAllAlerts } from "./lib/alerts-generator.js";
 import {
   OverviewPage as NewOverviewPage,
   TenantsPage as NewTenantsPage,
@@ -72,10 +77,13 @@ import {
   RecoveryPage as NewRecoveryPage,
   SecurityPage as NewSecurityPage,
   SettingsPage as NewSettingsPage,
+  ProfilePage as NewProfilePage,
 } from "./pages/index.js";
+import { AlertsCenter } from "./components/ui/alerts-center.jsx";
+import { ErrorBoundary } from "./components/ui/error-boundary.jsx";
 
 // Pages that have new implementations and should bypass OwnerSubPage
-const NEW_PAGE_OVERRIDES = new Set(["tenant-dossier", "create-tenant"]);
+const NEW_PAGE_OVERRIDES = new Set(["tenant-dossier", "create-tenant", "profile"]);
 
 /**
  * SCUM Unified Owner Control Plane
@@ -592,6 +600,119 @@ function buildApiMap() {
   return buildRealApiMap();
 }
 
+function ProfileMenu({ locale, onOpenProfile, onOpenSettings }) {
+  const [open, setOpen] = useState(false);
+  const [session, setSession] = useState(null);
+  const menuRef = React.useRef(null);
+
+  useEffect(() => {
+    let active = true;
+    getOwnerSession().then((result) => {
+      if (active && result.ok) setSession(result.data || result);
+    }).catch(() => {});
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    function onDocClick(e) {
+      if (!menuRef.current) return;
+      if (!menuRef.current.contains(e.target)) setOpen(false);
+    }
+    if (open) {
+      document.addEventListener("mousedown", onDocClick);
+      return () => document.removeEventListener("mousedown", onDocClick);
+    }
+  }, [open]);
+
+  const user = session?.user || session?.account || session || {};
+  const name = user.name || user.username || user.email || "Operator";
+  const role = user.role || "owner";
+  const initials = String(name).split(/\s+/).filter(Boolean).slice(0, 2).map((s) => s[0]?.toUpperCase() || "").join("") || "OP";
+
+  async function handleLogout() {
+    try {
+      await logoutOwner();
+    } finally {
+      window.location.href = "/login";
+    }
+  }
+
+  return (
+    <div ref={menuRef} className="relative">
+      <button
+        type="button"
+        data-owner-managed="true"
+        onClick={() => setOpen((v) => !v)}
+        className="group flex h-11 items-center gap-2.5 rounded-lg border border-white/10 bg-white/[0.03] px-2 transition hover:border-cyan-400/30 hover:bg-cyan-400/[0.05]"
+      >
+        <div className="grid h-7 w-7 place-items-center rounded-md border border-cyan-400/25 bg-gradient-to-br from-cyan-400/20 to-sky-500/10 text-[11px] font-bold text-cyan-200">
+          {initials}
+        </div>
+        <div className="hidden text-left md:block">
+          <div className="text-[10px] uppercase tracking-[0.14em] text-cyan-300">{role}</div>
+          <div className="max-w-[140px] truncate text-[12px] font-semibold text-white">{name}</div>
+        </div>
+        <ChevronDown className={`h-3.5 w-3.5 text-zinc-500 transition-transform ${open ? "rotate-180 text-cyan-300" : ""}`} />
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -6, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -4, scale: 0.96 }}
+            transition={{ duration: 0.15 }}
+            className="absolute right-0 top-[calc(100%+8px)] z-40 w-72 overflow-hidden rounded-xl border border-white/10 bg-[#0b1018]/98 shadow-2xl backdrop-blur-xl"
+          >
+            <div className="flex items-center gap-3 border-b border-white/5 bg-gradient-to-b from-cyan-400/[0.06] to-transparent p-3.5">
+              <div className="grid h-11 w-11 place-items-center rounded-lg border border-cyan-400/25 bg-gradient-to-br from-cyan-400/20 to-sky-500/10 text-sm font-bold text-cyan-200 shadow-[0_0_20px_rgba(34,211,238,0.2)]">
+                {initials}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-semibold text-white">{name}</div>
+                <div className="truncate text-[11px] text-zinc-500">{user.email || user.username || ""}</div>
+                <div className="mt-1 inline-flex items-center gap-1 rounded border border-cyan-400/20 bg-cyan-400/5 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-cyan-300">
+                  <Shield className="h-2.5 w-2.5" /> {role}
+                </div>
+              </div>
+            </div>
+            <div className="p-1.5">
+              <MenuItem icon={UserCircle2} onClick={() => { setOpen(false); onOpenProfile(); }}>
+                View profile
+              </MenuItem>
+              <MenuItem icon={Settings} onClick={() => { setOpen(false); onOpenSettings(); }}>
+                Settings
+              </MenuItem>
+              <div className="my-1 h-px bg-white/5" />
+              <MenuItem icon={LogOut} onClick={handleLogout} danger>
+                Sign out
+              </MenuItem>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function MenuItem({ icon: Icon, children, onClick, danger }) {
+  return (
+    <button
+      type="button"
+      data-owner-managed="true"
+      onClick={onClick}
+      className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition ${
+        danger
+          ? "text-red-300 hover:bg-red-500/10"
+          : "text-zinc-200 hover:bg-cyan-400/[0.06] hover:text-cyan-100"
+      }`}
+    >
+      <Icon className="h-3.5 w-3.5 opacity-70" />
+      <span className="flex-1">{children}</span>
+    </button>
+  );
+}
+
 function AppShell({
   children,
   page,
@@ -614,14 +735,17 @@ function AppShell({
   notificationCount = 0,
 }) {
   const [openMenu, setOpenMenu] = useState(() => menuKeyForPage(page));
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   useEffect(() => {
     setOpenMenu(menuKeyForPage(page));
+    setMobileSidebarOpen(false); // Close sidebar when page changes
   }, [page]);
 
   function openPage(pageKey) {
     setOpenMenu(menuKeyForPage(pageKey));
     setPage(pageKey);
+    setMobileSidebarOpen(false); // Close mobile sidebar
   }
 
   function toggleSubmenu(parentKey) {
@@ -645,8 +769,10 @@ function AppShell({
       onClick={handleShellClick}
       className={`owner-shell min-h-screen text-white ${theme === "contrast" ? "owner-theme-contrast" : ""}`}
     >
-      <div className="grid min-h-screen grid-cols-1 xl:grid-cols-[268px_minmax(0,1fr)]">
-        <aside className="owner-sidebar border-b border-white/5 backdrop-blur-xl xl:sticky xl:top-0 xl:h-screen xl:border-b-0 xl:border-r">
+      <div className="grid min-h-screen grid-cols-1 lg:grid-cols-[268px_minmax(0,1fr)]">
+        <aside className={`owner-sidebar border-b border-white/5 backdrop-blur-xl lg:sticky lg:top-0 lg:h-screen lg:border-b-0 lg:border-r ${
+          mobileSidebarOpen ? "fixed inset-0 z-40 h-full w-full" : "hidden lg:flex"
+        } flex-col`}>
           <div className="flex h-full flex-col px-3.5 py-3">
             <div className="mb-3 rounded-xl border border-white/8 bg-white/[0.028] p-3">
               <div className="flex items-start justify-between gap-4">
@@ -662,11 +788,16 @@ function AppShell({
 
             <div className="owner-sidebar-scroll min-h-0 flex-1 overflow-y-auto pr-0">
               <div className="space-y-2 pb-2">
-              {NAV_GROUPS.map((group) => {
+              {NAV_GROUPS.map((group, groupIdx) => {
                 const items = NAV.filter((n) => n.group === group.key && !n.parent);
                 const groupLabel = navGroupText(locale, group);
                 return (
-                  <div key={group.key}>
+                  <motion.div
+                    key={group.key}
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.05 + groupIdx * 0.05, duration: 0.25 }}
+                  >
                     <div className="mb-1 px-2 text-[10px] uppercase tracking-[0.16em] text-zinc-600">{groupLabel}</div>
                     <nav className="space-y-0.5">
                       {items.map((item) => {
@@ -745,32 +876,28 @@ function AppShell({
                         );
                       })}
                     </nav>
-                  </div>
+                  </motion.div>
                 );
               })}
               </div>
             </div>
 
             <div className="shrink-0 border-t border-white/5 pt-2.5">
-              <div className="rounded-lg border border-white/5 bg-white/[0.025] p-2">
+              <button
+                type="button"
+                data-owner-managed="true"
+                onClick={() => openPage("profile")}
+                className="group w-full rounded-lg border border-white/5 bg-white/[0.025] p-2 text-left transition hover:border-cyan-400/25 hover:bg-cyan-400/[0.04]"
+              >
                 <div className="flex items-center gap-3">
-                  <div className="grid h-8 w-8 place-items-center rounded-lg border border-cyan-400/20 bg-cyan-400/10 text-[11px] font-bold text-cyan-200">OA</div>
-                  <div>
-                    <div className="text-[13px] font-semibold">{t(locale, "ownerAccount")}</div>
-                    <div className="text-[11px] text-zinc-500">{t(locale, "accountScope")}</div>
+                  <div className="grid h-8 w-8 place-items-center rounded-lg border border-cyan-400/25 bg-gradient-to-br from-cyan-400/20 to-sky-500/10 text-[11px] font-bold text-cyan-200 transition group-hover:shadow-[0_0_16px_rgba(34,211,238,0.25)]">OA</div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[13px] font-semibold">{t(locale, "ownerAccount")}</div>
+                    <div className="truncate text-[11px] text-zinc-500">{t(locale, "accountScope")}</div>
                   </div>
-                  <Button
-                    data-owner-managed="true"
-                    variant="ghost"
-                    size="icon"
-                    title={t(locale, "accountControlsTitle")}
-                    onClick={() => onUtilityAction?.(t(locale, "accountControlsMessage"))}
-                    className="ml-auto h-8 w-8 text-zinc-500 hover:text-white"
-                  >
-                    <MoreHorizontal className="h-4 w-4" />
-                  </Button>
+                  <ChevronRight className="h-3.5 w-3.5 text-zinc-500 transition group-hover:translate-x-0.5 group-hover:text-cyan-300" />
                 </div>
-              </div>
+              </button>
             </div>
           </div>
         </aside>
@@ -778,6 +905,22 @@ function AppShell({
         <div className="flex min-w-0 flex-col">
           <header className="owner-topbar sticky top-0 z-20 border-b border-white/5 backdrop-blur-xl">
             <div className="flex flex-wrap items-center justify-end gap-3 px-4 py-3 md:px-5">
+              <Button
+                variant="ghost"
+                onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)}
+                className="lg:hidden"
+                data-owner-managed="true"
+                title="Toggle menu"
+                aria-label="Toggle sidebar menu"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  {mobileSidebarOpen ? (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  ) : (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                  )}
+                </svg>
+              </Button>
               <div className="relative ml-auto w-full min-w-[240px] max-w-[560px] flex-none md:w-[48vw]">
                 <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
                 <Input
@@ -815,30 +958,26 @@ function AppShell({
                 <IconButton icon={Globe} label={t(locale, "localeLabel")} onClick={onToggleLocale} title={t(locale, "switchLanguageTitle")} />
                 <IconButton icon={Moon} onClick={onToggleTheme} title={t(locale, "themeTitle")} />
                 <IconButton icon={Bell} badge={notificationCount > 0 ? String(notificationCount) : undefined} onClick={() => setPage("incidents")} title={t(locale, "openIncidentsTitle")} />
-                <div className="h-9 w-px bg-white/10" />
-                <div className="hidden items-center gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 md:flex">
-                  <div className="text-right">
-                    <div className="text-[10px] uppercase tracking-[0.16em] text-cyan-300">{t(locale, "rootAccess")}</div>
-                    <div className="text-[13px] font-semibold">Operator #042</div>
-                  </div>
-                  <div className="grid h-8 w-8 place-items-center rounded-lg border border-cyan-400/20 bg-cyan-400/10 text-xs font-bold text-cyan-200">
-                    OP
-                  </div>
-                </div>
+                <div className="mx-1 h-6 w-px bg-white/10" />
+                <ProfileMenu
+                  locale={locale}
+                  onOpenProfile={() => setPage("profile")}
+                  onOpenSettings={() => setPage("settings")}
+                />
               </div>
             </div>
           </header>
 
-          <main className="min-w-0 flex-1 px-4 py-5 md:px-5 md:py-5">
-            <div className="mb-5 flex flex-wrap items-end justify-between gap-3 border-b border-white/5 pb-5">
-              <div>
-                <div className="mb-1.5 text-[11px] uppercase tracking-[0.18em] text-cyan-300">{pageKicker}</div>
-                <h1 className="text-[26px] font-black leading-tight text-white md:text-[30px]">{pageTitle}</h1>
+          <main className="min-w-0 flex-1 px-4 py-7 md:px-5 md:py-7">
+            <div className="mb-8 flex flex-wrap items-end justify-between gap-5 border-b border-white/5 pb-7">
+              <div className="space-y-2.5">
+                <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-300">{pageKicker}</div>
+                <h1 className="text-[28px] font-black leading-tight text-white md:text-[32px]">{pageTitle}</h1>
               </div>
-              <div className="flex flex-wrap gap-2">{actions}</div>
+              {actions?.length ? <div className="flex min-h-11 flex-wrap items-center gap-2">{actions}</div> : null}
             </div>
 
-            <div className={`grid gap-5 ${rightRail ? "xl:grid-cols-[minmax(0,1fr)_320px]" : "grid-cols-1"}`}>
+            <div className={`grid gap-6 ${rightRail ? "xl:grid-cols-[minmax(0,1fr)_320px]" : "grid-cols-1"}`}>
               <div className="min-w-0">{children}</div>
               {rightRail ? <div className="min-w-0">{rightRail}</div> : null}
             </div>
@@ -858,7 +997,7 @@ function IconButton({ icon: Icon, label, badge, disabled = false, onClick, title
       onClick={onClick}
       title={title}
       aria-label={title || label || "Owner icon control"}
-      className="relative h-10 rounded-lg border border-white/10 bg-white/[0.03] px-3 text-zinc-200 hover:bg-white/[0.06] hover:text-white"
+      className="relative inline-flex h-11 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] px-3 text-zinc-300 transition hover:border-cyan-400/25 hover:bg-cyan-400/[0.05] hover:text-cyan-100"
     >
       <Icon className={`${label ? "mr-1.5" : ""} h-4 w-4`} />
       {label ? <span className="text-sm font-medium">{label}</span> : null}
@@ -867,26 +1006,43 @@ function IconButton({ icon: Icon, label, badge, disabled = false, onClick, title
   );
 }
 
-function GlassCard({ title, description, right, children, className = "" }) {
+function GlassCard({ title, description, right, children, className = "", onClick }) {
+  const interactiveClass = onClick
+    ? "cursor-pointer hover:border-cyan-400/25 hover:shadow-[0_0_0_1px_rgba(34,211,238,0.1)] transition-all duration-150"
+    : "transition-colors duration-150";
+  const headerClass = right
+    ? "owner-card-header flex flex-row flex-wrap items-start justify-between gap-3.5 border-b border-white/5 p-5 pb-4"
+    : "owner-card-header flex flex-col items-start justify-center gap-1.5 border-b border-white/5 p-5 pb-4";
   return (
-    <Card className={`overflow-hidden ${className}`}>
+    <Card className={`overflow-hidden ${interactiveClass} ${className}`} onClick={onClick}>
       {(title || right || description) && (
-        <CardHeader className="owner-card-header flex flex-row items-start justify-between gap-3 border-b border-white/5 p-4">
-          <div>
-            {title ? <CardTitle className="text-[15px] font-bold leading-tight text-white">{title}</CardTitle> : null}
-            {description ? <CardDescription className="mt-1 text-[13px] leading-5 text-zinc-400">{description}</CardDescription> : null}
+        <CardHeader className={headerClass}>
+          <div className="min-w-0 max-w-[58ch]">
+            {title ? <CardTitle className="text-[15px] font-semibold leading-6 text-white">{title}</CardTitle> : null}
+            {description ? <CardDescription className="mt-1.5 text-[12px] leading-5 text-zinc-500">{description}</CardDescription> : null}
           </div>
-          {right}
+          {right && <div className="shrink-0 self-start pt-0.5">{right}</div>}
         </CardHeader>
       )}
-      <CardContent className="overflow-x-auto p-4">{children}</CardContent>
+      <CardContent className="overflow-x-auto p-5">{children}</CardContent>
     </Card>
   );
 }
 
-function ToneBadge({ tone, children }) {
+function ToneBadge({ tone = "neutral", children, className = "", dot = false }) {
   const cls = toneClass[tone] || toneClass.neutral;
-  return <Badge className={`border ${cls} rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em]`}>{children}</Badge>;
+  const dotColor = (toneClass[tone] || "").includes("emerald") ? "bg-emerald-400"
+    : (toneClass[tone] || "").includes("amber") ? "bg-amber-400"
+    : (toneClass[tone] || "").includes("red") ? "bg-red-400"
+    : (toneClass[tone] || "").includes("sky") ? "bg-sky-400"
+    : (toneClass[tone] || "").includes("cyan") ? "bg-cyan-400"
+    : "bg-slate-500";
+  return (
+    <span className={`owner-tone-badge border ${cls} ${className}`}>
+      {dot && <span className={`h-1.5 w-1.5 rounded-full ${dotColor}`} />}
+      {children}
+    </span>
+  );
 }
 
 function hasPayloadValues(payload = {}) {
@@ -1150,22 +1306,23 @@ function OwnerSubPage({ meta, data = {}, endpointStatus = [], selectedRecordId =
           title={meta.title}
           description={meta.description}
           right={<ToneBadge tone="stable">{meta.category}</ToneBadge>}
+          className="h-full"
         >
-          <div className="mb-5 flex flex-wrap gap-2">
+          <div className="mb-6 flex flex-wrap gap-2">
             <ToneBadge tone="neutral">Parent: {navMeta.parentLabel}</ToneBadge>
             <ToneBadge tone="locked">Menu: {navMeta.groupLabel}</ToneBadge>
           </div>
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             {meta.focus.map((item) => (
-              <div key={item} className="rounded-xl border border-white/5 bg-white/[0.03] p-4">
+              <div key={item} className="flex min-h-[112px] flex-col justify-between rounded-xl border border-white/5 bg-white/[0.03] p-4">
                 <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-600">Focus</div>
-                <div className="mt-2 min-h-10 text-sm font-semibold leading-5 text-white">{item}</div>
+                <div className="mt-4 text-sm font-semibold leading-6 text-white">{item}</div>
               </div>
             ))}
           </div>
         </GlassCard>
 
-        <GlassCard title="Submenu Placement" description="Where this route sits in the Owner panel.">
+        <GlassCard title="Submenu Placement" description="Where this route sits in the Owner panel." className="h-full">
           <MetricPair label="Category" value={navMeta.groupLabel} tone="healthy" />
           <MetricPair label="Parent menu" value={navMeta.parentLabel} />
           <MetricPair label="Route" value={buildOwnerPagePath(Object.keys(OWNER_SUBPAGE_DETAILS).find((key) => OWNER_SUBPAGE_DETAILS[key] === meta))} />
@@ -1271,25 +1428,37 @@ function OwnerSubPageRail({ meta }) {
   );
 }
 
-function StatCard({ label, value, sub, icon: Icon, spark, rightMeta, compact = false }) {
+function StatCard({ label, value, sub, icon: Icon, spark, rightMeta, compact = false, tone }) {
+  const toneMap = {
+    warning: { border: "hover:border-amber-400/25", icon: "border-amber-400/20 bg-amber-400/[0.08] text-amber-300", accent: "from-amber-400/25" },
+    critical: { border: "hover:border-red-400/25", icon: "border-red-400/20 bg-red-400/[0.08] text-red-300", accent: "from-red-400/25" },
+    healthy: { border: "hover:border-emerald-400/25", icon: "border-emerald-400/20 bg-emerald-400/[0.08] text-emerald-300", accent: "from-emerald-400/25" },
+    default: { border: "hover:border-cyan-400/25", icon: "border-cyan-400/20 bg-cyan-400/[0.08] text-cyan-300", accent: "from-cyan-400/25" },
+  };
+  const t = toneMap[tone] || toneMap.default;
   return (
-    <motion.div whileHover={{ y: -2 }} transition={{ duration: 0.18 }}>
-      <GlassCard className="h-full">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">{label}</div>
-            <div className={`owner-kpi-value ${compact ? "mt-2 text-[24px]" : "mt-3 text-[30px]"} font-black text-white`}>{value}</div>
-            {sub ? <div className="mt-2 text-[13px] leading-5 text-zinc-400">{sub}</div> : null}
+    <motion.div
+      whileHover={{ y: -2 }}
+      transition={{ duration: 0.15 }}
+      className={`group relative flex h-full flex-col overflow-hidden rounded-xl border border-white/5 bg-white/[0.02] p-4 transition-colors ${t.border}`}
+    >
+      <div className={`pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-gradient-to-br ${t.accent} to-transparent opacity-40 blur-2xl`} />
+      <div className="relative flex items-center justify-between gap-3">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">{label}</div>
+        {Icon ? (
+          <div className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg border ${t.icon}`}>
+            <Icon className="h-4 w-4" />
           </div>
-          {Icon ? (
-            <div className="rounded-lg border border-cyan-400/20 bg-cyan-400/10 p-2.5 text-cyan-200">
-              <Icon className="h-5 w-5" />
-            </div>
-          ) : null}
+        ) : null}
+      </div>
+      <div className={`owner-kpi-value relative mt-3 font-black leading-none text-white ${compact ? "text-[24px]" : "text-[30px]"}`}>{value}</div>
+      {sub ? <div className="relative mt-2 text-[12px] leading-5 text-zinc-500">{sub}</div> : null}
+      {(rightMeta || spark) ? (
+        <div className="relative mt-auto w-full space-y-2 pt-3">
+          {rightMeta ? <div className="text-sm font-medium leading-6 text-zinc-300">{rightMeta}</div> : null}
+          {spark ? <div className="h-1.5 rounded-full bg-white/5"><div className={`h-1.5 rounded-full ${spark}`} /></div> : null}
         </div>
-        {rightMeta ? <div className="mt-4 text-sm font-medium text-zinc-300">{rightMeta}</div> : null}
-        {spark ? <div className="mt-4 h-2 rounded-full bg-white/5"><div className={`h-2 rounded-full ${spark}`} /></div> : null}
-      </GlassCard>
+      ) : null}
     </motion.div>
   );
 }
@@ -2787,9 +2956,14 @@ export default function ScumOwnerUnifiedControlPlane() {
   const [refreshToken, setRefreshToken] = useState(0);
   const [actionResult, setActionResult] = useState(null);
   const [actionDraft, setActionDraft] = useState(null);
+  const [alerts, setAlerts] = useState([]);
   const { loading, data, source, live, errors, endpointStatus } = useBackendData(page, refreshToken);
   const searchResults = useMemo(() => buildOwnerSearchResults(data, searchQuery), [data, searchQuery]);
   const notificationCount = extractItems(data.raw?.notifications).length;
+
+  const dismissAlert = (id) => {
+    setAlerts((prev) => prev.filter((a) => a.id !== id));
+  };
 
   const refreshData = () => setRefreshToken((value) => value + 1);
 
@@ -2801,6 +2975,14 @@ export default function ScumOwnerUnifiedControlPlane() {
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
+
+  // Wire alerts based on data changes
+  useEffect(() => {
+    if (!loading && data) {
+      const generatedAlerts = generateAllAlerts(data);
+      setAlerts(generatedAlerts);
+    }
+  }, [data, loading]);
 
   function navigateToPage(nextPage, options = {}) {
     const nextPath = buildOwnerPagePath(nextPage, options.recordId || "");
@@ -3169,6 +3351,23 @@ export default function ScumOwnerUnifiedControlPlane() {
           rightRail: <BackendRail />,
           actions: getPageActions("settings").map((action) => renderAction(action.key, undefined, "bg-red-600 hover:bg-red-500")),
         };
+      case "profile":
+        return {
+          title: "Profile",
+          kicker: "Owner Command / Identity",
+          content: guardedContent(
+            <NewProfilePage
+              data={data}
+              onRun={handleOwnerAction}
+              locale={locale}
+              theme={theme}
+              onToggleLocale={toggleLocale}
+              onToggleTheme={toggleTheme}
+            />
+          ),
+          rightRail: null,
+          actions: [],
+        };
       default:
         return {
           title: "Workspace",
@@ -3211,24 +3410,31 @@ export default function ScumOwnerUnifiedControlPlane() {
         onSelectSearchResult={handleSearchSelect}
         notificationCount={notificationCount}
     >
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={page}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -8 }}
-          transition={{ duration: 0.2 }}
-        >
-          {config.content}
-        </motion.div>
-      </AnimatePresence>
+      <ErrorBoundary>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={page}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2 }}
+          >
+            {config.content}
+          </motion.div>
+        </AnimatePresence>
+      </ErrorBoundary>
 
-      <div className="mt-8 flex flex-wrap items-center gap-5 border-t border-white/5 pt-4 text-xs uppercase tracking-[0.22em] text-zinc-600">
-        <div className="flex items-center gap-2"><div className={`h-2 w-2 rounded-full ${apiStatus.color}`} /> {apiStatus.label}</div>
-        <div className="flex items-center gap-2"><div className="h-2 w-2 rounded-full bg-cyan-400" /> Endpoints: {endpointStatus.filter((entry) => entry.ok).length}/{endpointStatus.length || 0}</div>
-        <div className="flex items-center gap-2"><div className="h-2 w-2 rounded-full bg-zinc-500" /> Notifications: {notificationCount}</div>
-        <div className="ml-auto">SCUM Unified Control Plane / Backend-ready Owner Surface</div>
+      <div className="mt-8 flex flex-wrap items-center gap-3 border-t border-white/5 pt-3.5 text-[10px] font-mono uppercase tracking-[0.18em] text-zinc-600">
+        <span className="flex items-center gap-1.5">
+          <span className={`h-1.5 w-1.5 rounded-full ${apiStatus.color} owner-pulse-dot`} />
+          {apiStatus.label}
+        </span>
+        <span className="text-zinc-700">·</span>
+        <span>{endpointStatus.filter((e) => e.ok).length}/{endpointStatus.length || 0} endpoints</span>
+        <span className="ml-auto text-zinc-700">SCUM Owner Control Plane</span>
       </div>
+
+      <AlertsCenter alerts={alerts} onDismiss={dismissAlert} />
     </AppShell>
   );
 }

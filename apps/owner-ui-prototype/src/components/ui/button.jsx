@@ -1,4 +1,5 @@
 import React from "react";
+import { Loader2 } from "lucide-react";
 
 function cn(...values) {
   return values.filter(Boolean).join(" ");
@@ -13,7 +14,7 @@ const VARIANTS = {
 };
 
 export const Button = React.forwardRef(function Button(
-  { className = "", type = "button", variant = "default", primary = false, ...props },
+  { className = "", type = "button", variant = "default", primary = false, loading = false, children, ...props },
   ref
 ) {
   const resolvedVariant = primary ? "primary" : variant;
@@ -21,12 +22,16 @@ export const Button = React.forwardRef(function Button(
     <button
       ref={ref}
       type={type}
+      disabled={loading || props.disabled}
       className={cn(
         "owner-button inline-flex h-10 items-center justify-center gap-1.5 rounded-xl px-4 py-2 text-sm font-medium transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 disabled:pointer-events-none disabled:opacity-50",
         VARIANTS[resolvedVariant] || VARIANTS.default,
         className
       )}
       {...props}
-    />
+    >
+      {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+      {children}
+    </button>
   );
 });

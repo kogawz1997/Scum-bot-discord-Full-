@@ -1,86 +1,190 @@
-import React, { useState, useMemo } from "react";
-import { Wallet, Plus, Search } from "lucide-react";
+import React, { useMemo, useState } from "react";
+import { motion } from "framer-motion";
+import { Wallet, Plus, ChevronRight, RefreshCcw } from "lucide-react";
 import { PageLayout } from "../components/layout/page-layout";
 import { GlassCard } from "../components/ui/glass-card";
 import { ToneBadge } from "../components/ui/tone-badge";
 import { StatCard } from "../components/ui/stat-card";
 import { DataEmptyState } from "../components/ui/data-empty-state";
-import { Input } from "../components/ui/input";
+import { Select } from "../components/ui/select";
 import { Button } from "../components/ui/button";
-import { Field } from "../components/ui/field";
+import { SearchRail } from "../components/ui/search-rail";
 import { formatBackendTime } from "../lib/ui-helpers";
 
-export function SubscriptionsPage({ data, source, live, recordId, onRun, errors }) {
-  const invoices = data?.invoices || [];
+function statusTone(status) {
+  const s = String(status || "").toLowerCase();
+  if (s === "active") return "active";
+  if (s === "trial") return "pending";
+  if (s === "past_due") return "warning";
+  if (s === "expired" || s === "cancelled" || s === "canceled") return "critical";
+  return "neutral";
+}
+
+export function SubscriptionsPage({ data, source, live, onRun, errors }) {
   const raw = data?.raw || {};
-  const subscriptions = (raw.subscriptions?.items || raw.subscriptions?.rows || raw.subscriptions || []);
-  const subs = Array.isArray(subscriptions) ? subscriptions : [];
+  const rawSubs = raw.subscriptions?.items || raw.subscriptions?.rows || raw.subscriptions || data?.subscriptions || [];
+  const subs = Array.isArray(rawSubs) ? rawSubs : [];
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
 
   const filtered = useMemo(() => {
-    if (!search) return subs;
-    const q = search.toLowerCase();
-    return subs.filter((s) =>
-      (s.tenantId || s.tenant || "").toLowerCase().includes(q) ||
-      (s.status || "").toLowerCase().includes(q) ||
-      (s.packageId || s.package || "").toLowerCase().includes(q)
-    );
-  }, [subs, search]);
+    return subs.filter((sub) => {
+      const query = search.trim().toLowerCase();
+      if (query) {
+        const haystack = `${sub.tenantId || ""} ${sub.tenant || ""} ${sub.packageId || ""} ${sub.package || ""} ${sub.status || ""}`.toLowerCase();
+        if (!haystack.includes(query)) return false;
+      }
 
-  const active = subs.filter((s) => s.status === "active").length;
-  const trial = subs.filter((s) => s.status === "trial").length;
-  const expired = subs.filter((s) => s.status === "expired" || s.status === "cancelled").length;
+      if (statusFilter !== "all") {
+        if (!String(sub.status || "").toLowerCase().includes(statusFilter)) return false;
+      }
 
-  const statusTone = (status) => {
-    if (status === "active") return "healthy";
-    if (status === "trial") return "stable";
-    if (status === "expired" || status === "cancelled") return "critical";
-    return "pending";
-  };
+      return true;
+    });
+  }, [subs, search, statusFilter]);
+
+  const counts = useMemo(() => {
+    const next = { active: 0, trial: 0, pastDue: 0, cancelled: 0 };
+    subs.forEach((sub) => {
+      const status = String(sub.status || "").toLowerCase();
+      if (status === "active") next.active += 1;
+      else if (status === "trial") next.trial += 1;
+      else if (status === "past_due") next.pastDue += 1;
+      else if (status === "cancelled" || status === "canceled" || status === "expired") next.cancelled += 1;
+    });
+    return next;
+  }, [subs]);
+
+  const mrr = useMemo(() => {
+    return subs
+      .filter((sub) => String(sub.status || "").toLowerCase() === "active")
+      .reduce((sum, sub) => sum + (Number(sub.mrr || sub.amount || 0) || 0), 0);
+  }, [subs]);
 
   const actions = (
-    <Button primary onClick={() => onRun("createSubscription")}>
-      <Plus className="mr-2 h-4 w-4" /> New Subscription
-    </Button>
+    <>
+      <Button variant="outline" onClick={() => onRun("refresh")}>
+        <RefreshCcw className="mr-1.5 h-3.5 w-3.5" /> Refresh
+      </Button>
+      <Button primary onClick={() => onRun("createSubscription")}>
+        <Plus className="mr-1.5 h-3.5 w-3.5" /> New Subscription
+      </Button>
+    </>
   );
 
   return (
-    <PageLayout title="Subscriptions & Billing" subtitle="Platform treasury" icon={Wallet} rightActions={actions}>
-      <div className="grid gap-4 md:grid-cols-3">
-        <StatCard label="Active" value={active} sub="Active subscriptions" spark="w-[80%] bg-emerald-400" compact />
-        <StatCard label="Trial" value={trial} sub="Trial period" spark="w-[40%] bg-cyan-400" compact />
-        <StatCard label="Expired / Cancelled" value={expired} sub="Needs attention" spark={`w-[${expired ? "50" : "5"}%] bg-red-400`} compact />
+    <PageLayout
+      title="Subscription Registry"
+      subtitle={`${subs.length} subscriptions - MRR tracking`}
+      icon={Wallet}
+      rightActions={actions}
+    >
+      <div className="grid gap-3 md:grid-cols-4">
+        <StatCard label="Active" value={counts.active} icon={Wallet} tone="healthy" spark="w-[82%] bg-emerald-400" compact />
+        <StatCard label="Trial" value={counts.trial} sub="Evaluation period" spark="w-[42%] bg-sky-400" compact />
+        <StatCard
+          label="Past Due"
+          value={counts.pastDue}
+          tone="warning"
+          sub="Payment overdue"
+          spark={`w-[${Math.min(counts.pastDue * 20, 90)}%] bg-amber-400`}
+          compact
+        />
+        <StatCard
+          label="MRR (THB)"
+          value={`฿${mrr.toLocaleString()}`}
+          sub="Monthly recurring"
+          spark="w-[70%] bg-cyan-400"
+          compact
+        />
       </div>
 
       <GlassCard>
-        <div className="relative mb-4">
-          <Search className="absolute left-3 top-3 h-4 w-4 text-zinc-500" />
-          <Input placeholder="Search by tenant, package หรือ status..."
-            value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
-        </div>
-        {filtered.length ? (
-          <div className="overflow-auto rounded-xl border border-white/5">
-            <div className="grid min-w-[640px] grid-cols-[1fr_160px_140px_140px_120px] bg-white/[0.04] px-4 py-3 text-[11px] uppercase tracking-[0.2em] text-zinc-500">
-              <div>Tenant</div><div>Package</div><div>Start Date</div><div>Renewal</div><div>Status</div>
-            </div>
-            {filtered.slice(0, 20).map((sub, idx) => (
-              <div key={sub.id || idx}
-                className="grid min-w-[640px] grid-cols-[1fr_160px_140px_140px_120px] items-center border-t border-white/5 px-4 py-3 text-sm hover:bg-white/[0.02] cursor-pointer"
-                onClick={() => onRun("gotoSubscriptionDetail", { recordId: sub.id })}>
-                <div className="font-semibold text-white">{sub.tenantId || sub.tenant || "Unknown"}</div>
-                <div className="text-zinc-400">{sub.packageId || sub.package || "—"}</div>
-                <div className="text-zinc-400">{formatBackendTime(sub.startedAt || sub.createdAt)}</div>
-                <div className="text-zinc-400">{formatBackendTime(sub.renewsAt || sub.expiresAt)}</div>
-                <ToneBadge tone={statusTone(sub.status)}>{sub.status || "unknown"}</ToneBadge>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <DataEmptyState
-            title={search ? "ไม่พบ subscription ที่ตรงกัน" : "ยังไม่มี subscriptions"}
-            body={search ? "ลองปรับ search query" : "Subscriptions จะปรากฏที่นี่เมื่อลูกค้า subscribe"} />
-        )}
+        <SearchRail
+          label="Subscription search"
+          summary={
+            <>
+              Showing <span className="font-semibold text-zinc-100">{filtered.length}</span> of {subs.length}
+            </>
+          }
+          placeholder="Search tenant, package, status..."
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          activeCount={(search ? 1 : 0) + (statusFilter !== "all" ? 1 : 0)}
+          onClear={() => {
+            setSearch("");
+            setStatusFilter("all");
+          }}
+          controls={
+            <label className="flex min-w-[148px] flex-col gap-1">
+              <span className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Status</span>
+              <Select
+                value={statusFilter}
+                onValueChange={setStatusFilter}
+                className="h-10 rounded-xl px-3 text-[12px]"
+                options={[
+                  { value: "all", label: "All statuses" },
+                  { value: "active", label: "Active" },
+                  { value: "trial", label: "Trial" },
+                  { value: "past_due", label: "Past due" },
+                  { value: "cancelled", label: "Cancelled" },
+                ]}
+              />
+            </label>
+          }
+        />
       </GlassCard>
+
+      {filtered.length === 0 ? (
+        <DataEmptyState
+          title={search || statusFilter !== "all" ? "No subscriptions match" : "No subscriptions"}
+          body="Subscriptions appear here once customers subscribe."
+        />
+      ) : (
+        <GlassCard className="p-0">
+          <div className="overflow-auto">
+            <table className="w-full min-w-[760px] text-left text-sm">
+              <thead>
+                <tr className="border-b border-white/5 bg-white/[0.02] text-[10px] uppercase tracking-[0.14em] text-zinc-500">
+                  <th className="px-4 py-3 font-semibold">Tenant</th>
+                  <th className="px-4 py-3 font-semibold">Package</th>
+                  <th className="px-4 py-3 font-semibold">Started</th>
+                  <th className="px-4 py-3 font-semibold">Renews</th>
+                  <th className="px-4 py-3 font-semibold">MRR</th>
+                  <th className="px-4 py-3 font-semibold">Status</th>
+                  <th className="w-8 px-2 py-3" />
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.slice(0, 50).map((sub, index) => (
+                  <motion.tr
+                    key={sub.id || index}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.15, delay: Math.min(index * 0.015, 0.25) }}
+                    onClick={() => onRun("gotoSubscriptionDetail", { recordId: sub.id })}
+                    className="owner-table-row cursor-pointer border-b border-white/[0.04] last:border-0"
+                  >
+                    <td className="px-4 py-3 font-medium text-white">{sub.tenantName || sub.tenantId || sub.tenant || "—"}</td>
+                    <td className="px-4 py-3 text-zinc-300">{sub.packageName || sub.packageId || sub.package || "—"}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-zinc-500">{formatBackendTime(sub.startedAt || sub.createdAt)}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-zinc-500">{formatBackendTime(sub.renewsAt || sub.expiresAt)}</td>
+                    <td className="px-4 py-3 font-semibold tabular-nums text-white">
+                      {sub.mrr ? `฿${Number(sub.mrr).toLocaleString()}` : "—"}
+                    </td>
+                    <td className="px-4 py-3">
+                      <ToneBadge tone={statusTone(sub.status)}>{sub.status || "—"}</ToneBadge>
+                    </td>
+                    <td className="px-2 py-3 text-right">
+                      <ChevronRight className="h-3.5 w-3.5 text-zinc-600" />
+                    </td>
+                  </motion.tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </GlassCard>
+      )}
     </PageLayout>
   );
 }

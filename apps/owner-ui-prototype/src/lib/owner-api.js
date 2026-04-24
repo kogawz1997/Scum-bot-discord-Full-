@@ -320,6 +320,8 @@ function buildCommonData(slices) {
   const subscriptions = extractItems(slices.subscriptions);
   const invoices = extractItems(slices.invoices);
   const paymentAttempts = extractItems(slices.paymentAttempts);
+  const securityEvents = extractItems(slices.securityEvents);
+  const notifications = extractItems(slices.notifications);
   const agents = [
     ...extractItems(slices.agents),
     ...extractItems(slices.agentRuntimes),
@@ -337,24 +339,34 @@ function buildCommonData(slices) {
       invoices,
       paymentAttempts,
       agents,
-      securityEvents: extractItems(slices.securityEvents),
+      securityEvents,
       deliveryLifecycle: slices.deliveryLifecycle || {},
     }),
     tenants: adaptTenantRows({ tenants, subscriptions, invoices, agents }),
     packages: adaptPackages(packages),
     invoices: adaptBillingInvoices(invoices),
     fleet: adaptRuntimeFleet(agents),
+    subscriptions,
+    paymentAttempts,
+    securityEvents,
+    notifications,
     raw: slices,
   };
 }
 
 function buildPageData(page, common) {
-  const parentPage = effectivePage(page);
-  if (parentPage === "tenants") return { tenants: common.tenants, raw: common.raw };
-  if (parentPage === "packages") return { packages: common.packages, raw: common.raw };
-  if (parentPage === "billing" || parentPage === "subscriptions") return { invoices: common.invoices, raw: common.raw };
-  if (parentPage === "fleet") return { fleet: common.fleet, raw: common.raw };
-  return { ...common.overview, raw: common.raw };
+  return {
+    ...common.overview,
+    tenants: common.tenants,
+    packages: common.packages,
+    invoices: common.invoices,
+    fleet: common.fleet,
+    subscriptions: common.subscriptions,
+    paymentAttempts: common.paymentAttempts,
+    securityEvents: common.securityEvents,
+    notifications: common.notifications,
+    raw: common.raw,
+  };
 }
 
 export async function fetchOwnerPageData(page, options = {}) {

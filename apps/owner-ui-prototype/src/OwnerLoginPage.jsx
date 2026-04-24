@@ -3,6 +3,7 @@ import { ArrowLeft, KeyRound, RefreshCw, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { loginOwner, resolvePostLoginPath } from "./lib/owner-auth.js";
+import { OWNER_DASHBOARD_PATH } from "./lib/owner-routes.js";
 
 export function shouldPromptForOwnerOtp(result) {
   return result?.requiresOtp === true;
@@ -47,7 +48,7 @@ export default function OwnerLoginPage() {
           <section className="flex flex-col justify-between rounded-3xl border border-white/5 bg-white/[0.03] p-8 shadow-[0_24px_80px_rgba(0,0,0,0.35)]">
             <div>
               <a
-                href="/"
+                href={OWNER_DASHBOARD_PATH}
                 className="inline-flex h-10 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 text-sm font-semibold text-zinc-200 hover:bg-white/[0.06]"
               >
                 <ArrowLeft className="h-4 w-4" />

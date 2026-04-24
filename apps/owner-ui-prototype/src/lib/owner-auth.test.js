@@ -6,6 +6,7 @@ import {
   logoutOwner,
   resolvePostLoginPath,
 } from "./owner-auth.js";
+import { OWNER_DASHBOARD_PATH, OWNER_LOGIN_PATH } from "./owner-routes.js";
 
 function jsonResponse(status, body) {
   return {
@@ -126,14 +127,14 @@ describe("owner-auth", () => {
   });
 
   it("builds a safe login redirect with the requested owner page preserved", () => {
-    expect(buildOwnerLoginRedirect("/settings", "?tab=runtime")).toBe("/login?next=%2Fsettings%3Ftab%3Druntime");
-    expect(buildOwnerLoginRedirect("/login", "")).toBe("/login");
+    expect(buildOwnerLoginRedirect("/owner/settings", "?tab=runtime")).toBe("/owner/login?next=%2Fowner%2Fsettings%3Ftab%3Druntime");
+    expect(buildOwnerLoginRedirect(OWNER_LOGIN_PATH, "")).toBe(OWNER_LOGIN_PATH);
   });
 
   it("resolves post-login next paths without allowing external redirects", () => {
-    expect(resolvePostLoginPath("?next=%2Ffleet")).toBe("/fleet");
-    expect(resolvePostLoginPath("?next=https%3A%2F%2Fevil.example")).toBe("/overview");
-    expect(resolvePostLoginPath("?next=%2F%2Fevil.example")).toBe("/overview");
-    expect(resolvePostLoginPath("?next=%2Flogin")).toBe("/overview");
+    expect(resolvePostLoginPath("?next=%2Fowner%2Fsettings")).toBe("/owner/settings");
+    expect(resolvePostLoginPath("?next=https%3A%2F%2Fevil.example")).toBe(OWNER_DASHBOARD_PATH);
+    expect(resolvePostLoginPath("?next=%2F%2Fevil.example")).toBe(OWNER_DASHBOARD_PATH);
+    expect(resolvePostLoginPath("?next=%2Fowner%2Flogin")).toBe(OWNER_DASHBOARD_PATH);
   });
 });

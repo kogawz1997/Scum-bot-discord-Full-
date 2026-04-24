@@ -12,9 +12,9 @@ export function resolveOwnerProxyTarget(env = process.env) {
   const adminBackendBaseUrl = String(env.ADMIN_BACKEND_BASE_URL || "").trim();
   if (adminBackendBaseUrl) return adminBackendBaseUrl.replace(/\/+$/, "");
 
-  const adminHost = String(env.ADMIN_WEB_HOST || "127.0.0.1").trim() || "127.0.0.1";
-  const adminPort = String(env.ADMIN_WEB_PORT || "3200").trim() || "3200";
-  return `http://${adminHost}:${adminPort}`;
+  const tenantHost = String(env.TENANT_WEB_HOST || "127.0.0.1").trim() || "127.0.0.1";
+  const tenantPort = String(env.TENANT_WEB_PORT || "3202").trim() || "3202";
+  return `http://${tenantHost}:${tenantPort}`;
 }
 
 const ownerProxyTarget = resolveOwnerProxyTarget();
@@ -39,6 +39,26 @@ export default defineConfig({
         secure: false,
       },
       "/platform/api": {
+        target: ownerProxyTarget,
+        changeOrigin: true,
+        secure: false,
+      },
+      "/login": {
+        target: ownerProxyTarget,
+        changeOrigin: true,
+        secure: false,
+      },
+      "/owner/login": {
+        target: ownerProxyTarget,
+        changeOrigin: true,
+        secure: false,
+      },
+      "/auth": {
+        target: ownerProxyTarget,
+        changeOrigin: true,
+        secure: false,
+      },
+      "/api": {
         target: ownerProxyTarget,
         changeOrigin: true,
         secure: false,

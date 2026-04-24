@@ -58,6 +58,20 @@ npm run dev
 - Owner login/logout helpers are implemented in `src/lib/owner-auth.js`.
 - Safe/readiness actions are mapped where a real endpoint exists. Risky actions still require explicit payload and confirmation before they can run.
 
+## Features
+
+### Analytics & Intelligence
+- **Analytics Dashboard** (`src/components/ui/analytics-dashboard.jsx`) - Platform health score, revenue trends, tenant breakdown, revenue health indicators. Displays "—" for empty data instead of misleading zeros.
+- **Recommendations engine** (`src/lib/recommendations.js`) - Generates suggested owner actions from platform data.
+- **Alerts system** (`src/lib/alerts-generator.js`, `src/components/ui/alerts-center.jsx`) - Auto-generates alerts from recommendations and metrics (offline agents, failed payments, overdue invoices). Alerts auto-update whenever backend data changes.
+- **Automation rules** (`src/lib/automation-rules.js`, `src/components/ui/automation-panel.jsx`) - 6 built-in automation rules with trigger/action/condition patterns, human-readable help text, and condition labels (auto-renew, agent offline alert, runtime scaling, invoice reminder, high-risk flagging, nightly backup).
+
+### UX & Robustness
+- **Error boundaries** (`src/components/ui/error-boundary.jsx`) - Page content is wrapped so a rendering error shows a recoverable UI instead of a blank screen.
+- **Loading states** - The shared `Button` component supports a `loading` prop that renders a spinner and disables the button.
+- **Mobile support** - Fully responsive layout. Below the `lg` breakpoint (1024px) the sidebar collapses behind a hamburger toggle in the header and slides in as a full-screen overlay. Navigation auto-closes the overlay so the user lands directly on the selected page.
+- **Help text & tooltips** - Automation rule cards surface a 💡 help line and human-readable condition labels so operators do not need to memorise internal trigger keys.
+
 ## Verification
 
 Run unit tests and a production build:

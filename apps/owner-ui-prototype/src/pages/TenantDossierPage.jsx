@@ -59,7 +59,7 @@ export function TenantDossierPage({ data, source, live, recordId, onRun, errors 
 
   if (!tenant) {
     return (
-      <PageLayout title="Tenant Dossier" icon={Users} rightActions={actions}>
+      <PageLayout title="Tenant Workspace" icon={Users} rightActions={actions} showActions>
         <DataEmptyState
           title="No tenant selected"
           body="Select a tenant from the Tenants page to view their dossier."
@@ -74,6 +74,7 @@ export function TenantDossierPage({ data, source, live, recordId, onRun, errors 
       subtitle={tenant.code || tenant.slug || tenant.id}
       icon={Users}
       rightActions={actions}
+      showActions
     >
       {/* KPI Row */}
       <div className="grid gap-4 md:grid-cols-4">
@@ -98,14 +99,14 @@ export function TenantDossierPage({ data, source, live, recordId, onRun, errors 
 
         <GlassCard title="Runtime Units" description="Delivery agents and server bots" right={<ToneBadge tone={agents.length > 0 || allAgents.length > 0 ? "healthy" : "warning"}>{agents.length || allAgents.length} agents</ToneBadge>}>
           {(agents.length > 0 ? agents : allAgents).slice(0, 5).length > 0 ? (
-            <div className="space-y-2">
+            <div className="space-y-3">
               {(agents.length > 0 ? agents : allAgents).slice(0, 5).map((agent, idx) => (
-                <div key={agent.id || idx} className="flex items-center justify-between rounded-lg border border-white/5 bg-white/[0.03] px-3 py-2.5">
-                  <div>
-                    <div className="text-sm font-semibold text-white">{agent.id || agent.agentId || `Agent ${idx + 1}`}</div>
-                    <div className="text-xs text-zinc-500">{agent.type || agent.role || "runtime"}</div>
+                <div key={agent.id || idx} className="flex flex-col gap-2 rounded-xl border border-white/5 bg-white/[0.03] px-4 py-3.5">
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold leading-6 text-white">{agent.id || agent.agentId || `Agent ${idx + 1}`}</div>
+                    <div className="text-xs leading-5 text-zinc-500">{agent.type || agent.role || "runtime"}</div>
                   </div>
-                  <ToneBadge tone={agent.status === "connected" || agent.status === "active" ? "healthy" : agent.status === "idle" ? "stable" : "warning"}>
+                  <ToneBadge tone={agent.status === "connected" || agent.status === "active" ? "healthy" : agent.status === "idle" ? "stable" : "warning"} className="shrink-0">
                     {agent.status || "unknown"}
                   </ToneBadge>
                 </div>
@@ -166,10 +167,12 @@ export function TenantDossierPage({ data, source, live, recordId, onRun, errors 
         <GlassCard title="Server Registry" description="Registered SCUM servers" right={<Server className="h-4 w-4 text-zinc-500" />}>
           <div className="grid gap-3 md:grid-cols-2">
             {(tenant.servers || []).slice(0, 4).map((srv, idx) => (
-              <div key={srv.id || idx} className="rounded-xl border border-white/5 bg-black/20 p-4">
-                <div className="font-semibold text-white">{srv.name || srv.id || `Server ${idx + 1}`}</div>
-                <div className="mt-1 text-xs text-zinc-500">{srv.ip || srv.host || "No IP"}</div>
-                <div className="mt-2"><ToneBadge tone={srv.status === "online" ? "healthy" : "warning"}>{srv.status || "unknown"}</ToneBadge></div>
+              <div key={srv.id || idx} className="rounded-xl border border-white/5 bg-black/20 px-4 py-3.5">
+                <div className="font-semibold leading-6 text-white">{srv.name || srv.id || `Server ${idx + 1}`}</div>
+                <div className="mt-1 text-xs leading-5 text-zinc-500">{srv.ip || srv.host || "No IP"}</div>
+                <div className="mt-3">
+                  <ToneBadge tone={srv.status === "online" ? "healthy" : "warning"}>{srv.status || "unknown"}</ToneBadge>
+                </div>
               </div>
             ))}
           </div>

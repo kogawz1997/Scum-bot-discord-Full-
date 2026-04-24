@@ -314,13 +314,28 @@ export function adaptTenantRows({ tenants = [], subscriptions = [], invoices = [
     const revenue = latestInvoice.amount || latestInvoice.total || latestInvoice.totalAmount || tenant.revenue || 0;
     const currency = latestInvoice.currency || tenant.currency || "THB";
     const health = hasOfflineServerBot || hasUnpaidInvoice ? "critical" : hasOfflineDelivery ? "warning" : normalizeStatus(tenant.health || tenant.riskLevel || "healthy");
+    const riskLevel = normalizeStatus(
+      tenant.riskLevel
+        || tenant.risk
+        || (hasOfflineServerBot || hasUnpaidInvoice ? "critical" : hasOfflineDelivery ? "medium" : "low"),
+      "low",
+    );
 
     return {
       code: initials(tenantSlug || tenantName),
       name: tenantName,
       id: tenantId,
+      tenantId,
+      slug: tenantSlug,
       status: normalizeStatus(tenant.status || subscription.status || "active"),
       tier: normalizeText(subscription.packageName || subscription.package?.name || tenant.packageName || tenant.tier || tenant.package || "Unassigned"),
+      package: normalizeText(subscription.packageName || subscription.package?.name || tenant.packageName || tenant.tier || tenant.package || "Unassigned"),
+      subscriptionStatus: normalizeStatus(subscription.status || ""),
+      billingStatus: normalizeStatus(latestInvoice.status || latestInvoice.paymentStatus || (hasUnpaidInvoice ? "past_due" : "paid") || ""),
+      riskLevel,
+      risk: riskLevel,
+      deliveryStatus: deliveryAgents.length ? (hasOfflineDelivery ? "offline" : "online") : "offline",
+      serverBotStatus: serverBots.length ? (hasOfflineServerBot ? "offline" : "online") : "offline",
       agents: deliveryAgents.length,
       bots: serverBots.length,
       health,
@@ -336,12 +351,20 @@ export function adaptTenantRows({ tenants = [], subscriptions = [], invoices = [
 export function adaptBillingInvoices(payload = []) {
   return extractItems(payload).map((invoice, index) => {
     const amount = invoice.amount || invoice.total || invoice.totalAmount || invoice.amountDue || 0;
+    const amountValue = Number(amount || 0);
+    const currency = invoice.currency || "THB";
     return {
       invoice: normalizeText(invoice.invoice || invoice.invoiceId || invoice.id || `invoice_${index + 1}`),
+      invoiceId: normalizeText(invoice.invoiceId || invoice.invoice || invoice.id || `invoice_${index + 1}`),
+      id: normalizeText(invoice.id || invoice.invoiceId || invoice.invoice || `invoice_${index + 1}`),
+      tenantId: normalizeText(invoice.tenantId || invoice.tenant?.id || invoice.customerId || ""),
       tenant: normalizeText(invoice.tenantName || invoice.tenant?.name || invoice.tenantId || invoice.customerName || "Unknown tenant"),
       date: formatDate(invoice.date || invoice.createdAt || invoice.issuedAt || invoice.dueAt),
+      createdAt: invoice.createdAt || invoice.issuedAt || invoice.date || invoice.dueAt || null,
       status: normalizeStatus(invoice.status || invoice.paymentStatus || "pending"),
-      amount: formatCurrency(amount, invoice.currency || "THB"),
+      amount: formatCurrency(amountValue, currency),
+      amountValue: Number.isFinite(amountValue) ? amountValue : 0,
+      currency,
       raw: invoice,
     };
   });
@@ -351,6 +374,19 @@ export function adaptPackages(payload = []) {
   return extractItems(payload).map((item, index) => ({
     name: normalizeText(item.name || item.packageName || item.label || `Package ${index + 1}`),
     sku: normalizeText(item.sku || item.id || item.packageId || item.key || `pkg_${index + 1}`),
+    id: normalizeText(item.id || item.packageId || item.sku || item.key || `pkg_${index + 1}`),
+    description: normalizeText(item.description || item.summary || item.copy || ""),
+    price: Number(item.price || item.priceMonthly || item.amount || item.monthlyPrice || 0) || 0,
+    currency: normalizeText(item.currency || "THB"),
+    billingCycle: normalizeText(item.billingCycle || item.interval || item.cadence || ""),
+    tier: normalizeText(item.tier || item.type || item.status || item.name || "active"),
+    features: Array.isArray(item.features)
+      ? item.features
+      : Array.isArray(item.tags)
+        ? item.tags
+        : Array.isArray(item.entitlements)
+          ? item.entitlements
+          : [],
     tags: Array.isArray(item.features)
       ? item.features.slice(0, 4)
       : Array.isArray(item.tags)

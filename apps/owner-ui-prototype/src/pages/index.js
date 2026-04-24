@@ -28,6 +28,7 @@ import { SettingsPage } from "./SettingsPage";
 import { PlatformControlsPage } from "./PlatformControlsPage";
 import { AutomationPage } from "./AutomationPage";
 import { CreateTenantPage } from "./CreateTenantPage";
+import { ProfilePage } from "./ProfilePage";
 
 export {
   OverviewPage, TenantsPage, TenantDossierPage, PackagesPage, PackageDetailPage,
@@ -35,6 +36,7 @@ export {
   FleetPage, FleetDiagnosticsPage, ObservabilityPage, DiagnosticsPage, IncidentsPage,
   SupportPage, SupportContextPage, RecoveryPage, BackupDetailPage, SecurityPage,
   AccessPosturePage, SettingsPage, PlatformControlsPage, AutomationPage, CreateTenantPage,
+  ProfilePage,
 };
 
 const PAGE_COMPONENTS = {
@@ -63,6 +65,7 @@ const PAGE_COMPONENTS = {
   "platform-controls": PlatformControlsPage,
   automation: AutomationPage,
   "create-tenant": CreateTenantPage,
+  profile: ProfilePage,
 };
 
 export function getPageComponent(pageKey) {
