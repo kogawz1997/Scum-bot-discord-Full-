@@ -8,21 +8,22 @@
 
 ตอนนี้โปรเจคนี้ไม่ใช่แค่ Discord bot แล้ว แต่เป็น control plane สำหรับ SCUM ที่มีหลาย web surface, runtime agent, schema, service layer, test, doctor และ release gate ค่อนข้างเยอะแล้ว โครงหลักที่ repo พิสูจน์ได้คือมี Owner Panel, Tenant Admin Panel, Player Portal, Delivery Agent, Server Bot, package/feature gating, identity, config job, restart orchestration, audit/security log และ automation บางส่วน
 
-สิ่งที่โปรเจคใกล้จะเป็นที่สุดคือ **Managed-Service Prototype** ที่มีแกนระบบจริง ไม่ใช่แค่หน้า mock แต่ยังไม่ถึงระดับ **Managed-Service Ready** หรือ **Commercial-Ready Service** เพราะ production persistence smoke ยังไม่ผ่านในเครื่องนี้ และยังไม่มีหลักฐาน live proof ครบทั้ง flow สมัคร, จ่ายเงิน, provision tenant, bind agent, sync log, แก้ config, restart server, ส่งของ, แจ้งเตือน และ support ในสภาพแวดล้อม production จริง
+สิ่งที่โปรเจคใกล้จะเป็นที่สุดคือ **Managed-Service Prototype** ที่มีแกนระบบจริง ไม่ใช่แค่หน้า mock แต่ยังไม่ถึงระดับ **Managed-Service Ready** หรือ **Commercial-Ready Service** เพราะ production readiness ผ่านได้เฉพาะตอนเปิด local smoke runtime ให้ครบ ยังไม่มีหลักฐาน live proof ครบทั้ง flow สมัคร, จ่ายเงิน, provision tenant, bind agent, sync log, แก้ config, restart server, ส่งของ, แจ้งเตือน และ support ในสภาพแวดล้อม production จริง
 
 คะแนนรวมปัจจุบัน: **3/5**
 
 Overall maturity rating: **Managed-Service Prototype**
 
-เหตุผลหลักคือ standard readiness gate ผ่านครบ แต่ production gate ติดฐานข้อมูล PostgreSQL จริง:
+สถานะ validation ล่าสุดหลังรอบทำต่อ:
 
 - `npm run readiness:full -- --json` ผ่าน 6 checks
 - `npm run doctor -- --json` ผ่าน 20 checks
 - `npm run security:check -- --json` ผ่าน 8 checks
-- `npm run readiness:prod -- --json --skip-smoke` ผ่านถึง `doctor:topology:prod` และ `doctor:web-standalone:prod`
-- `smoke:persistence` ล้มเพราะต่อ PostgreSQL `127.0.0.1:55432` ไม่ได้
+- เปิด PostgreSQL local ที่ `127.0.0.1:55432` แล้ว `npm run smoke:persistence` ผ่าน 33 checks
+- เปิด admin web, player portal และ console agent แล้ว `npm run smoke:postdeploy -- --json` ผ่าน
+- `npm run readiness:prod -- --json` ผ่านครบ 10 checks เมื่อเปิด service smoke ที่จำเป็นและปิด optional health ports ของ bot/worker/watcher ที่ยังไม่ได้รันในรอบนี้
 
-สรุปแบบตรงไปตรงมา: ใช้เป็น internal/staging platform ได้ถ้าตั้ง env และ DB ให้ครบ แต่ยังไม่ควรเปิดขายเป็น SaaS จริงจนกว่าจะปิด production persistence, billing, onboarding, live SCUM proof, monitoring และ UX acceptance ให้ครบ
+สรุปแบบตรงไปตรงมา: ใช้เป็น internal/staging platform ได้ถ้าตั้ง env, DB และ runtime smoke ให้ครบ แต่ยังไม่ควรเปิดขายเป็น SaaS จริงจนกว่าจะปิด billing, onboarding, live SCUM proof, monitoring, full runtime health และ UX acceptance ให้ครบ
 
 ## 2. What is Already Strong
 
@@ -36,7 +37,7 @@ Overall maturity rating: **Managed-Service Prototype**
 
 ## 3. What is Partial / Unfinished
 
-- Production persistence ยังไม่ผ่านในเครื่องนี้ เพราะ `smoke:persistence` ต่อ PostgreSQL `127.0.0.1:55432` ไม่ได้ ทำให้ยังพิสูจน์ production DB/table readiness จริงไม่ได้
+- Production persistence ผ่านแล้วในเครื่องนี้หลังเปิด PostgreSQL local แต่ยังเป็น proof ระดับ local production profile ไม่ใช่ proof ของ production infra จริง และ `db:migrate:deploy:postgresql` ยังติด `P3005` เพราะฐานข้อมูลไม่ว่างแต่ repo ไม่มี migration deploy set ที่ Prisma ใช้ baseline ได้ทันที
 - Billing มี service lifecycle, invoice, payment attempt, Stripe optional และ checkout API แล้ว แต่ยังต้องพิสูจน์ webhook จริง, renewal, dunning, failed payment, refund, tax invoice และ subscription cut-off ใน production
 - Self-service signup และ preview มีโครงจริง แต่ยังดูเป็น preview/onboarding foundation มากกว่า full SaaS onboarding ที่สร้าง tenant, subscription, runtime instruction, owner account และ first server flow จบในมือผู้ใช้
 - UI มีหลายหน้าและฟีเจอร์เยอะ แต่ยังไม่มีหลักฐาน browser acceptance ล่าสุดในรายงานนี้ และ Owner asset บางจุดมี fallback text ที่ดูเป็น mojibake เมื่ออ่านจากไฟล์ เช่น `src/admin/assets/owner-v4-app.js`
@@ -48,7 +49,7 @@ Overall maturity rating: **Managed-Service Prototype**
 ## 4. What is Missing
 
 - หลักฐาน production run ที่ครบจริงตั้งแต่สมัครจนใช้งาน SCUM: signup -> checkout -> tenant created -> package active -> agent provision -> server bot sync -> config edit -> restart -> delivery -> notification -> audit
-- Production PostgreSQL smoke ที่ผ่านจริงใน environment นี้ หรือ CI/CD ที่ยืนยัน schema/migration/table readiness กับ DB จริง
+- CI/CD หรือ production infra proof ที่ยืนยัน PostgreSQL schema/migration/table readiness กับ DB จริง ไม่ใช่แค่ local Postgres smoke
 - Browser E2E/visual acceptance สำหรับ Owner, Tenant และ Player surfaces หลังรวม backend จริง
 - Commercial billing ที่พร้อมขายเต็มรูปแบบ เช่น failed payment lifecycle, cancellation, renewal reminder, invoice export, tax/VAT, refund, webhook replay, payment dispute
 - Full monitoring stack สำหรับ service จริง เช่น metrics, external alerting, uptime monitor, error tracking, queue lag monitor, agent offline alert
@@ -62,7 +63,7 @@ Overall maturity rating: **Managed-Service Prototype**
 | ----------------------------------------- | ----- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
 | 1. Repository architecture                | 3/5   | partial        | มี `apps/admin-web`, `apps/owner-web`, `apps/tenant-web`, `apps/web-portal-standalone`, `apps/agent`, `apps/server-bot`, `src/domain`, `src/services`, `src/store`, `prisma`, `scripts`, `docs`, `test` | โครงใหญ่ดีแต่ยังมี legacy/admin/prototype ปนกัน, owner/tenant standalone ยัง proxy ไป admin backend, ต้องลดความซ้อนก่อน scale team               | Medium     |
 | 2. Backend / control plane                | 3/5   | partial        | Routes ใน `src/admin/api/*`, services เช่น `platformService`, `platformBillingLifecycleService`, `platformServerConfigService`, `platformRestartOrchestrationService`, `platformIdentityService`        | มีหลายระบบจริงแต่บาง flow ยังไม่พิสูจน์ end-to-end เช่น signup-to-provision, billing-to-entitlement, agent-to-runtime-action                     | High       |
-| 3. Database / persistence                 | 3/5   | partial        | `prisma/schema.prisma` มี PlatformTenant, Subscription, API key, Agent, Identity, Billing, Config, Restart, Notification, Audit, Raid models                                                            | production smoke ล้มเพราะ DB `127.0.0.1:55432` เข้าไม่ได้, ยังต้องพิสูจน์ migration/RLS/tenant DB topology จริง                                  | High       |
+| 3. Database / persistence                 | 3/5   | partial        | `prisma/schema.prisma` มี PlatformTenant, Subscription, API key, Agent, Identity, Billing, Config, Restart, Notification, Audit, Raid models                                                            | local production smoke ผ่านหลังเปิด PostgreSQL แต่ยังต้องแก้ migration baseline/Prisma deploy posture และพิสูจน์ RLS/tenant DB topology จริง     | High       |
 | 4. Owner Panel readiness                  | 3/5   | partial        | `apps/owner-web/server.js`, `src/admin/assets/owner-v4-app.js`, `owner-dashboard-v4.js`, `owner-tenants-v4.js`, `owner-runtime-health-v4.js`                                                            | ฟีเจอร์ owner กว้างแต่ยังต้อง browser QA, support/billing workflow ยังไม่ขายจริง, fallback text บางส่วนเสี่ยง encoding/UX                        | Medium     |
 | 5. Tenant Admin Panel readiness           | 3/5   | partial        | `src/admin/assets/tenant-v4-app.js` มี dashboard, config, restart, delivery agents, server bots, logs sync, orders, donations, events, modules, players, staff                                          | เป็น surface ที่พร้อมสุด แต่ยังต้อง live SCUM proof, permission QA, browser E2E และ failure-state UX                                             | Medium     |
 | 6. Player Portal readiness                | 3/5   | partial        | `apps/web-portal-standalone/public/*.html`, `playerGeneralRoutes.js`, `playerCommerceRoutes.js`, `publicPlatformRoutes.js`                                                                              | มี wallet/shop/orders/stats/raid/support/Steam link แต่ต้องพิสูจน์ checkoutเงินจริง, delivery status จริง, account linking จริง                  | Medium     |
@@ -73,7 +74,7 @@ Overall maturity rating: **Managed-Service Prototype**
 | 11. Restart orchestration readiness       | 3/5   | partial        | `platformRestartOrchestrationService.js`, `restartScheduler.js`, `PlatformRestartPlan`, `PlatformRestartAnnouncement`, `PlatformRestartExecution`                                                       | มี schedule/history/health concept แต่ต้องพิสูจน์ countdown announce, safe restart, post-restart health และ failure recovery กับ server จริง     | High       |
 | 12. Package / feature gating readiness    | 4/5   | mostly working | `packageCatalogService`, `productEntitlementService`, backend route checks, Tenant locked states, Player feature denied routes                                                                          | โครงค่อนข้างแข็ง แต่ต้อง audit ว่าทุก mutation สำคัญถูกครอบจริง และเชื่อม billing lifecycle production จริง                                      | Medium     |
 | 13. Internationalization readiness        | 2/5   | partial        | `src/admin/assets/admin-i18n.js`, locale files `en/th/es/ja/ko/zh-CN`, Tenant Thai text, Player public pages                                                                                            | ยังมี hardcoded text เยอะ, Discord message translation ยังไม่ชัด, Owner fallback text บางจุดเสี่ยง mojibake, locale coverage ไม่สม่ำเสมอ         | Medium     |
-| 14. Productization / commercial readiness | 2/5   | partial        | public signup/login/checkout/trial/preview pages, `publicPreviewService`, `platformCommercialService`, billing lifecycle service                                                                        | ยังไม่พร้อมขายจริงเพราะ production smoke ไม่ผ่าน, billing/tenant onboarding/support/SLA/legal/live proof ยังต้องปิด                              | High       |
+| 14. Productization / commercial readiness | 2/5   | partial        | public signup/login/checkout/trial/preview pages, `publicPreviewService`, `platformCommercialService`, billing lifecycle service                                                                        | production smoke ผ่านได้เมื่อเปิด runtime ที่จำเป็น แต่ billing/tenant onboarding/support/SLA/legal/live SCUM proof ยังต้องปิด                   | High       |
 | 15. Security / operations readiness       | 3/5   | partial        | `security:check` ผ่าน, API key hashing, setup token hash/prefix, device binding, admin security event, request log, secret scan, doctor gates                                                           | ยังต้องมี production monitoring, rate limit proof, external alerts, key rotation drill, tenant isolation proof และ incident runbook ที่ทดสอบจริง | High       |
 
 รายละเอียดแยกตาม requirement สำคัญ:
@@ -99,7 +100,7 @@ Overall maturity rating: **Managed-Service Prototype**
 
 ## 6. Critical Gaps Before Real Service Launch
 
-- ต้องทำให้ `smoke:persistence` ผ่านกับ PostgreSQL production profile จริงก่อน เพราะตอนนี้ production readiness gate ล้มที่ DB `127.0.0.1:55432`
+- ต้องย้าย proof จาก local Postgres smoke ไปเป็น production/staging infra จริง และแก้ migration baseline ให้ `db:migrate:deploy:postgresql` ใช้งานได้แบบ release-safe
 - ต้องมี E2E proof หนึ่งเส้นทางเต็ม: customer signup, checkout, tenant created, package active, owner/tenant login, runtime provision, agent activated, sync/run job, config edit, restart, delivery, audit log
 - ต้องทดสอบ Delivery Agent บนเครื่องที่เปิด SCUM client จริง และ Server Bot บนเครื่อง server-side จริง พร้อม reconnect/offline/retry/upgrade
 - ต้องล็อก tenant isolation ให้พิสูจน์ได้ทั้ง shared DB, tenant schema หรือ tenant DB mode รวมถึง backup/restore และ cross-tenant mutation guard
@@ -113,8 +114,8 @@ Overall maturity rating: **Managed-Service Prototype**
 
 P0 (must fix first)
 
-- เปิดหรือเตรียม PostgreSQL production profile ให้ตรง env แล้วรัน `npm run smoke:persistence` จนผ่าน
-- รัน `npm run readiness:prod -- --json --skip-smoke` ให้ผ่านทั้งชุด
+- ทำ migration baseline/Prisma deploy posture ให้ production release ใช้ซ้ำได้ ไม่ติด `P3005` บนฐานข้อมูลที่มี schema อยู่แล้ว
+- ทำให้ `npm run readiness:prod -- --json` ผ่านใน staging/production โดยเปิด runtime health จริง ไม่ต้อง override optional ports
 - ทำ live E2E proof เส้นทาง tenant จริงหนึ่งราย ตั้งแต่ signup/checkout ถึง agent activation และ server action
 - ยืนยัน runtime boundary ด้วย token จริงว่า Delivery Agent ใช้ execute-only และ Server Bot ใช้ sync-only/config-only ตาม design
 - ทำ browser acceptance สำหรับ Owner/Tenant/Player อย่างน้อย happy path และ locked path
@@ -151,8 +152,8 @@ Can this be used now?
 
 Can this be sold now?
 
-ยังไม่ควรขายเป็น SaaS จริงแบบ self-service เต็มรูปแบบ เพราะ production persistence ยังไม่ผ่านใน environment นี้ และยังไม่มี live proof ครบทุก flow ที่กระทบเงิน ลูกค้า และ server จริง ถ้าจะขายตอนนี้ควรขายเป็น pilot/managed setup เท่านั้น ไม่ใช่บริการเปิดสมัครจ่ายเงินเองแล้วใช้งานได้ทันที
+ยังไม่ควรขายเป็น SaaS จริงแบบ self-service เต็มรูปแบบ แม้ production readiness gate จะผ่านได้ใน local smoke setup แล้ว เพราะยังไม่มี live proof ครบทุก flow ที่กระทบเงิน ลูกค้า และ server จริง ถ้าจะขายตอนนี้ควรขายเป็น pilot/managed setup เท่านั้น ไม่ใช่บริการเปิดสมัครจ่ายเงินเองแล้วใช้งานได้ทันที
 
 What level is it at today?
 
-ระดับวันนี้คือ **Managed-Service Prototype** คะแนนรวม **3/5** จุดแข็งคือ architecture, schema, service layer, package gating, runtime boundary และ test gate จุดที่ยังกันไม่ให้เป็น commercial-ready คือ production DB proof, billing production, live SCUM proof, browser UX acceptance, monitoring/alerting และ onboarding/support loop แบบขายจริง
+ระดับวันนี้คือ **Managed-Service Prototype** คะแนนรวม **3/5** จุดแข็งคือ architecture, schema, service layer, package gating, runtime boundary และ test gate จุดที่ยังกันไม่ให้เป็น commercial-ready คือ migration/release proof, billing production, live SCUM proof, browser UX acceptance, monitoring/alerting และ onboarding/support loop แบบขายจริง
