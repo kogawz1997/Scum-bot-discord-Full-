@@ -6,6 +6,10 @@
   const EXTERNAL_LOCALE_PATHS = Object.freeze({
     en: '/player/assets/locales/en/portal-ui-extra.json',
     th: '/player/assets/locales/th/portal-ui-extra.json',
+    ja: '/player/assets/locales/ja/portal-ui-extra.json',
+    ko: '/player/assets/locales/ko/portal-ui-extra.json',
+    'zh-CN': '/player/assets/locales/zh-CN/portal-ui-extra.json',
+    es: '/player/assets/locales/es/portal-ui-extra.json',
   });
   const LOADED_EXTERNAL_LOCALES = new Set();
   const MOJIBAKE_MARKERS = ['Ã', 'Â', '\u00e0\u00b8', '\u00e0\u00b9', '\ufffd'];

@@ -339,10 +339,18 @@ const {
   getBillingProviderConfigSummary,
   listBillingInvoices,
   listBillingPaymentAttempts,
+  sweepExpiredSubscriptions,
   updateInvoiceStatus,
   updatePaymentAttempt,
   updateSubscriptionBillingState,
 } = require('./services/platformBillingLifecycleService');
+// TODO (scheduled sweeper): add a recurring setInterval / node-cron call here to run
+// sweepExpiredSubscriptions automatically, e.g.:
+//   const { listPlatformSubscriptions } = require('./services/platformCommercialService');
+//   setInterval(async () => {
+//     const subs = await listPlatformSubscriptions({ allowGlobal: true, limit: 500 }).catch(() => null);
+//     await sweepExpiredSubscriptions({ subscriptions: subs, actor: 'cron-sweeper' });
+//   }, 6 * 60 * 60 * 1000); // every 6 hours
 const {
   inviteTenantStaff,
   listTenantStaffMemberships,
@@ -1087,6 +1095,7 @@ const {
   createSubscription,
   deletePackageCatalogEntry,
   createCheckoutSession,
+  sweepExpiredSubscriptions,
   updateInvoiceStatus,
   updatePaymentAttempt,
   updateSubscriptionBillingState,

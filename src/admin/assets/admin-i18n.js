@@ -6,6 +6,10 @@
   const EXTERNAL_LOCALE_PATHS = Object.freeze({
     en: '/admin/assets/locales/en/admin-ui-extra.json',
     th: '/admin/assets/locales/th/admin-ui-extra.json',
+    ja: '/admin/assets/locales/ja/admin-ui-extra.json',
+    ko: '/admin/assets/locales/ko/admin-ui-extra.json',
+    'zh-CN': '/admin/assets/locales/zh-CN/admin-ui-extra.json',
+    es: '/admin/assets/locales/es/admin-ui-extra.json',
   });
   const LOADED_EXTERNAL_LOCALES = new Set();
   const MOJIBAKE_MARKERS = ['Ã', 'Â', '\u00e0\u00b8', '\u00e0\u00b9', '\ufffd'];

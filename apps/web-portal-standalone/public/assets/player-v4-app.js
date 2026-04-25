@@ -858,6 +858,17 @@
     }
   }
 
+  // TODO (party chat page): The API endpoints /player/api/party/chat (GET) and
+  // /player/api/party/chat/send (POST) are fully implemented in playerGeneralRoutes.js.
+  // To add a chat page:
+  //   1. Add 'party' to PLAYER_PAGE_KEYS and PAGE_TITLE_LABELS above.
+  //   2. Add a 'party' case to player-control-v4.js's buildPlayerPage() dispatch.
+  //      The API returns: { party, total, items: [{ userId, displayName, message, at }] }
+  //   3. Add a chat-send form ([data-player-party-chat-form]) and wire it here in
+  //      handlePlayerFormSubmit (POST to /player/api/party/chat/send with { message }).
+  //   4. Render the chat message list and send form inside buildPartyPageContentReady().
+  //   The party context (/player/api/party) is already loaded in refreshState at line ~433.
+
   window.addEventListener('DOMContentLoaded', () => {
     const refreshButton = document.getElementById('playerV4RefreshBtn');
     const serverSelect = serverSelectNode();

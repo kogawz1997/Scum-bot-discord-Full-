@@ -1,0 +1,33 @@
+{
+  "dictionary": {
+    "shell.player.documentTitle": "SCUM TH Platform | Portal del Jugador",
+    "shell.player.title": "Portal del Jugador",
+    "shell.player.detail": "Tienda, billetera, pedidos, estadísticas y noticias de la comunidad en un solo lugar.",
+    "shell.player.service": "Servicio",
+    "shell.player.status.loading": "Preparando el portal del jugador",
+    "shell.common.refresh": "Actualizar datos",
+    "shell.role.player": "Jugador",
+    "shell.role.service": "Servicio",
+    "player.app.status.loading": "Cargando datos del jugador...",
+    "player.app.card.loadingTitle": "Preparando datos del jugador",
+    "player.app.card.loadingDetail": "Cargando cuenta, tienda, pedidos y actualizaciones de la comunidad.",
+    "player.app.status.ready": "Listo",
+    "player.app.card.loadFailedTitle": "No se pudo cargar el portal del jugador",
+    "player.app.status.loadFailed": "Error al cargar",
+    "player.app.card.emptyTitle": "Aún no hay datos",
+    "player.app.card.emptyDetail": "Espera a que se carguen los datos más recientes.",
+    "player.app.page.home": "Inicio",
+    "player.app.page.commerce": "Tienda, billetera y pedidos",
+    "player.app.page.stats": "Estadísticas, eventos y soporte",
+    "player.nav.group.start": "Vista general",
+    "player.nav.group.commerce": "Tienda y billetera",
+    "player.nav.group.community": "Comunidad y estadísticas",
+    "player.nav.home": "Inicio",
+    "player.nav.commerce": "Tienda · Billetera · Pedidos",
+    "player.nav.commerceLocked": "Tienda · Billetera · Pedidos (Bloqueado)",
+    "player.nav.stats": "Estadísticas · Eventos · Soporte",
+    "player.nav.statsLocked": "Estadísticas · Eventos · Soporte (Bloqueado)",
+    "player.notice.lockedTitle": "Este servidor aún no ha abierto esta área",
+    "player.notice.lockedDetail": "El paquete actual del servidor no incluye esta página. Se te ha redirigido a una página disponible."
+  }
+}

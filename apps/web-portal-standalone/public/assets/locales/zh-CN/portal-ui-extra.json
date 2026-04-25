@@ -1,0 +1,33 @@
+{
+  "dictionary": {
+    "shell.player.documentTitle": "SCUM TH Platform | 玩家门户",
+    "shell.player.title": "玩家门户",
+    "shell.player.detail": "商店、钱包、订单、统计数据和社区动态，一站式体验。",
+    "shell.player.service": "服务",
+    "shell.player.status.loading": "正在准备玩家门户",
+    "shell.common.refresh": "刷新数据",
+    "shell.role.player": "玩家",
+    "shell.role.service": "服务",
+    "player.app.status.loading": "正在加载玩家数据...",
+    "player.app.card.loadingTitle": "正在准备玩家数据",
+    "player.app.card.loadingDetail": "正在加载账户、商店、订单和社区更新。",
+    "player.app.status.ready": "就绪",
+    "player.app.card.loadFailedTitle": "无法加载玩家门户",
+    "player.app.status.loadFailed": "加载失败",
+    "player.app.card.emptyTitle": "暂无数据",
+    "player.app.card.emptyDetail": "请等待最新数据加载完成。",
+    "player.app.page.home": "首页",
+    "player.app.page.commerce": "商店、钱包和订单",
+    "player.app.page.stats": "统计、活动和支持",
+    "player.nav.group.start": "概览",
+    "player.nav.group.commerce": "商店与钱包",
+    "player.nav.group.community": "社区与统计",
+    "player.nav.home": "首页",
+    "player.nav.commerce": "商店·钱包·订单",
+    "player.nav.commerceLocked": "商店·钱包·订单（已锁定）",
+    "player.nav.stats": "统计·活动·支持",
+    "player.nav.statsLocked": "统计·活动·支持（已锁定）",
+    "player.notice.lockedTitle": "此服务器尚未开放该区域",
+    "player.notice.lockedDetail": "当前服务器套餐不包含此页面，已为您跳转到可用页面。"
+  }
+}

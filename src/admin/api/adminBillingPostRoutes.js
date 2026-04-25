@@ -9,6 +9,7 @@ function createAdminBillingPostRouteHandler(deps) {
     updateInvoiceStatus,
     updatePaymentAttempt,
     createCheckoutSession,
+    sweepExpiredSubscriptions,
     findPlanById,
     resolvePackageForPlan,
     listPlatformSubscriptions,
@@ -263,6 +264,36 @@ function createAdminBillingPostRouteHandler(deps) {
         return true;
       }
       sendJson(res, 200, { ok: true, data: { session: result.session, invoice: result.invoice } });
+      return true;
+    }
+
+    // Owner-only: advance overdue subscriptions to past_due / expired.
+    // Trigger manually here; see sweepExpiredSubscriptions JSDoc for how to wire a
+    // recurring scheduled call in the server bootstrap.
+    if (pathname === '/admin/api/platform/billing/sweep') {
+      if (getAuthTenantId(auth)) {
+        sendJson(res, 403, { ok: false, error: 'Tenant-scoped admin cannot run billing sweep' });
+        return true;
+      }
+      // Gather subscriptions via the cross-tenant lister if available so that
+      // per-tenant isolated databases are covered (see sweepExpiredSubscriptions JSDoc).
+      const subscriptions = typeof listPlatformSubscriptions === 'function'
+        ? await listPlatformSubscriptions({ allowGlobal: true, limit: 500 }).catch(() => null)
+        : null;
+      const result = await sweepExpiredSubscriptions?.({
+        gracePeriodDays: body?.gracePeriodDays,
+        limit: body?.limit,
+        actor: `owner-web:${auth?.user || 'unknown'}`,
+        ...(subscriptions ? { subscriptions } : {}),
+      });
+      if (!result?.ok) {
+        sendJson(res, 500, { ok: false, error: result?.reason || 'billing-sweep-failed' });
+        return true;
+      }
+      sendJson(res, 200, {
+        ok: true,
+        data: { swept: result.swept, skipped: result.skipped, results: result.results },
+      });
       return true;
     }
 

@@ -1,0 +1,33 @@
+{
+  "dictionary": {
+    "shell.player.documentTitle": "SCUM TH Platform | プレイヤーポータル",
+    "shell.player.title": "プレイヤーポータル",
+    "shell.player.detail": "ショップ、ウォレット、注文、統計、コミュニティ情報をひとまとめに。",
+    "shell.player.service": "サービス",
+    "shell.player.status.loading": "プレイヤーポータルを準備中",
+    "shell.common.refresh": "データを更新",
+    "shell.role.player": "プレイヤー",
+    "shell.role.service": "サービス",
+    "player.app.status.loading": "プレイヤーデータを読み込み中...",
+    "player.app.card.loadingTitle": "プレイヤーデータを準備中",
+    "player.app.card.loadingDetail": "アカウント、ショップ、注文、コミュニティ情報を読み込んでいます。",
+    "player.app.status.ready": "準備完了",
+    "player.app.card.loadFailedTitle": "プレイヤーポータルの読み込みに失敗しました",
+    "player.app.status.loadFailed": "読み込み失敗",
+    "player.app.card.emptyTitle": "データがありません",
+    "player.app.card.emptyDetail": "最新データの読み込みをお待ちください。",
+    "player.app.page.home": "ホーム",
+    "player.app.page.commerce": "ショップ・ウォレット・注文",
+    "player.app.page.stats": "統計・イベント・サポート",
+    "player.nav.group.start": "概要",
+    "player.nav.group.commerce": "ストアとウォレット",
+    "player.nav.group.community": "コミュニティと統計",
+    "player.nav.home": "ホーム",
+    "player.nav.commerce": "ストア・ウォレット・注文",
+    "player.nav.commerceLocked": "ストア・ウォレット・注文（ロック中）",
+    "player.nav.stats": "統計・イベント・サポート",
+    "player.nav.statsLocked": "統計・イベント・サポート（ロック中）",
+    "player.notice.lockedTitle": "このサーバーではまだこのエリアが開放されていません",
+    "player.notice.lockedDetail": "現在のサーバーパッケージにはこのページが含まれていません。利用可能なページにリダイレクトしました。"
+  }
+}

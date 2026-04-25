@@ -2089,6 +2089,91 @@ async function finalizeCheckoutSession(input = {}, db = prisma) {
   }, db);
 }
 
+/**
+ * Sweeps subscriptions whose renewal date has passed and advances their status.
+ *
+ * Two-stage logic:
+ *   1. active/trialing + renewsAt < now          → past_due  (payment overdue, grace period begins)
+ *   2. past_due        + renewsAt < now - grace  → expired   (grace period exhausted)
+ *
+ * Intended to be called from an owner-only API endpoint and/or a scheduled job.
+ *
+ * NOTE (multi-tenant topology): In schema-per-tenant mode this function can only see
+ * subscriptions stored in the shared (main) Prisma client.  If your deployment uses
+ * per-tenant isolated databases you must pass a pre-fetched `subscriptions` array
+ * gathered with `listPlatformSubscriptions({ allowGlobal: true })` from
+ * platformCommercialService instead of relying on the built-in query here.
+ *
+ * TODO (scheduled sweeper): wire a `setInterval` / node-cron call to this function in
+ * the main server bootstrap (e.g. adminWebServer.js) so it runs automatically every
+ * few hours without needing a manual API trigger.
+ */
+async function sweepExpiredSubscriptions(options = {}, db = prisma) {
+  const gracePeriodDays = Math.max(0, asInt(options.gracePeriodDays, 3, 0));
+  const limit = Math.max(1, Math.min(500, asInt(options.limit, 100, 1)));
+  const now = new Date();
+  const graceDeadline = gracePeriodDays > 0 ? addDays(now, -gracePeriodDays) : now;
+  const actor = trimText(options.actor, 200) || 'billing-sweeper';
+
+  // Use provided list (cross-tenant callers) or fall back to a direct shared-db query.
+  let candidates;
+  if (Array.isArray(options.subscriptions)) {
+    candidates = options.subscriptions;
+  } else {
+    candidates = await db.platformSubscription.findMany({
+      where: {
+        status: { in: ['active', 'trialing', 'past_due'] },
+        renewsAt: { not: null, lt: now },
+      },
+      orderBy: { renewsAt: 'asc' },
+      take: limit,
+    }).catch(() => []);
+  }
+
+  const results = [];
+  for (const row of candidates) {
+    const status = normalizeSubscriptionStatus(row.status, 'active');
+    const renewsAt = parseDate(row.renewsAt);
+    if (!renewsAt) continue;
+
+    let nextStatus = null;
+    if ((status === 'active' || status === 'trialing') && renewsAt.getTime() < now.getTime()) {
+      nextStatus = 'past_due';
+    } else if (status === 'past_due' && renewsAt.getTime() < graceDeadline.getTime()) {
+      nextStatus = 'expired';
+    }
+
+    if (!nextStatus) continue;
+
+    const result = await updateSubscriptionBillingState({
+      tenantId: row.tenantId,
+      subscriptionId: row.id,
+      status: nextStatus,
+      actor,
+      metadata: {
+        sweptAt: now.toISOString(),
+        sweptReason: nextStatus === 'past_due' ? 'renewal-overdue' : 'grace-period-exhausted',
+      },
+    }, db).catch((err) => ({ ok: false, reason: err?.message || 'sweep-update-failed' }));
+
+    results.push({
+      tenantId: row.tenantId,
+      subscriptionId: row.id,
+      previousStatus: status,
+      nextStatus,
+      ok: result.ok === true,
+      reason: result.reason || null,
+    });
+  }
+
+  return {
+    ok: true,
+    swept: results.filter((r) => r.ok).length,
+    skipped: results.filter((r) => !r.ok).length,
+    results,
+  };
+}
+
 module.exports = {
   computeBillingWebhookSignature,
   createCheckoutSession,
@@ -2103,6 +2188,7 @@ module.exports = {
   processBillingWebhookEvent,
   recordPaymentAttempt,
   recordSubscriptionEvent,
+  sweepExpiredSubscriptions,
   updateInvoiceStatus,
   updatePaymentAttempt,
   updateSubscriptionBillingState,

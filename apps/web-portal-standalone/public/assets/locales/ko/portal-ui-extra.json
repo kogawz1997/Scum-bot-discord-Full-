@@ -1,0 +1,33 @@
+{
+  "dictionary": {
+    "shell.player.documentTitle": "SCUM TH Platform | 플레이어 포털",
+    "shell.player.title": "플레이어 포털",
+    "shell.player.detail": "상점, 지갑, 주문, 통계, 커뮤니티 소식을 한곳에서.",
+    "shell.player.service": "서비스",
+    "shell.player.status.loading": "플레이어 포털 준비 중",
+    "shell.common.refresh": "데이터 새로 고침",
+    "shell.role.player": "플레이어",
+    "shell.role.service": "서비스",
+    "player.app.status.loading": "플레이어 데이터 로드 중...",
+    "player.app.card.loadingTitle": "플레이어 데이터 준비 중",
+    "player.app.card.loadingDetail": "계정, 상점, 주문, 커뮤니티 업데이트를 불러오고 있습니다.",
+    "player.app.status.ready": "준비 완료",
+    "player.app.card.loadFailedTitle": "플레이어 포털을 불러올 수 없습니다",
+    "player.app.status.loadFailed": "로드 실패",
+    "player.app.card.emptyTitle": "아직 데이터가 없습니다",
+    "player.app.card.emptyDetail": "최신 데이터가 로드될 때까지 기다려 주세요.",
+    "player.app.page.home": "홈",
+    "player.app.page.commerce": "상점, 지갑 및 주문",
+    "player.app.page.stats": "통계, 이벤트 및 지원",
+    "player.nav.group.start": "개요",
+    "player.nav.group.commerce": "상점과 지갑",
+    "player.nav.group.community": "커뮤니티와 통계",
+    "player.nav.home": "홈",
+    "player.nav.commerce": "상점·지갑·주문",
+    "player.nav.commerceLocked": "상점·지갑·주문 (잠금)",
+    "player.nav.stats": "통계·이벤트·지원",
+    "player.nav.statsLocked": "통계·이벤트·지원 (잠금)",
+    "player.notice.lockedTitle": "이 서버에서는 아직 이 영역을 열지 않았습니다",
+    "player.notice.lockedDetail": "현재 서버 패키지에 이 페이지가 포함되어 있지 않습니다. 사용 가능한 페이지로 이동했습니다."
+  }
+}

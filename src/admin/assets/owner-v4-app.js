@@ -1643,6 +1643,21 @@
       navigateOwnerRoute('/owner/subscriptions');
       return;
     }
+    if (action === 'sweep-expired-subscriptions') {
+      const result = await ownerMutation('/owner/api/platform/billing/sweep', {
+        gracePeriodDays: button.dataset.gracePeriodDays ? Number(button.dataset.gracePeriodDays) : undefined,
+      });
+      await refreshState({ silent: true });
+      const swept = Number(result?.swept || 0);
+      const skipped = Number(result?.skipped || 0);
+      setStatus(
+        swept > 0
+          ? `Swept ${swept} subscription${swept !== 1 ? 's' : ''} to next lifecycle state${skipped > 0 ? ` (${skipped} skipped)` : ''}.`
+          : `Sweep complete — no overdue subscriptions found.`,
+        swept > 0 ? 'warning' : 'success',
+      );
+      return;
+    }
     if (action === 'delete-package') {
       const packageId = trimText(button.dataset.packageId, 120).toUpperCase();
       const packageTitle = trimText(button.dataset.packageTitle, 180) || packageId;
