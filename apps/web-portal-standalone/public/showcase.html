@@ -3,89 +3,74 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SCUM TH Platform | โครงระบบและบทบาท</title>
-  <link rel="stylesheet" href="/player/assets/ui/platform-site-v3.css?v=20260327-live-1">
+  <title>SCUM TH Platform — โครงระบบและบทบาท</title>
+  <link rel="stylesheet" href="/player/assets/ui/platform-design-system-v5.css?v=20260425">
 </head>
-<body class="public-v3">
-  <div class="site-shell">
-    <header class="site-topbar">
-      <div class="site-topbar-main">
-        <a class="site-brand" href="/landing">
-          <span class="site-brand-mark">SCUM</span>
-          <span class="site-brand-copy">
-            <strong class="site-brand-title">SCUM TH Platform</strong>
-            <span class="site-brand-detail">ดูว่า Owner, Tenant และ Player ใช้พื้นที่ไหน และแต่ละหน้ารับผิดชอบงานอะไร</span>
-          </span>
-        </a>
-        <nav class="site-nav" aria-label="Primary">
-          <a class="site-nav-link" href="/landing">ภาพรวม</a>
-          <a class="site-nav-link is-active" href="/showcase">โครงระบบ</a>
-          <a class="site-nav-link" href="/pricing">แพ็กเกจ</a>
-          <a class="site-nav-link" href="/signup">สร้างบัญชี</a>
-        </nav>
-      </div>
-      <div class="site-topbar-tools">
-        <a class="site-button" href="/preview">พื้นที่ก่อนเปิดใช้งาน</a>
-        <a class="site-button site-button-primary" href="/signup">เริ่มต้นใช้งาน</a>
-      </div>
-    </header>
+<body>
+  <header class="ds-topbar">
+    <div class="ds-topbar-inner">
+      <a class="ds-brand" href="/landing">
+        <span class="ds-brand-mark">SCUM</span>
+        <span>
+          <span class="ds-brand-title">SCUM TH Platform</span>
+          <span class="ds-brand-subtitle">โครงระบบ</span>
+        </span>
+      </a>
+      <nav class="ds-nav" aria-label="Primary">
+        <a class="ds-nav-link" href="/landing">ภาพรวม</a>
+        <a class="ds-nav-link is-active" href="/showcase">โครงระบบ</a>
+        <a class="ds-nav-link" href="/pricing">แพ็กเกจ</a>
+        <a class="ds-nav-link" href="/signup">สร้างบัญชี</a>
+      </nav>
+      <a class="ds-btn ds-btn-primary" href="/signup">เริ่มต้นใช้งาน</a>
+    </div>
+  </header>
 
-    <main class="site-main">
-      <section class="site-grid-2">
-        <article class="site-panel site-media-card">
-          <div class="site-media-shot is-map-scene is-tall"></div>
-          <span class="site-kicker">Role Separation</span>
-          <h1 class="site-page-title">ทุกทีมมีพื้นที่ของตัวเอง และไม่ต้องเรียนรู้ทั้งระบบพร้อมกัน</h1>
-          <p class="site-page-copy">หน้าแนะนำนี้สรุปให้ชัดว่าใครควรเข้าหน้าไหน Owner ใช้คุมแพลตฟอร์ม Tenant ใช้ดูแลงานประจำวัน และ Player ใช้เข้าร้านค้า คำสั่งซื้อ และข้อมูลชุมชนของตัวเอง</p>
-        </article>
-        <article class="site-panel site-media-card">
-          <div class="site-media-shot is-radio-scene"></div>
-          <span class="site-kicker">Runtime Separation</span>
-          <h2 class="site-card-title">Delivery Agent กับ Server Bot เป็นคนละบทบาท และควรตั้งค่าแยกกัน</h2>
-          <p>Delivery Agent ใช้กับการส่งของและการทำงานในเกม ส่วน Server Bot ใช้กับการซิงก์ log การแก้ config การสำรองข้อมูล และการควบคุมเซิร์ฟเวอร์ จึงต้องมองเป็นคนละระบบตั้งแต่ตอนวางแผน</p>
-          <div class="site-tool-cluster">
-            <span class="site-status-pill is-info">Delivery Agent</span>
-            <span class="site-status-pill is-warning">Server Bot</span>
-          </div>
-        </article>
-      </section>
+  <main class="ds-container" style="padding-block: var(--space-7)">
+    <div class="ds-page-header" style="text-align: center; flex-direction: column; align-items: center">
+      <span class="ds-kicker">Role Separation</span>
+      <h1 class="ds-page-title">แต่ละบทบาทมีพื้นที่ของตัวเอง</h1>
+      <p class="ds-page-subtitle" style="max-width: 64ch">Owner คุมแพลตฟอร์ม Tenant ดูแลงานประจำวัน Player เข้าร้านค้าและชุมชน — ไม่ต้องเรียนรู้ทั้งระบบพร้อมกัน</p>
+    </div>
 
-      <section class="site-feature-grid">
-        <article class="site-panel site-feature-card">
-          <div class="site-media-shot is-owner-scene"></div>
-          <div class="site-feature-copy">
-            <span class="site-kicker">Owner Panel</span>
-            <h2 class="site-card-title">คุม tenant, แพ็กเกจ, รายได้ และความเสี่ยง</h2>
-            <p>เหมาะกับผู้ให้บริการที่ต้องดูภาพรวมทั้งแพลตฟอร์ม จัดการผู้เช่า ตรวจสุขภาพ runtime ติดตาม incident และควบคุมสิทธิ์ระดับระบบ</p>
-            <div class="site-tool-cluster">
-              <a class="site-button site-button-primary" href="http://127.0.0.1:3200/owner/login">เปิด Owner Panel</a>
-            </div>
-          </div>
-        </article>
-        <article class="site-panel site-feature-card">
-          <div class="site-media-shot is-tenant-scene"></div>
-          <div class="site-feature-copy">
-            <span class="site-kicker">Tenant Admin Panel</span>
-            <h2 class="site-card-title">ดูแลงานประจำวันของเซิร์ฟเวอร์ตัวเอง</h2>
-            <p>เหมาะกับเจ้าของชุมชนหรือแอดมินเซิร์ฟเวอร์ที่ต้องดูสถานะ คำสั่งซื้อ ผู้เล่น การส่งของ Delivery Agent และ Server Bot แบบแยกหน้ากันชัดเจน</p>
-            <div class="site-tool-cluster">
-              <a class="site-button site-button-primary" href="http://127.0.0.1:3200/tenant/login">เปิด Tenant Panel</a>
-            </div>
-          </div>
-        </article>
-        <article class="site-panel site-feature-card">
-          <div class="site-media-shot is-player-scene"></div>
-          <div class="site-feature-copy">
-            <span class="site-kicker">Player Portal</span>
-            <h2 class="site-card-title">ให้ผู้เล่นเข้าถึงร้านค้าและชุมชนได้จากหน้าที่เข้าใจง่าย</h2>
-            <p>เหมาะกับผู้เล่นที่ต้องการซื้อของ ติดตามกระเป๋าเงิน ดูคำสั่งซื้อ การส่งของ สถิติ กิจกรรม และประวัติการใช้งานจากหน้าหลักเดียว</p>
-            <div class="site-tool-cluster">
-              <a class="site-button site-button-primary" href="/player/login">เปิด Player Portal</a>
-            </div>
-          </div>
-        </article>
-      </section>
-    </main>
-  </div>
+    <div class="ds-grid" style="grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--space-5); margin-top: var(--space-6)">
+      <article class="ds-card ds-card-elevated">
+        <div class="ds-feature-icon">⌘</div>
+        <span class="ds-kicker">Owner Panel</span>
+        <h2 class="ds-card-title" style="margin: var(--space-2) 0 var(--space-3)">คุม tenant แพ็กเกจ รายได้ และความเสี่ยง</h2>
+        <p class="ds-text-muted">เหมาะกับผู้ให้บริการที่ต้องดูภาพรวมทั้งแพลตฟอร์ม จัดการผู้เช่า ตรวจสุขภาพ runtime ติดตาม incident และควบคุมสิทธิ์ระดับระบบ</p>
+        <a class="ds-btn ds-btn-primary ds-btn-block" href="/owner/login" style="margin-top: var(--space-4)">เปิด Owner Panel →</a>
+      </article>
+
+      <article class="ds-card ds-card-elevated">
+        <div class="ds-feature-icon">⚙</div>
+        <span class="ds-kicker">Tenant Admin Panel</span>
+        <h2 class="ds-card-title" style="margin: var(--space-2) 0 var(--space-3)">ดูแลงานประจำวันของเซิร์ฟเวอร์</h2>
+        <p class="ds-text-muted">เหมาะกับเจ้าของชุมชนหรือแอดมินเซิร์ฟเวอร์ที่ต้องดูสถานะ คำสั่งซื้อ ผู้เล่น Delivery Agent และ Server Bot แบบแยกหน้ากันชัดเจน</p>
+        <a class="ds-btn ds-btn-primary ds-btn-block" href="/tenant/login" style="margin-top: var(--space-4)">เปิด Tenant Panel →</a>
+      </article>
+
+      <article class="ds-card ds-card-elevated">
+        <div class="ds-feature-icon">★</div>
+        <span class="ds-kicker">Player Portal</span>
+        <h2 class="ds-card-title" style="margin: var(--space-2) 0 var(--space-3)">ผู้เล่นเข้าร้านค้าและชุมชนได้ง่าย</h2>
+        <p class="ds-text-muted">เหมาะกับผู้เล่นที่ต้องการซื้อของ ติดตามกระเป๋าเงิน คำสั่งซื้อ การส่งของ สถิติ กิจกรรม และประวัติการใช้งานจากหน้าหลักเดียว</p>
+        <a class="ds-btn ds-btn-accent ds-btn-block" href="/player/login" style="margin-top: var(--space-4)">เปิด Player Portal →</a>
+      </article>
+    </div>
+
+    <div class="ds-grid" style="grid-template-columns: 1fr 1fr; gap: var(--space-5); margin-top: var(--space-7)">
+      <article class="ds-card ds-card-glass">
+        <span class="ds-badge ds-badge-info">Delivery Agent</span>
+        <h3 class="ds-card-title" style="margin: var(--space-3) 0">งานในเกม + การส่งของ</h3>
+        <p class="ds-text-muted">ใช้กับการส่งของ คำสั่งซื้อ และการทำงานในเกมที่ต้องการการตอบสนองทันที — ทำงานแยกจาก Server Bot โดยสิ้นเชิง</p>
+      </article>
+      <article class="ds-card ds-card-glass">
+        <span class="ds-badge ds-badge-warning">Server Bot</span>
+        <h3 class="ds-card-title" style="margin: var(--space-3) 0">log + config + control</h3>
+        <p class="ds-text-muted">ใช้กับการ sync log, แก้ config, สำรองข้อมูล และควบคุมเซิร์ฟเวอร์ — วางแผนแยกตั้งแต่ต้นเพื่อให้ scale ได้</p>
+      </article>
+    </div>
+  </main>
 </body>
 </html>

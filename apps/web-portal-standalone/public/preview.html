@@ -3,67 +3,72 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SCUM TH Platform | พื้นที่ก่อนเปิดใช้งาน</title>
-  <link rel="stylesheet" href="/player/assets/ui/platform-site-v3.css?v=20260327-live-1">
+  <title>SCUM TH Platform — พื้นที่ทดลอง</title>
+  <link rel="stylesheet" href="/player/assets/ui/platform-design-system-v5.css?v=20260425">
 </head>
-<body class="public-v3">
-  <div class="site-shell">
-    <header class="site-topbar">
-      <div class="site-topbar-main">
-        <a class="site-brand" href="/landing">
-          <span class="site-brand-mark">SCUM</span>
-          <span class="site-brand-copy">
-            <strong class="site-brand-title">SCUM TH Platform</strong>
-            <span class="site-brand-detail">พื้นที่สำหรับดูเมนู สิทธิ์ และสิ่งที่ต้องเปิดเพิ่มก่อนใช้งานจริง</span>
-          </span>
-        </a>
+<body>
+  <header class="ds-topbar">
+    <div class="ds-topbar-inner">
+      <a class="ds-brand" href="/landing">
+        <span class="ds-brand-mark">SCUM</span>
+        <span>
+          <span class="ds-brand-title">SCUM TH Platform</span>
+          <span class="ds-brand-subtitle">Workspace Preview</span>
+        </span>
+      </a>
+      <nav class="ds-nav" aria-label="Primary">
+        <a class="ds-nav-link" href="/landing">ภาพรวม</a>
+        <a class="ds-nav-link" href="/pricing">แพ็กเกจ</a>
+        <a class="ds-nav-link is-active" href="/preview">พื้นที่ทดลอง</a>
+      </nav>
+      <div class="ds-row" style="gap: var(--space-2)">
+        <a id="previewUpgradeBtn" class="ds-btn ds-btn-primary" href="/checkout">อัปเกรดแพ็กเกจ</a>
+        <button id="previewLogoutBtn" class="ds-btn" type="button">ออกจากระบบ</button>
       </div>
-      <div class="site-topbar-tools">
-        <a id="previewUpgradeBtn" class="site-button site-button-primary" href="/checkout">อัปเกรดแพ็กเกจ</a>
-        <button id="previewLogoutBtn" class="site-button" type="button">ออกจากระบบ</button>
-      </div>
-    </header>
-    <main class="site-main">
-      <section class="site-preview-layout">
-        <aside class="site-preview-card site-preview-sidebar">
-          <div class="site-media-shot is-support-scene"></div>
-          <span class="site-kicker">Workspace</span>
-          <h1 id="previewCommunityName" class="site-page-title">SCUM Workspace</h1>
-          <p id="previewPageLead" class="site-page-copy">กำลังโหลดข้อมูลพื้นที่ของคุณ...</p>
-          <p id="previewAccountSummary" class="site-page-copy"></p>
-          <div id="previewSidebarNav" class="site-stack"></div>
-        </aside>
-        <section class="site-stack">
-          <div id="previewStatsGrid" class="site-grid-2"></div>
-          <article class="site-preview-card">
-            <div class="site-media-shot is-map-scene"></div>
-            <span class="site-kicker">เปิดใช้งานแล้ว</span>
-            <h2 class="site-card-title">ฟีเจอร์ที่แพ็กเกจปัจจุบันเปิดให้ใช้</h2>
-            <ul id="previewFeatureList" class="marketing-list"></ul>
-          </article>
-          <article class="site-preview-card">
-            <div class="site-media-shot is-wallet-scene"></div>
-            <span class="site-kicker">ต้องเปิดเพิ่ม</span>
-            <h2 class="site-card-title">สิ่งที่ยังต้องอัปเกรดแพ็กเกจหรือเปิด runtime เพิ่ม</h2>
-            <ul id="previewLockedList" class="marketing-list"></ul>
-          </article>
-          <article class="site-preview-card">
-            <div class="site-media-shot is-identity-scene"></div>
-            <span class="site-kicker">สถานะบัญชี</span>
-            <h2 class="site-card-title">บัญชีที่ผูกไว้และความพร้อมของตัวตน</h2>
-            <ul id="previewIdentityList" class="marketing-list"></ul>
-          </article>
-          <article class="site-preview-card">
-            <div class="site-media-shot is-announce-scene"></div>
-            <span class="site-kicker">ขั้นถัดไป</span>
-            <h2 class="site-card-title">ควรทำอะไรต่อก่อนเปิดใช้งานจริง</h2>
-            <ul id="previewNextSteps" class="marketing-list"></ul>
-          </article>
-        </section>
+    </div>
+  </header>
+
+  <main class="ds-container" style="padding-block: var(--space-6)">
+    <div class="ds-grid" style="grid-template-columns: 320px 1fr; gap: var(--space-5); align-items: start">
+      <aside class="ds-card ds-card-elevated" style="position: sticky; top: var(--space-5)">
+        <span class="ds-kicker">Workspace</span>
+        <h1 id="previewCommunityName" style="font-size: var(--fs-xl); margin: var(--space-2) 0 var(--space-3)">SCUM Workspace</h1>
+        <p id="previewPageLead" class="ds-text-muted" style="font-size: var(--fs-sm)">กำลังโหลดข้อมูลพื้นที่ของคุณ...</p>
+        <p id="previewAccountSummary" class="ds-text-muted" style="font-size: var(--fs-sm)"></p>
+        <hr class="ds-divider">
+        <div id="previewSidebarNav" class="ds-stack-sm"></div>
+      </aside>
+
+      <section class="ds-stack" style="gap: var(--space-5)">
+        <div id="previewStatsGrid" class="ds-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--space-4)"></div>
+
+        <article class="ds-card">
+          <span class="ds-kicker">เปิดใช้งานแล้ว</span>
+          <h2 class="ds-card-title" style="margin: var(--space-2) 0 var(--space-3)">ฟีเจอร์ที่แพ็กเกจปัจจุบันเปิดให้ใช้</h2>
+          <ul id="previewFeatureList" class="ds-stack-sm" style="list-style: none; padding: 0; margin: 0"></ul>
+        </article>
+
+        <article class="ds-card">
+          <span class="ds-kicker">ต้องเปิดเพิ่ม</span>
+          <h2 class="ds-card-title" style="margin: var(--space-2) 0 var(--space-3)">ฟีเจอร์ที่ยังต้องอัปเกรดหรือเปิด runtime</h2>
+          <ul id="previewLockedList" class="ds-stack-sm" style="list-style: none; padding: 0; margin: 0"></ul>
+        </article>
+
+        <article class="ds-card">
+          <span class="ds-kicker">สถานะบัญชี</span>
+          <h2 class="ds-card-title" style="margin: var(--space-2) 0 var(--space-3)">บัญชีและความพร้อมของตัวตน</h2>
+          <ul id="previewIdentityList" class="ds-stack-sm" style="list-style: none; padding: 0; margin: 0"></ul>
+        </article>
+
+        <article class="ds-card ds-card-glass">
+          <span class="ds-kicker">ขั้นถัดไป</span>
+          <h2 class="ds-card-title" style="margin: var(--space-2) 0 var(--space-3)">ทำอะไรต่อก่อนเปิดใช้งานจริง</h2>
+          <ul id="previewNextSteps" class="ds-stack-sm" style="list-style: none; padding: 0; margin: 0"></ul>
+        </article>
       </section>
-    </main>
-  </div>
-  <script src="/player/assets/ui/portal-i18n.js?v=20260327-live-1"></script>
-  <script src="/player/assets/ui/public-auth-v2.js?v=20260327-live-1"></script>
+    </div>
+  </main>
+  <script src="/player/assets/ui/portal-i18n.js?v=20260425-redesign-1"></script>
+  <script src="/player/assets/ui/public-auth-v2.js?v=20260425-redesign-1"></script>
 </body>
 </html>

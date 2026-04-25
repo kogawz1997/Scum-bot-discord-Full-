@@ -3,116 +3,63 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SCUM TH Platform | เข้าสู่ระบบผู้เล่น</title>
-  <link rel="stylesheet" href="/player/assets/ui/platform-site-v3.css?v=20260328-route-1">
-  <style>
-    .player-auth-stage {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(320px, 0.88fr);
-      gap: 24px;
-    }
-    .player-auth-hero {
-      min-height: 320px;
-      border-radius: 24px;
-      border: 1px solid var(--site-border);
-      background:
-        linear-gradient(120deg, rgba(8, 12, 10, 0.18), rgba(8, 12, 10, 0.7)),
-        url('/player/assets/ui/visuals/scum/hero-player.jpg');
-      background-position: center;
-      background-size: cover;
-      box-shadow: var(--site-shadow);
-      animation: player-auth-float 9s ease-in-out infinite alternate;
-    }
-    .player-auth-chip-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-    }
-    .player-auth-chip {
-      display: inline-flex;
-      align-items: center;
-      min-height: 34px;
-      padding: 0 12px;
-      border-radius: 999px;
-      border: 1px solid var(--site-border-strong);
-      background: rgba(255,255,255,0.04);
-      color: var(--site-text);
-      font-size: .86rem;
-      font-weight: 600;
-    }
-    .player-auth-note-grid {
-      display: grid;
-      gap: 14px;
-    }
-    .player-auth-note {
-      padding: 18px;
-      border-radius: 18px;
-      border: 1px solid var(--site-border);
-      background: rgba(255,255,255,0.03);
-      display: grid;
-      gap: 8px;
-    }
-    .player-auth-note strong {
-      font-size: 1rem;
-    }
-    @keyframes player-auth-float {
-      from { transform: translateY(0) scale(1.01); }
-      to { transform: translateY(-8px) scale(1.04); }
-    }
-    @media (max-width: 960px) {
-      .player-auth-stage {
-        grid-template-columns: 1fr;
-      }
-    }
-  </style>
+  <title>SCUM TH Platform — เข้าสู่ระบบผู้เล่น</title>
+  <link rel="stylesheet" href="/player/assets/ui/platform-design-system-v5.css?v=20260425">
 </head>
-<body class="public-v3">
-  <div class="site-shell">
-    <header class="site-topbar">
-      <div class="site-topbar-main">
-        <a class="site-brand" href="/landing">
-          <span class="site-brand-mark">SCUM</span>
-          <span class="site-brand-copy">
-            <strong class="site-brand-title">พอร์ทัลผู้เล่น</strong>
-            <span class="site-brand-detail">__PLAYER_AUTH_BRAND_DETAIL__</span>
-          </span>
-        </a>
-      </div>
-    </header>
-    <main class="site-main">
-      <section class="player-auth-stage">
-        <article class="site-auth-card site-stack">
-          <span class="site-kicker">ทางเข้าผู้เล่น</span>
-          <h1 class="site-page-title">เข้าพอร์ทัลผู้เล่นได้จากทางเดียว</h1>
-          <p class="site-page-copy">__PLAYER_AUTH_PROVIDER_COPY__</p>
-          <div class="player-auth-chip-row">
-            <span class="player-auth-chip">โปรไฟล์ผู้เล่น</span>
-            <span class="player-auth-chip">คำสั่งซื้อและการส่งของ</span>
-            <span class="player-auth-chip">กิจกรรมและแรงก์</span>
+<body>
+  <header class="ds-topbar">
+    <div class="ds-topbar-inner">
+      <a class="ds-brand" href="/landing">
+        <span class="ds-brand-mark">SCUM</span>
+        <span>
+          <span class="ds-brand-title">พอร์ทัลผู้เล่น</span>
+          <span class="ds-brand-subtitle">__PLAYER_AUTH_BRAND_DETAIL__</span>
+        </span>
+      </a>
+      <nav class="ds-nav" aria-label="Primary">
+        <a class="ds-nav-link" href="/landing">ภาพรวม</a>
+        <a class="ds-nav-link" href="/pricing">แพ็กเกจ</a>
+        <a class="ds-nav-link is-active" href="/player/login">เข้าผู้เล่น</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="ds-container" style="padding-block: var(--space-7)">
+    <div class="ds-grid" style="grid-template-columns: 1.1fr 1fr; gap: var(--space-6); max-width: 1080px; margin: 0 auto">
+      <article class="ds-card ds-card-elevated">
+        <span class="ds-kicker">ทางเข้าผู้เล่น</span>
+        <h1 style="font-size: var(--fs-2xl); margin-bottom: var(--space-3)">เข้าพอร์ทัลผู้เล่น</h1>
+        <p class="ds-text-muted" style="margin-bottom: var(--space-5)">__PLAYER_AUTH_PROVIDER_COPY__</p>
+
+        <div class="ds-row" style="gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-5)">
+          <span class="ds-badge">โปรไฟล์ผู้เล่น</span>
+          <span class="ds-badge">คำสั่งซื้อและการส่งของ</span>
+          <span class="ds-badge">กิจกรรมและแรงก์</span>
+        </div>
+
+        <div class="ds-stack" style="margin-bottom: var(--space-5)">__PLAYER_OAUTH_BUTTONS__</div>
+
+        <hr class="ds-divider">
+
+        <form id="playerMagicLinkForm" class="ds-stack">
+          <div class="ds-field">
+            <label class="ds-label" for="playerMagicLinkEmail">อีเมล (Magic Link)</label>
+            <input id="playerMagicLinkEmail" class="ds-input" type="email" placeholder="player@example.com" autocomplete="email">
           </div>
-          <div class="site-tool-cluster">__PLAYER_OAUTH_BUTTONS__</div>
-          <form id="playerMagicLinkForm" class="site-form-grid">
-            <label class="site-field site-field-span">
-              <span>อีเมล</span>
-              <input id="playerMagicLinkEmail" class="auth-input" type="email" placeholder="player@example.com" autocomplete="email">
-            </label>
-            <div class="site-field site-field-span">
-              <button id="playerMagicLinkSubmit" class="button button-secondary" type="submit">ส่งเมจิกลิงก์</button>
-              <div id="playerMagicLinkStatus" class="form-status" aria-live="polite"></div>
-            </div>
-          </form>
-          <div id="playerMagicLinkDebug" class="site-field site-field-span"></div>
-          <div class="form-status is-error">__ERROR_MESSAGE__</div>
-        </article>
-        <article class="site-panel site-help-panel">
-          <span class="site-kicker">ก่อนเริ่มใช้งาน</span>
-          <h2 class="site-card-title">สิ่งที่ผู้เล่นควรรู้ก่อนเข้า</h2>
-          <div class="player-auth-hero"></div>
-          <div class="player-auth-note-grid">__PLAYER_AUTH_NOTES__</div>
-        </article>
-      </section>
-    </main>
-  </div>
-  <script src="/player/assets/ui/player-auth-v1.js?v=20260401-player-login-visual-1"></script>
+          <button id="playerMagicLinkSubmit" class="ds-btn ds-btn-block" type="submit">ส่งเมจิกลิงก์</button>
+          <div id="playerMagicLinkStatus" class="ds-help" aria-live="polite"></div>
+        </form>
+        <div id="playerMagicLinkDebug" class="ds-help"></div>
+        <div class="ds-help is-error" style="color: var(--color-danger)">__ERROR_MESSAGE__</div>
+      </article>
+
+      <article class="ds-card ds-card-glass">
+        <span class="ds-kicker">ก่อนเริ่มใช้งาน</span>
+        <h2 style="font-size: var(--fs-xl); margin-bottom: var(--space-3)">สิ่งที่ผู้เล่นควรรู้</h2>
+        <div class="ds-stack-sm">__PLAYER_AUTH_NOTES__</div>
+      </article>
+    </div>
+  </main>
+  <script src="/player/assets/ui/player-auth-v1.js?v=20260425-redesign-1"></script>
 </body>
 </html>

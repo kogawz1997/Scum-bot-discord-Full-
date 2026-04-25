@@ -3,83 +3,66 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SCUM TH Platform | แผนเริ่มต้นก่อนเปิดใช้งาน</title>
-  <link rel="stylesheet" href="/player/assets/ui/platform-site-v3.css?v=20260327-live-1">
+  <title>SCUM TH Platform — แผนเริ่มต้น</title>
+  <link rel="stylesheet" href="/player/assets/ui/platform-design-system-v5.css?v=20260425">
 </head>
-<body class="public-v3">
-  <div class="site-shell">
-    <header class="site-topbar">
-      <div class="site-topbar-main">
-        <a class="site-brand" href="/landing">
-          <span class="site-brand-mark">SCUM</span>
-          <span class="site-brand-copy">
-            <strong class="site-brand-title">SCUM TH Platform</strong>
-            <span class="site-brand-detail">ลำดับเริ่มต้นสำหรับทีมที่ต้องการลองระบบก่อนเปิดใช้งานจริง</span>
-          </span>
-        </a>
-        <nav class="site-nav" aria-label="Primary">
-          <a class="site-nav-link" href="/landing">ภาพรวม</a>
-          <a class="site-nav-link" href="/pricing">แพ็กเกจ</a>
-          <a class="site-nav-link is-active" href="/trial">แผนเริ่มต้น</a>
-          <a class="site-nav-link" href="/signup">สร้างบัญชี</a>
-        </nav>
-      </div>
-      <div class="site-topbar-tools">
-        <a class="site-button" href="/preview">เปิดพื้นที่ก่อนใช้งาน</a>
-        <a class="site-button site-button-primary" href="/signup?package=BOT_LOG_DELIVERY">สร้างบัญชี</a>
-      </div>
-    </header>
+<body>
+  <header class="ds-topbar">
+    <div class="ds-topbar-inner">
+      <a class="ds-brand" href="/landing">
+        <span class="ds-brand-mark">SCUM</span>
+        <span>
+          <span class="ds-brand-title">SCUM TH Platform</span>
+          <span class="ds-brand-subtitle">แผนเริ่มต้น</span>
+        </span>
+      </a>
+      <nav class="ds-nav" aria-label="Primary">
+        <a class="ds-nav-link" href="/landing">ภาพรวม</a>
+        <a class="ds-nav-link" href="/pricing">แพ็กเกจ</a>
+        <a class="ds-nav-link is-active" href="/trial">แผนเริ่มต้น</a>
+        <a class="ds-nav-link" href="/signup">สร้างบัญชี</a>
+      </nav>
+      <a class="ds-btn ds-btn-primary" href="/signup?package=BOT_LOG_DELIVERY">สร้างบัญชี</a>
+    </div>
+  </header>
 
-    <main class="site-main">
-      <section class="site-grid-2">
-        <article class="site-panel site-media-card">
-          <div class="site-media-shot is-announce-scene"></div>
-          <span class="site-kicker">Step by Step</span>
-          <h1 class="site-page-title">เริ่มจากพื้นที่ก่อนเปิดใช้งาน แล้วค่อยเปิด runtime ที่จำเป็นจริง</h1>
-          <p class="site-page-copy">แนวทางนี้ช่วยให้คุณไม่ต้องเปิดทุกระบบพร้อมกันตั้งแต่วันแรก เริ่มจากดูเมนูและสิทธิ์ก่อน แล้วค่อยตัดสินใจว่าจะใช้ Delivery Agent, Server Bot หรือทั้งสองอย่างตามงานจริงของชุมชน</p>
-          <div class="site-tool-cluster">
-            <a class="site-button site-button-primary" href="/signup?package=BOT_LOG_DELIVERY">สร้างบัญชี</a>
-            <a class="site-button" href="/preview">เปิดพื้นที่ก่อนใช้งาน</a>
-          </div>
-        </article>
-        <article class="site-panel">
-          <span class="site-kicker">สิ่งที่ควรเช็กก่อนเปิดจริง</span>
-          <h2 class="site-card-title">เห็นของจริงแบบล็อก action ไว้ก่อน</h2>
-          <ul class="marketing-list">
-            <li>เปิดดูหน้า Server Status, Orders, Players, Delivery Agents และ Server Bots ได้ครบในพื้นที่ก่อนเปิดใช้งาน</li>
-            <li>หน้าที่ยังต้องใช้แพ็กเกจหรือ runtime เพิ่ม จะขึ้นสถานะล็อกและคำแนะนำชัดเจน</li>
-            <li>อัปเกรดภายหลังแล้วใช้โครงเดิมต่อได้ โดยไม่ต้องเริ่ม onboarding ใหม่</li>
-          </ul>
-        </article>
-      </section>
+  <main class="ds-container" style="padding-block: var(--space-7)">
+    <div class="ds-page-header" style="text-align: center; flex-direction: column; align-items: center">
+      <span class="ds-kicker">Step by Step</span>
+      <h1 class="ds-page-title">เริ่มจากพื้นที่ทดลอง แล้วค่อยเปิด runtime ที่จำเป็น</h1>
+      <p class="ds-page-subtitle" style="max-width: 64ch">ไม่ต้องเปิดทุกระบบพร้อมกันตั้งแต่วันแรก เริ่มดูเมนู สิทธิ์ และฟีเจอร์ก่อน แล้วค่อยตัดสินใจเปิด Delivery Agent หรือ Server Bot ตามงานจริง</p>
+      <div class="ds-row" style="gap: var(--space-3); justify-content: center; flex-wrap: wrap; margin-top: var(--space-4)">
+        <a class="ds-btn ds-btn-primary ds-btn-lg" href="/signup?package=BOT_LOG_DELIVERY">สร้างบัญชี</a>
+        <a class="ds-btn" href="/preview">เปิดพื้นที่ทดลอง</a>
+      </div>
+    </div>
 
-      <section class="site-feature-grid">
-        <article class="site-panel site-feature-card">
-          <div class="site-media-shot is-owner-scene"></div>
-          <div class="site-feature-copy">
-            <span class="site-kicker">1. สร้างพื้นที่เริ่มต้น</span>
-            <h2 class="site-card-title">เปิด tenant เริ่มต้นเพื่อดูเมนูและสิทธิ์</h2>
-            <p>เริ่มจากหน้า signup เพื่อสร้างบัญชีและพื้นที่ทำงาน จากนั้นดูเมนูที่เปิดให้ใช้ได้จริงและรายการฟีเจอร์ที่ยังต้องอัปเกรดก่อนเปิด production</p>
-          </div>
-        </article>
-        <article class="site-panel site-feature-card">
-          <div class="site-media-shot is-tenant-scene"></div>
-          <div class="site-feature-copy">
-            <span class="site-kicker">2. ตัดสินใจเรื่อง runtime</span>
-            <h2 class="site-card-title">เลือกให้ตรงว่าต้องใช้ Delivery Agent หรือ Server Bot</h2>
-            <p>ถ้าต้องการส่งของในเกม ใช้ Delivery Agent ถ้าต้องการ sync log แก้ config สำรองข้อมูล หรือควบคุมเซิร์ฟเวอร์ ใช้ Server Bot</p>
-          </div>
-        </article>
-        <article class="site-panel site-feature-card">
-          <div class="site-media-shot is-player-scene"></div>
-          <div class="site-feature-copy">
-            <span class="site-kicker">3. เปิดให้ผู้เล่นใช้งาน</span>
-            <h2 class="site-card-title">ค่อยเปิด Player Portal หลังจากฝั่งผู้ดูแลนิ่งแล้ว</h2>
-            <p>เมื่อฝั่งผู้ดูแลพร้อมแล้ว จึงเปิด Player Portal เพื่อให้ผู้เล่นเข้าดูร้านค้า กระเป๋าเงิน คำสั่งซื้อ และกิจกรรมของชุมชนจากหน้าจริง</p>
-          </div>
-        </article>
-      </section>
-    </main>
-  </div>
+    <div class="ds-feature-grid" style="margin-top: var(--space-7)">
+      <article class="ds-card">
+        <div class="ds-feature-icon">1</div>
+        <h2 class="ds-card-title">สร้างพื้นที่เริ่มต้น</h2>
+        <p class="ds-text-muted">เปิด tenant เริ่มต้นเพื่อดูเมนูและสิทธิ์ ตรวจฟีเจอร์ที่ยังต้องอัปเกรดก่อนเข้า production</p>
+      </article>
+      <article class="ds-card">
+        <div class="ds-feature-icon">2</div>
+        <h2 class="ds-card-title">ตัดสินใจเรื่อง runtime</h2>
+        <p class="ds-text-muted">Delivery Agent ใช้ส่งของในเกม Server Bot ใช้ sync log แก้ config สำรองข้อมูล หรือควบคุมเซิร์ฟเวอร์</p>
+      </article>
+      <article class="ds-card">
+        <div class="ds-feature-icon">3</div>
+        <h2 class="ds-card-title">เปิดให้ผู้เล่นใช้งาน</h2>
+        <p class="ds-text-muted">เมื่อฝั่งผู้ดูแลพร้อมแล้ว จึงเปิด Player Portal ให้ผู้เล่นเข้าร้านค้า กระเป๋าเงิน และคำสั่งซื้อ</p>
+      </article>
+    </div>
+
+    <div class="ds-card ds-card-glass ds-text-center" style="margin-top: var(--space-7); padding: var(--space-6)">
+      <h3 class="ds-card-title">พร้อมเริ่มต้นแล้ว?</h3>
+      <p class="ds-text-muted">สร้างบัญชีฟรี ทดลองดูระบบก่อนตัดสินใจเปิดใช้งานจริง</p>
+      <div class="ds-row" style="gap: var(--space-3); justify-content: center; flex-wrap: wrap; margin-top: var(--space-4)">
+        <a class="ds-btn ds-btn-primary" href="/signup">สร้างบัญชีฟรี</a>
+        <a class="ds-btn ds-btn-accent" href="/showcase">ดูสถาปัตยกรรมเต็ม</a>
+      </div>
+    </div>
+  </main>
 </body>
 </html>

@@ -3,35 +3,39 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SCUM TH Platform | Payment Result</title>
-  <link rel="stylesheet" href="/player/assets/ui/platform-site-v3.css?v=20260327-live-1">
+  <title>SCUM TH Platform — ผลการชำระเงิน</title>
+  <link rel="stylesheet" href="/player/assets/ui/platform-design-system-v5.css?v=20260425">
 </head>
-<body class="public-v3">
-  <div class="site-shell">
-    <header class="site-topbar">
-      <div class="site-topbar-main">
-        <a class="site-brand" href="/landing">
-          <span class="site-brand-mark">SCUM</span>
-          <span class="site-brand-copy">
-            <strong class="site-brand-title">SCUM TH Platform</strong>
-            <span class="site-brand-detail">Checkout result and workspace activation status</span>
-          </span>
-        </a>
+<body>
+  <header class="ds-topbar">
+    <div class="ds-topbar-inner">
+      <a class="ds-brand" href="/landing">
+        <span class="ds-brand-mark">SCUM</span>
+        <span>
+          <span class="ds-brand-title">SCUM TH Platform</span>
+          <span class="ds-brand-subtitle">Payment Result</span>
+        </span>
+      </a>
+      <nav class="ds-nav" aria-label="Primary">
+        <a class="ds-nav-link" href="/landing">ภาพรวม</a>
+        <a class="ds-nav-link" href="/pricing">แพ็กเกจ</a>
+        <a class="ds-nav-link" href="/login">เข้าสู่ระบบ</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="ds-container-narrow" style="padding-block: var(--space-7)">
+    <article class="ds-card ds-card-elevated ds-text-center" style="padding: var(--space-7)">
+      <span class="ds-kicker">Result</span>
+      <h1 id="paymentResultTitle" style="font-size: var(--fs-3xl); margin: var(--space-3) 0">ผลการชำระเงิน</h1>
+      <p id="paymentResultCopy" class="ds-text-muted" style="max-width: 60ch; margin: 0 auto var(--space-6)">หน้านี้ยืนยันว่าการเปิดแพ็กเกจสำเร็จแล้ว และจะแนะนำขั้นตอนถัดไปสำหรับการเข้าใช้งาน</p>
+      <div class="ds-row" style="gap: var(--space-3); justify-content: center; flex-wrap: wrap">
+        <a id="paymentResultPrimary" class="ds-btn ds-btn-primary ds-btn-lg" href="/preview">เปิดพื้นที่ทำงาน</a>
+        <a id="paymentResultSecondary" class="ds-btn" href="/login">กลับไปเข้าสู่ระบบ</a>
       </div>
-    </header>
-    <main class="site-main">
-      <section class="site-panel">
-        <span class="site-kicker">Result</span>
-        <h1 id="paymentResultTitle" class="site-page-title">Payment result</h1>
-        <p id="paymentResultCopy" class="site-page-copy">This page confirms whether your package activation completed and where to go next.</p>
-        <div class="site-tool-cluster">
-          <a id="paymentResultPrimary" class="site-button site-button-primary" href="/preview">Open your workspace</a>
-          <a id="paymentResultSecondary" class="site-button" href="/login">Back to login</a>
-        </div>
-      </section>
-    </main>
-  </div>
-  <script src="/player/assets/ui/portal-i18n.js?v=20260327-live-1"></script>
-  <script src="/player/assets/ui/public-auth-v2.js?v=20260327-live-1"></script>
+    </article>
+  </main>
+  <script src="/player/assets/ui/portal-i18n.js?v=20260425-redesign-1"></script>
+  <script src="/player/assets/ui/public-auth-v2.js?v=20260425-redesign-1"></script>
 </body>
 </html>
