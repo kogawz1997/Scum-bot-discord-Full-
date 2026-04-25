@@ -1,221 +1,75 @@
-# Worklist
+# Worklist — SaaS Readiness Master List
 
-This file is the source of truth for work that is still open after the latest workstation audit.
+อัปเดตล่าสุด: `2026-04-25`
 
-Last updated: `2026-04-02`
+รวมงานที่เหลือทั้งหมดก่อนจะเป็น SaaS เต็มรูปแบบ ทั้ง 3 เว็บ (Owner / Tenant / Player) และระบบหลังบ้าน
 
-The current workstation is no longer in the broad local-runtime cleanup state, and the main SaaS-readiness phase plan is now closed in-repo. The remaining backlog is mostly next-tier hardening, environment proof, and deeper productization rather than basic local bring-up.
+---
 
-## Status Labels
+## สัญลักษณ์
 
-- `open`: required work remains in-repo or on the current runtime profile
-- `partial`: implementation exists but is not clean or complete enough
-- `runtime-blocked`: depends on live infrastructure or machine-specific setup outside the repo alone
-- `deferred`: valid future work, but not first priority
+- `✅ done` — เสร็จแล้ว ใช้งานได้จริง
+- `🟡 partial` — มีพื้นฐานแล้ว แต่ยังไม่ครบ
+- `🔴 missing` — ไม่มีเลย ต้องสร้างใหม่
+- `⏳ blocked` — ต้องมี infra / live environment ถึงจะทำได้
 
-## P0 Local Runtime / Validation Cleanup
+---
 
-### 1. Clean production-profile bot startup on this workstation
+## P0 — ห้ามข้าม (go-live ไม่ได้ถ้าไม่มี)
 
-- Status: `closed`
-- Current state:
-  - `scum-bot` is online
-  - health endpoint returns `ok=true` and `discordReady=true`
-  - latest PM2 logs no longer show the earlier local production-guard / schema-alignment warnings as an active current issue
-- What is still open:
-  - none on this workstation
-- Main files:
-  - [../src/bot.js](../src/bot.js)
-  - [../src/services/platformService.js](../src/services/platformService.js)
-  - [../src/data/repositories/controlPlaneRegistryRepository.js](../src/data/repositories/controlPlaneRegistryRepository.js)
-  - [../src/admin/runtime/adminEnvRuntime.js](../src/admin/runtime/adminEnvRuntime.js)
+| # | งาน | สถานะ | หมายเหตุ |
+|---|---|---|---|
+| 1 | **Billing cron sweeper** — wire `setInterval` ใน `adminWebServer.js:~347` รัน `sweepExpiredSubscriptions` ทุก 6 ชม. | 🟡 partial | TODO comment ไว้แล้ว รอ wire จริง |
+| 2 | **Billing webhook end-to-end test** — ทดสอบ Stripe test mode จริง ยืนยัน idempotency, retry ไม่ duplicate | ⏳ blocked | ต้องใช้ Stripe test key จริง |
+| 3 | **Discord SSO role mapping** — ทดสอบ role ใน guild จริง → permission ใน admin console ถูกต้อง | ⏳ blocked | ต้องมี guild ที่มี role ตรงกัน |
 
-### 2. Revalidate player portal after the latest PM2 recovery
+---
 
-- Status: `closed`
-- Current state:
-  - `scum-web-portal` is online
-  - health endpoint returns `200 OK`
-  - `player-capture-verify.js` passed for the current shell/workbench flow
-- What is still open:
-  - none on this workstation
-- Main files:
-  - [../apps/web-portal-standalone/runtime/portalBootstrapRuntime.js](../apps/web-portal-standalone/runtime/portalBootstrapRuntime.js)
-  - [../apps/web-portal-standalone/api/playerGeneralRoutes.js](../apps/web-portal-standalone/api/playerGeneralRoutes.js)
-  - [../apps/web-portal-standalone/public/assets/player-v4-app.js](../apps/web-portal-standalone/public/assets/player-v4-app.js)
+## P1 — Product-ready foundation (ทำก่อน launch)
 
-### 3. Revalidate Discord admin SSO on a real role mapping
+| # | งาน | สถานะ | หมายเหตุ |
+|---|---|---|---|
+| 4 | **Billing flow tests** — failed payment → retry → recover, cancel → grace → expired, entitlement lock/unlock, webhook mock | 🟡 partial | `platform-billing-lifecycle-service.test.js` มีพื้นฐาน ขาด edge case |
+| 5 | **Unified identity** — email verify loop, recovery flow, หน้า "account ที่ link ทั้งหมด" (Discord + Steam + email) | 🟡 partial | แต่ละ piece มี แต่ไม่ต่อเป็น journey เดียว |
+| 6 | **Party chat UI** — API พร้อมแล้ว (`/player/api/party/chat`) แต่ไม่มีหน้า UI ใน player portal | 🟡 partial | TODO comment ใน `player-v4-app.js:861` |
+| 7 | **Audit log coverage** — ยืนยันว่า config apply, restart, package change, billing change, agent revoke ถูก log จริง | 🟡 partial | `admin-audit-presets.integration.test.js` มี แต่ action บางอย่างหลุด |
+| 8 | **Release runbook อัปเดต** — อัปเดต `GO_LIVE_CHECKLIST_TH.md`, `STAGING_RUN_SHEET` ให้ตรงกับ state ปัจจุบัน (billing sweep, webhook encryption, portal v5) | 🟡 partial | เอกสารเดิม date 2026-04-03 ล้าสมัยแล้ว |
 
-- Status: `runtime-blocked`
-- Current state:
-  - admin DB login is verified locally
-  - Discord SSO code path exists
-  - current guild role export on this workstation does not prove the configured admin role mapping
-- What is still open:
-  - test admin SSO against a guild that actually contains the intended owner/admin/moderator roles
-  - confirm role-to-permission mapping end-to-end
-- Main files:
-  - [../src/admin/auth/adminDiscordOauthClient.js](../src/admin/auth/adminDiscordOauthClient.js)
-  - [../src/admin/auth/adminAuthRuntime.js](../src/admin/auth/adminAuthRuntime.js)
-  - [../scripts/export-admin-discord-roles.js](../scripts/export-admin-discord-roles.js)
+---
 
-## P1 Product-Readiness Foundation
+## P2 — Product depth (เปิดได้ก่อน ค่อยเพิ่ม)
 
-### 4. Keep runtime install / validation tooling aligned with the current local topology
+| # | งาน | สถานะ | หมายเหตุ |
+|---|---|---|---|
+| 9 | **Tenant staff permission matrix** — custom role ยังไม่มี, ตอนนี้ fixed roles เท่านั้น (owner/mod/staff/viewer) | 🟡 partial | |
+| 10 | **Donation lifecycle** — recurring, supporter tier, history ที่ลึกกว่านี้ | 🟡 partial | รับ donation ได้แล้ว แต่ lifecycle ยังบาง |
+| 11 | **Raid system** — request / approve / window / summary แบบ end-to-end ยังไม่มี | 🟡 partial | raid time มี แต่ไม่ครบ loop |
+| 12 | **Analytics** — filter/date range, graph จริง (ตอนนี้อ่านได้อย่างเดียว CSV ไม่มี filter) | 🟡 partial | |
+| 13 | **Tenant isolation/RLS tests** — cross-tenant data leak scenario, schema-per-tenant mode, owner vs tenant API scope | 🟡 partial | `tenant-db-isolation.test.js` มี แต่ขาด production mode scenario |
+| 14 | **Agent resilience tests** — reconnect หลัง TCP drop, duplicate session, expired token, wrong role/scope, offline recovery | 🟡 partial | base tests มี ขาด edge case |
+| 15 | **Monitoring/alerting scenarios** — agent offline, delivery fail, restart fail, billing fail, DB fail → alert + recovery path | 🟡 partial | `platform-monitoring-service.test.js` มีพื้นฐาน ขาด scenario จริง |
 
-- Status: `closed`
-- Current state:
-  - install scripts for `Server Bot` and `Delivery Agent` now generate machine-local env bundles
-  - generated bundles are checked immediately through `scripts/runtime-env-check.js`
-  - runtime operator checklist has been updated to the new env-check first flow
-- What is still open:
-  - none on this workstation
-- Main files:
-  - [../scripts/install-server-bot.ps1](../scripts/install-server-bot.ps1)
-  - [../scripts/install-delivery-agent.ps1](../scripts/install-delivery-agent.ps1)
-  - [../scripts/runtime-env-check.js](../scripts/runtime-env-check.js)
-  - [RUNTIME_OPERATOR_CHECKLIST.md](./RUNTIME_OPERATOR_CHECKLIST.md)
+---
 
-### 5. Finish billing / subscription lifecycle to commercial depth
+## P3 — Polish (ทำทีหลังได้)
 
-- Status: `partial`
-- Current state:
-  - package metadata, subscription-state-aware entitlements, tenant billing state, and self-service upgrade foundations now exist in the active product flow
-  - backend enforcement now locks protected actions correctly for `trial`, `active`, `expired`, and `suspended` paths
-- What is still open:
-  - harden provider-backed renew/fail/cancel/retry flows
-  - prove webhook idempotency and invoice lifecycle
-  - add owner/support billing operations deep enough for recovery and customer service
-- Main files:
-  - [../src/services/platformBillingLifecycleService.js](../src/services/platformBillingLifecycleService.js)
-  - [../src/services/platformService.js](../src/services/platformService.js)
-  - [../src/admin/api/adminPlatformPostRoutes.js](../src/admin/api/adminPlatformPostRoutes.js)
-  - [../apps/web-portal-standalone/api/publicPlatformRoutes.js](../apps/web-portal-standalone/api/publicPlatformRoutes.js)
+| # | งาน | สถานะ | หมายเหตุ |
+|---|---|---|---|
+| 16 | **Browser E2E / UX smoke** — เปิดเว็บจริง เช็กหน้า, ปุ่ม, locked state, mobile layout ทั้ง 3 เว็บ | 🔴 missing | ต้องติด Playwright ก่อน ไม่มีเลย |
+| 17 | **UI empty / error / loading states** — ทุกหน้าใน Owner / Tenant / Player ต้องมี state ครบ | 🔴 missing | ต้องใช้ browser test ถึงจะเช็กได้จริง |
+| 18 | **Hardcoded i18n strings** — Thai/English strings ที่ยังเป็น hardcode ใน `tenant-v4-app.js`, `player-control-v4.js` ยังเยอะ | 🟡 partial | locale files ครบแล้ว แต่ `t()` ยังไม่ครอบทุกที่ |
+| 19 | **Rate limiting distributed** — ตอนนี้ in-memory ถ้า deploy หลาย node จะ bypass กันได้ | 🟡 partial | |
+| 20 | **Service boundary cleanup** — `adminWebServer.js` ยังใหญ่เกินไป ทำหลายอย่างในที่เดียว | 🟡 partial | |
+| 21 | **CI workflow** — โครงสร้างดีแล้ว (secret → quality-matrix → clean-room → artifacts) ไม่มีปัญหา resource ชน | ✅ done | ไม่ต้องแก้ |
 
-### 6. Finish unified identity across email, Discord, Steam, and in-game
+---
 
-- Status: `partial`
-- Current state:
-  - schema and service foundations exist
-  - email preview/login/reset, Discord login, and Steam linking all exist in some form
-- What is still open:
-  - make identity a single finished user journey instead of separate capability slices
-  - complete verification, recovery, linked-account center, and in-game matching flows
-- Main files:
-  - [../src/services/platformIdentityService.js](../src/services/platformIdentityService.js)
-  - [../src/services/publicPreviewService.js](../src/services/publicPreviewService.js)
-  - [../apps/web-portal-standalone/auth/portalAuthRuntime.js](../apps/web-portal-standalone/auth/portalAuthRuntime.js)
-  - [../src/services/linkService.js](../src/services/linkService.js)
+## สรุปตัวเลข
 
-### 7. Normalize persistence for core paths
-
-- Status: `partial`
-- Current state:
-  - PostgreSQL + Prisma are active on this workstation
-  - some core control-plane and config paths still mix Prisma, raw SQL, and fallback persistence
-- What is still open:
-  - reduce hybrid persistence in core runtime-sensitive paths
-  - make schema/migration ownership clearer for control-plane, config, and identity data
-- Main files:
-  - [../src/prisma.js](../src/prisma.js)
-  - [../src/data/repositories/controlPlaneRegistryRepository.js](../src/data/repositories/controlPlaneRegistryRepository.js)
-  - [../src/store/\_persist.js](../src/store/_persist.js)
-  - [../src/services/platformTenantConfigService.js](../src/services/platformTenantConfigService.js)
-  - [../src/services/platformServerConfigService.js](../src/services/platformServerConfigService.js)
-
-## P2 Product Systems Still Not Finished
-
-### 8. Productize tenant staff / permissions and Discord management
-
-- Status: `partial`
-- Current state:
-  - tenant staff foundation, role views, and some tenant Discord/runtime UI work exist
-- What is still open:
-  - complete the staff permission matrix
-  - expand tenant-owned Discord setup and diagnostics into a full product workflow
-- Main files:
-  - [../src/services/platformTenantStaffService.js](../src/services/platformTenantStaffService.js)
-  - [../src/admin/assets/tenant-v4-app.js](../src/admin/assets/tenant-v4-app.js)
-  - [../src/admin/assets/tenant-server-bots-v4.js](../src/admin/assets/tenant-server-bots-v4.js)
-
-### 9. Deepen donation, modules, raid, and killfeed systems
-
-- Status: `partial`
-- Current state:
-  - tenant donations/events/modules surfaces exist
-  - player supporter/community flow now exists
-  - public tenant slug pages now expose stats/shop/events/donate surfaces
-  - player-facing killfeed and public overview routes exist
-- What is still open:
-  - deepen donation/supporter lifecycle and recurring-commercial behavior
-  - finish module/plugin management lifecycle
-  - finish raid request / raid window / raid summary as a stronger end-to-end product flow
-  - deepen killfeed/public events presentation beyond the current baseline
-- Main files:
-  - [../src/domain/billing/packageCatalogService.js](../src/domain/billing/packageCatalogService.js)
-  - [../src/services/eventService.js](../src/services/eventService.js)
-  - [../src/services/scumEvents.js](../src/services/scumEvents.js)
-  - [../apps/web-portal-standalone/api/playerGeneralRoutes.js](../apps/web-portal-standalone/api/playerGeneralRoutes.js)
-
-### 10. Deepen analytics / reporting
-
-- Status: `partial`
-- Current state:
-  - dashboards and some summaries exist
-- What is still open:
-  - add product-grade reporting for revenue, player behavior, delivery quality, restart reliability, and tenant health
-- Main files:
-  - [../src/services/platformService.js](../src/services/platformService.js)
-  - [../src/services/platformMonitoringService.js](../src/services/platformMonitoringService.js)
-  - [../src/admin/assets/owner-v4-app.js](../src/admin/assets/owner-v4-app.js)
-  - [../src/admin/assets/tenant-v4-app.js](../src/admin/assets/tenant-v4-app.js)
-  - [../apps/web-portal-standalone/api/publicPlatformRoutes.js](../apps/web-portal-standalone/api/publicPlatformRoutes.js)
-
-## P3 Polish / Architecture Cleanup
-
-### 11. Finish i18n and UX cleanup
-
-- Status: `partial`
-- Current state:
-  - locale dictionaries and switchers exist
-  - some older text and encoding-quality issues still remain
-- What is still open:
-  - remove hardcoded text where it still matters
-  - clean remaining mojibake/encoding debt
-  - improve consistency of loading, error, locked, and empty states
-- Main files:
-  - [../src/admin/assets/admin-i18n.js](../src/admin/assets/admin-i18n.js)
-  - [../apps/web-portal-standalone/public/assets/portal-i18n.js](../apps/web-portal-standalone/public/assets/portal-i18n.js)
-  - [../src/admin/assets/owner-v4-app.js](../src/admin/assets/owner-v4-app.js)
-  - [../src/admin/assets/tenant-v4-app.js](../src/admin/assets/tenant-v4-app.js)
-  - [../apps/web-portal-standalone/public/assets/player-v4-app.js](../apps/web-portal-standalone/public/assets/player-v4-app.js)
-
-### 12. Keep service boundaries moving away from the remaining monolith seams
-
-- Status: `partial`
-- Current state:
-  - runtime separation is much better than before
-  - some boundary seams are still broad, especially around admin/control-plane orchestration
-- What is still open:
-  - reduce dependence on `apps/api/server.js -> src/adminWebServer.js`
-  - keep splitting large multi-concern services into clearer bounded contexts
-- Main files:
-  - [../apps/api/server.js](../apps/api/server.js)
-  - [../src/adminWebServer.js](../src/adminWebServer.js)
-  - [../src/services/platformService.js](../src/services/platformService.js)
-
-### 13. Deepen security hardening beyond the new P0 baseline
-
-- Status: `partial`
-- Current state:
-  - critical action rate limiting and validation now cover the main runtime/config/delivery mutation routes
-  - notification scoping and backend entitlement checks are stronger than the previous baseline
-- What is still open:
-  - move from in-memory rate limiting to shared/distributed enforcement where needed
-  - widen request-schema validation coverage across older admin/public mutation routes
-  - keep auditing legacy query paths for tenant-scope safety
-- Main files:
-  - [../src/admin/runtime/adminSecurityRuntime.js](../src/admin/runtime/adminSecurityRuntime.js)
-  - [../src/admin/api/adminRuntimeControlPostRoutes.js](../src/admin/api/adminRuntimeControlPostRoutes.js)
-  - [../src/admin/api/adminCommerceDeliveryPostRoutes.js](../src/admin/api/adminCommerceDeliveryPostRoutes.js)
-  - [../src/admin/api/adminPublicRoutes.js](../src/admin/api/adminPublicRoutes.js)
+| ระดับ | จำนวน | ยังเหลือ |
+|---|---|---|
+| P0 — ห้ามข้าม | 3 | 3 |
+| P1 — foundation | 5 | 5 |
+| P2 — product depth | 7 | 7 |
+| P3 — polish | 6 | 5 (CI เสร็จแล้ว 1) |
+| **รวม** | **21** | **20** |
