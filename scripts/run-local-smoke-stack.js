@@ -7,6 +7,19 @@ const { once } = require('node:events');
 const { loadMergedEnvFiles } = require('../src/utils/loadEnvFiles');
 const { resolveDatabaseRuntime } = require('../src/utils/dbEngine');
 
+function applyLocalSmokeTenantTopologyEnv(env = process.env) {
+  env.TENANT_DB_TOPOLOGY_MODE = 'shared';
+  env.TENANT_DB_AUTO_PROVISION = 'false';
+  env.TENANT_DB_ISOLATION_MODE = env.TENANT_DB_ISOLATION_MODE || 'application';
+  env.BOT_HEALTH_PORT = '0';
+  env.WORKER_HEALTH_PORT = '0';
+  env.SCUM_WATCHER_HEALTH_PORT = '0';
+  env.SMOKE_BOT_HEALTH_URL = '';
+  env.SMOKE_WORKER_HEALTH_URL = '';
+  env.SMOKE_WATCHER_HEALTH_URL = '';
+  return env;
+}
+
 function getFreePort() {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
@@ -64,6 +77,7 @@ async function main() {
   ]);
 
   process.env.NODE_ENV = 'test';
+  applyLocalSmokeTenantTopologyEnv(process.env);
   process.env.ADMIN_WEB_HOST = '127.0.0.1';
   process.env.ADMIN_WEB_PORT = String(adminPort);
   process.env.ADMIN_WEB_USER = process.env.ADMIN_WEB_USER || 'ci_admin';
@@ -181,7 +195,14 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error('[local-smoke-stack] failed:', error.message);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error('[local-smoke-stack] failed:', error.message);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  applyLocalSmokeTenantTopologyEnv,
+  main,
+};
